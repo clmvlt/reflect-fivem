@@ -108,7 +108,7 @@ jobs:
           PACKS_ADMIN_PASSWORD: ${{ secrets.PACKS_ADMIN_PASSWORD }}
         run: |
           python -m pip install -r deploy/requirements.txt
-          python deploy/deploy.py --no-build --notes-file ${{ env.NOTES_FILE }}
+          python deploy/deploy.py --notes-file ${{ env.NOTES_FILE }}
 
       - name: Secrets manquants
         if: env.HAS_SIGNING_KEY != 'true' || env.HAS_ADMIN != 'true'

@@ -64,8 +64,9 @@ Avec un compte, le serveur garde votre adresse e-mail, votre nom public, votre d
 npm install
 npm run dev
 npm test
-npm run dist
 ```
+
+L'installateur et la version portable (`npm run dist`) ne sont compilés que sur GitHub Actions.
 
 - `src/main/core/analyzer.ts` : reconnaissance du contenu d'un pack.
 - `src/main/core/installer.ts` et `executor.ts` : installation, bascule, retrait.
@@ -73,7 +74,7 @@ npm run dist
 - `src/main/core/elevation.ts` : exécution avec les droits administrateur.
 - `src/main/core/marketplace.ts` : Marketplace (liste, images en cache, téléchargement avec reprise, mises à jour de packs).
 - `src/main/core/sealed.ts`, `content.ts` et `keys.ts` : packs protégés (lecture du paquet chiffré, fichiers chiffrés sur le PC, clés). Le format du paquet est celui de `packs_api` (`encryption/PackageFormat.java`) ; `tests/fixtures/sample.fpk`, écrit par l'API, vérifie que les deux restent compatibles.
-- `src/main/core/account.ts` : compte (facultatif). Connexion par jeton (`Authorization: Bearer`, sans cookie). Le jeton est gardé chiffré par `safeStorage` dans `account.dat` et effacé sur un 401 `token-invalid`. Le module gère aussi le profil, la photo et le mot de passe. Connexion Google : flux « application de bureau » avec PKCE (S256). Un serveur `http://127.0.0.1:<port libre>/callback` est ouvert le temps de la connexion (5 minutes au plus) ; le `state` y est vérifié, puis le code reçu est échangé par l'API, qui garde le secret du client. Le module ne dépend pas d'Electron (`fetch`, ouverture du navigateur et chiffrement sont fournis par `service.ts`) et il est testé dans `tests/account.test.ts`. Les erreurs affichées sont le `detail` des réponses `application/problem+json` de l'API.
+- `src/main/core/account.ts` : compte (facultatif). Connexion par jeton d'accès JWT (15 minutes, `Authorization: Bearer`, sans cookie) et jeton de renouvellement (30 jours, remplacé à chaque renouvellement), gardés chiffrés par `safeStorage` dans `account.dat`. Le jeton d'accès est renouvelé avant son expiration, sur un 401 `token-invalid` et toutes les 12 heures ; seul un 401 `refresh-invalid` déconnecte. Les connexions `pm_` des versions 1.7.0 à 1.8.2 sont converties par `/auth/app/migrate`. Le module gère aussi le profil, la photo et le mot de passe. Connexion Google : flux « application de bureau » avec PKCE (S256). Un serveur `http://127.0.0.1:<port libre>/callback` est ouvert le temps de la connexion (5 minutes au plus) ; le `state` y est vérifié, puis le code reçu est échangé par l'API, qui garde le secret du client. Le module ne dépend pas d'Electron (`fetch`, ouverture du navigateur et chiffrement sont fournis par `service.ts`) et il est testé dans `tests/account.test.ts`. Les erreurs affichées sont le `detail` des réponses `application/problem+json` de l'API.
 - Pages d'auteurs : `marketplace.ts` (`author()`, filtre `author` de la liste, photos `pm-media://avatar/<compte>/<version>` mises en cache comme les images des packs ; la politique de sécurité de l'interface n'autorise pas les images distantes). Les manifestes de la bibliothèque gardent l'auteur en texte (`author`).
 - `src/main/core/updater.ts`, `portableSwap.ts` et `releaseSignature.ts` : mises à jour automatiques de l'application (installateur et version portable) et vérification de leur signature.
 - `src/renderer/` : interface.
@@ -111,21 +112,9 @@ Secrets du dépôt (Settings, Secrets and variables, Actions) :
 
 Sans ces secrets, la release GitHub est créée mais la version n'est pas mise en ligne sur le site.
 
-### Publication depuis un poste
+### Mise en ligne sur le site
 
-`deploy/deploy.py` (`npm run release:local`) fait la même chose en local (build, signature, envoi, publication) :
-
-```bash
-python -m pip install -r deploy/requirements.txt
-python deploy/deploy.py --check                         # clé, fichiers, API et connexion, sans rien modifier
-python deploy/deploy.py --notes-file nouveautes.md      # build, signature, envoi et publication
-```
-
-- `--no-build` : publie les fichiers déjà présents dans `release/` (par exemple ceux d'une release GitHub). Sur un poste où Smart App Control est actif, electron-builder ne peut pas construire l'installateur.
-- `--draft` : envoie sans publier (publication ensuite depuis « Versions de l'app » dans l'administration).
-- `--dev` : API de dev au lieu de la production.
-
-Configuration : `PACKS_ADMIN_USER` et `PACKS_ADMIN_PASSWORD` dans `deploy/deploy.env` (jamais versionné), modèle `deploy/deploy.env.example`.
+Il n'y a pas de build local : l'installateur et la version portable sont compilés par le workflow. Son étape « Mise en ligne sur reflect-fivem.com » lance `deploy/deploy.py`, qui signe les fichiers, les envoie à l'API avec le compte d'administration et publie la version. `python deploy/deploy.py --check` vérifie la clé, l'API et la connexion sans rien modifier.
 
 ### Clé de publication
 

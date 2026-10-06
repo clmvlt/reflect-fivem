@@ -24,9 +24,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
     "dist": "electron-vite build && electron-builder --win --x64 --publish never",
-    "dist:dir": "electron-vite build && electron-builder --win --x64 --dir --publish never",
-    "release": "node scripts/release.mjs",
-    "release:local": "python deploy/deploy.py"
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "7zip-bin": "^5.2.0",

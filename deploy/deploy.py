@@ -1,26 +1,23 @@
 #!/usr/bin/env python3
-"""Publication d'une nouvelle version de l'application (Reflect FiveM).
+"""Mise en ligne d'une version de l'application (Reflect FiveM) sur reflect-fivem.com.
 
-    python deploy/deploy.py                  build, signature, envoi et publication (production)
-    python deploy/deploy.py --no-build       publie les fichiers déjà présents dans release/ (build fait ailleurs)
+Lancé par le workflow de publication (.github/workflows/release.yml), après la compilation sur GitHub Actions : il n'y
+a pas de build local. Les fichiers publiés sont ceux de release/, compilés par le workflow.
+
+    python deploy/deploy.py --notes-file notes.md   signature, envoi et publication
     python deploy/deploy.py --draft          envoie sans publier (à vérifier puis publier dans l'administration)
-    python deploy/deploy.py --notes-file notes.md   nouveautés affichées sur le site et dans l'application
     python deploy/deploy.py --dev            API de dev (http://192.168.1.13:8080/api) au lieu de la production
     python deploy/deploy.py --check          vérifie clé, fichiers, API et connexion, sans rien modifier
 
 Étapes :
-  1. npm run dist : installateur release/Reflect-FiveM-Setup-X.Y.Z.exe et version portable ;
-  2. signature de chaque fichier avec la clé de publication (scripts/sign-release.mjs, clé privée locale) ;
-  3. API : connexion au compte d'administration, création de la version X.Y.Z (numéro de package.json),
+  1. signature de chaque fichier avec la clé de publication (scripts/sign-release.mjs, PM_SIGNING_KEY) ;
+  2. API : connexion au compte d'administration, création de la version X.Y.Z (numéro de package.json),
      envoi des fichiers en morceaux (reprise après coupure), signatures, publication ;
-  4. vérification : latest.yml annonce la nouvelle version aux applications installées.
+  3. vérification : latest.yml annonce la nouvelle version aux applications installées.
 
-Configuration (partagée avec le site et l'API) : variables d'environnement, sinon deploy/deploy.env, sinon
+Configuration : variables d'environnement (secrets du dépôt dans le workflow), sinon deploy/deploy.env, sinon
 ../deploy.env (dossier PackInstaller). Clés : PACKS_ADMIN_USER, PACKS_ADMIN_PASSWORD (et PACKS_DEV_ADMIN_USER,
 PACKS_DEV_ADMIN_PASSWORD pour --dev). Modèle : deploy/deploy.env.example. Le mot de passe n'est jamais affiché.
-
-L'installateur NSIS ne peut pas être construit sur un poste où Smart App Control bloque electron-builder :
-construire ailleurs (ou avec un certificat de signature de code), copier les .exe dans release/ puis --no-build.
 
 Dépendance : python -m pip install -r deploy/requirements.txt (requests).
 """
@@ -327,21 +324,6 @@ def package_version() -> str:
     return json.loads((PROJECT_DIR / "package.json").read_text(encoding="utf-8"))["version"]
 
 
-def npm() -> str:
-    found = shutil.which("npm.cmd" if os.name == "nt" else "npm") or shutil.which("npm")
-    if not found:
-        raise fail("npm introuvable (installez Node.js)")
-    return found
-
-
-def build() -> None:
-    step("Build de l'application (npm run dist)")
-    if subprocess.run([npm(), "run", "dist"], cwd=PROJECT_DIR).returncode != 0:
-        raise fail("build en échec. Si electron-builder s'arrête sur « spawn UNKNOWN », Smart App Control bloque la "
-                   "création de l'installateur sur ce poste : construisez ailleurs, copiez les .exe dans release/ "
-                   "puis relancez avec --no-build")
-
-
 def release_files(version: str, setup: str | None, portable: str | None) -> dict[str, Path]:
     files: dict[str, Path] = {}
     candidates = {
@@ -392,9 +374,6 @@ def publish(cfg: Config, args: argparse.Namespace) -> None:
     notes = read_notes(args)
     step(f"Version {version} vers {cfg.api}{' (brouillon)' if args.draft else ''}")
     cfg.require_password()
-
-    if not args.no_build:
-        build()
 
     step("Fichiers de la version")
     files = release_files(version, args.setup, args.portable)
@@ -459,7 +438,7 @@ def check(cfg: Config, args: argparse.Namespace) -> None:
         sign(files["setup"], version)
         ok("clé de publication présente et identique à celle de l'application")
     except DeployError:
-        info("build nécessaire (npm run dist) ou fichiers à copier dans release/")
+        info("fichiers compilés par le workflow de publication, absents de release/ sur ce poste")
     step(f"API {cfg.api} (lecture seule)")
     health = requests.get(f"{cfg.api}/actuator/health", timeout=15)
     ok(f"santé : {health.json().get('status')}") if health.ok else warn(f"santé : HTTP {health.status_code}")
@@ -484,7 +463,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Publie une nouvelle version de Reflect FiveM.")
     parser.add_argument("--check", action="store_true", help="vérifie sans rien modifier")
     parser.add_argument("--dev", action="store_true", help="API de dev au lieu de la production")
-    parser.add_argument("--no-build", action="store_true", help="utilise les fichiers déjà présents dans release/")
     parser.add_argument("--draft", action="store_true", help="envoie sans publier")
     parser.add_argument("--notes", help="nouveautés (Markdown)")
     parser.add_argument("--notes-file", help="fichier Markdown des nouveautés")

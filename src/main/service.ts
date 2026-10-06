@@ -577,6 +577,13 @@ export class Service {
       await shell.openExternal(parsed.toString())
     },
 
+    openDiscordInvite: async (code: string) => {
+      if (!/^[a-z0-9-]+$/i.test(code)) throw this.toError('Invitation invalide.')
+      // Application Discord installée : l'invitation s'ouvre directement dedans, sinon dans le navigateur.
+      const url = app.getApplicationNameForProtocol('discord://') ? `discord://-/invite/${code}` : `https://discord.gg/${code}`
+      await shell.openExternal(url)
+    },
+
     accountGet: async () => this.account.current(),
 
     accountLogin: (login: string, password: string) => this.account.login(login, password),

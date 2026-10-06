@@ -60,6 +60,7 @@ const methods = [
   'marketAuthor',
   'openSite',
   'openLink',
+  'openDiscordInvite',
   'accountGet',
   'accountLogin',
   'accountRegister',

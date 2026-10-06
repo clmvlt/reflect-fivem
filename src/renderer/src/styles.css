@@ -201,6 +201,36 @@ h2 {
   padding: 24px 32px 40px;
 }
 
+/* Lien « Support Discord » : coin bas droit, à gauche de la barre de défilement. */
+.support-link {
+  position: absolute;
+  right: 24px;
+  bottom: 12px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--layer);
+  color: var(--text-2);
+  font-size: 12px;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+.support-link:hover:not(:disabled) {
+  background: var(--layer);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+/* Au-dessus de la barre « Enregistrer » des Graphismes. */
+.layer:has(.savebar) .support-link {
+  bottom: 68px;
+}
+
 .page-head {
   display: flex;
   align-items: center;

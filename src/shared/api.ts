@@ -103,6 +103,8 @@ export interface PackManagerApi {
   openSite(path: string): Promise<void>
   /** Ouvre un lien (http ou https seulement) dans le navigateur. */
   openLink(url: string): Promise<void>
+  /** Ouvre une invitation Discord dans l'application Discord si elle est installée, sinon dans le navigateur. */
+  openDiscordInvite(code: string): Promise<void>
 
   /** Compte connecté sur cet appareil (gardé localement, vérifié en arrière-plan), null sans compte. */
   accountGet(): Promise<AccountMe | null>

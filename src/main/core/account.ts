@@ -1,8 +1,18 @@
-// Compte reflect-fivem.com (facultatif) : connexion par jeton, profil public de l'auteur.
+// Compte reflect-fivem.com (facultatif) : connexion par jetons, profil public de l'auteur.
 //
-// Le jeton (en-tête « Authorization: Bearer ») est gardé chiffré par Windows (safeStorage, DPAPI) dans le dossier de
-// données, avec le dernier état connu du compte pour l'afficher sans réseau. Il reste valable 180 jours après sa
-// dernière utilisation ; un 401 « token-invalid » (expiré, révoqué, compte désactivé) l'efface. Il n'est jamais journalisé.
+// Deux jetons, gardés chiffrés par Windows (safeStorage, DPAPI) dans le dossier de données avec le dernier état connu du
+// compte pour l'afficher sans réseau, et jamais journalisés :
+//  - le jeton d'accès (JWT, 15 minutes), envoyé dans l'en-tête « Authorization: Bearer » des requêtes connectées ;
+//  - le jeton de renouvellement (« rt_… », 30 jours), échangé sur /auth/app/refresh contre une nouvelle paire. L'ancien
+//    n'est plus accepté que 2 minutes (réutilisé plus tard, l'API déconnecte l'appareil) : le nouveau est enregistré
+//    avant toute utilisation du nouveau jeton d'accès, et un seul renouvellement a lieu à la fois.
+// Le jeton d'accès est renouvelé quand il expire dans moins d'une minute, sur un 401 « token-invalid » (une fois, puis
+// la requête est rejouée), au démarrage (première requête) et toutes les 12 heures quand l'appli reste ouverte : la
+// personne reste connectée sans rien faire. Seul un 401 « refresh-invalid » déconnecte ; hors ligne ou serveur
+// indisponible, la connexion est gardée et le renouvellement réessayé plus tard.
+//
+// Connexion des versions 1.7.0 à 1.8.2 ({token: "pm_…"}) : convertie par /auth/app/migrate à la première requête
+// (l'ancien jeton est alors supprimé par l'API) ; hors ligne, l'ancien fichier est gardé jusqu'au prochain essai.
 //
 // Connexion Google : flux « application de bureau » avec PKCE. La page Google s'ouvre dans le navigateur et revient sur
 // un petit serveur http://127.0.0.1:<port>/callback ouvert le temps de la connexion ; le code reçu est échangé par
@@ -23,6 +33,10 @@ import { log } from '../util/log'
 
 const TIMEOUT = 20_000
 const GOOGLE_TIMEOUT = 5 * 60_000
+/** Jeton d'accès renouvelé quand il expire dans moins de 60 s. */
+const RENEW_MARGIN = 60_000
+/** Renouvellement régulier quand l'appli reste ouverte longtemps. */
+const KEEP_ALIVE = 12 * 3_600_000
 export const AVATAR_MAX = 8 * 1024 * 1024
 
 const AVATAR_TYPES: Record<string, string> = {
@@ -140,9 +154,11 @@ interface RemoteProfile extends RemoteMe {
   createdAt: string | null
 }
 
-interface TokenResponse {
-  token: string
-  expiresAt: string | null
+interface SessionResponse {
+  accessToken: string
+  accessTokenExpiresAt: string
+  refreshToken: string
+  refreshTokenExpiresAt: string | null
   me: RemoteMe
 }
 
@@ -173,30 +189,74 @@ export function toAuthorRef(r: { id: number; slug: string; displayName: string; 
   return { id: r.id, slug: r.slug, displayName: r.displayName, avatarUrl: avatarMediaUrl(r.avatarUrl) }
 }
 
-// ------------------------------------------------------------------ jeton chiffré
+function toSession(r: SessionResponse): Session {
+  const ok = (s: unknown): s is string => typeof s === 'string' && s.length > 0
+  if (!ok(r?.accessToken) || !ok(r.refreshToken) || !ok(r.accessTokenExpiresAt) || !r.me) throw new Error('Le serveur ne répond pas correctement.')
+  return {
+    accessToken: r.accessToken,
+    accessTokenExpiresAt: r.accessTokenExpiresAt,
+    refreshToken: r.refreshToken,
+    refreshTokenExpiresAt: r.refreshTokenExpiresAt ?? null,
+    me: toMe(r.me)
+  }
+}
+
+/** Expire dans moins de `margin` ms (date illisible : considéré comme expiré). */
+function expiresWithin(at: string, margin: number): boolean {
+  const t = Date.parse(at)
+  return !Number.isFinite(t) || t - Date.now() < margin
+}
+
+// ------------------------------------------------------------------ jetons chiffrés
 
 export interface Session {
+  accessToken: string
+  accessTokenExpiresAt: string
+  refreshToken: string
+  refreshTokenExpiresAt: string | null
+  me: AccountMe
+}
+
+/** Connexion enregistrée par les versions 1.7.0 à 1.8.2 (jeton « pm_… »), convertie au premier appel. */
+export interface LegacySession {
   token: string
   expiresAt: string | null
   me: AccountMe
 }
 
-/** Jeton et dernier état connu du compte, chiffrés par le système. Sans chiffrement disponible : gardés en mémoire. */
+export type StoredSession = Session | LegacySession
+
+export const isLegacySession = (s: StoredSession): s is LegacySession => 'token' in s
+
+/** Jetons et dernier état connu du compte, chiffrés par le système. Sans chiffrement disponible : gardés en mémoire. */
 export class TokenFile {
-  private memory: Session | null = null
+  private memory: StoredSession | null = null
+  /** Écritures l'une après l'autre : la dernière demandée est celle qui reste sur le disque. */
+  private queue: Promise<unknown> = Promise.resolve()
 
   constructor(
     private file: string,
     private system: SystemProtection
   ) {}
 
-  async load(): Promise<Session | null> {
+  async load(): Promise<StoredSession | null> {
     if (!this.system.available()) return this.memory
     const saved = await fs.readFile(this.file).catch(() => null)
     if (!saved) return null
     try {
-      const s = JSON.parse(this.system.unprotect(saved).toString('utf8')) as Session
-      if (typeof s.token === 'string' && s.token && s.me && typeof s.me.id === 'number') return s
+      const s = JSON.parse(this.system.unprotect(saved).toString('utf8')) as Partial<Session & LegacySession>
+      const ok = (v: unknown): v is string => typeof v === 'string' && v.length > 0
+      if (s.me && typeof s.me.id === 'number') {
+        if (ok(s.accessToken) && ok(s.refreshToken))
+          return {
+            accessToken: s.accessToken,
+            accessTokenExpiresAt: typeof s.accessTokenExpiresAt === 'string' ? s.accessTokenExpiresAt : '',
+            refreshToken: s.refreshToken,
+            refreshTokenExpiresAt: s.refreshTokenExpiresAt ?? null,
+            me: s.me
+          }
+        if (ok(s.token)) return { token: s.token, expiresAt: s.expiresAt ?? null, me: s.me }
+      }
     } catch {
       /* autre compte Windows, fichier abîmé */
     }
@@ -205,21 +265,31 @@ export class TokenFile {
     return null
   }
 
-  async save(session: Session): Promise<void> {
-    if (!this.system.available()) {
-      log.warn('Chiffrement du système indisponible : connexion gardée pour cette session seulement')
-      this.memory = session
-      return
-    }
-    await fs.mkdir(path.dirname(this.file), { recursive: true })
-    const tmp = `${this.file}.${process.pid}.tmp`
-    await fs.writeFile(tmp, this.system.protect(Buffer.from(JSON.stringify(session), 'utf8')))
-    await fs.rename(tmp, this.file)
+  save(session: StoredSession): Promise<void> {
+    return this.serial(async () => {
+      if (!this.system.available()) {
+        log.warn('Chiffrement du système indisponible : connexion gardée pour cette session seulement')
+        this.memory = session
+        return
+      }
+      await fs.mkdir(path.dirname(this.file), { recursive: true })
+      const tmp = `${this.file}.${process.pid}.tmp`
+      await fs.writeFile(tmp, this.system.protect(Buffer.from(JSON.stringify(session), 'utf8')))
+      await fs.rename(tmp, this.file)
+    })
   }
 
-  async clear(): Promise<void> {
-    this.memory = null
-    await fs.rm(this.file, { force: true })
+  clear(): Promise<void> {
+    return this.serial(async () => {
+      this.memory = null
+      await fs.rm(this.file, { force: true })
+    })
+  }
+
+  private serial(task: () => Promise<void>): Promise<void> {
+    const run = this.queue.then(task, task)
+    this.queue = run.catch(() => undefined)
+    return run
   }
 }
 
@@ -238,29 +308,49 @@ export interface AccountDeps {
 interface RequestOptions {
   json?: unknown
   raw?: { data: Buffer; type: string }
-  auth?: boolean
+  /** Jeton de l'en-tête Authorization (jeton d'accès, ou ancien jeton « pm_… » pour la conversion). */
+  bearer?: string
   timeout?: number
 }
 
+const signedOut = (): ApiError => new ApiError('Vous n’êtes pas connecté.', 401, 'signed-out')
+
 export class Account {
   private session: Session | null = null
+  /** Connexion d'une version précédente, pas encore convertie. */
+  private legacy: LegacySession | null = null
+  /** Renouvellement (ou conversion) en cours, partagé par toutes les requêtes. */
+  private renewing: Promise<void> | null = null
+  private keepAlive: NodeJS.Timeout | null = null
   private google: AbortController | null = null
 
   constructor(private deps: AccountDeps) {}
 
   async init(): Promise<void> {
-    this.session = await this.deps.store.load().catch(() => null)
+    const saved = await this.deps.store.load().catch(() => null)
+    if (saved && isLegacySession(saved)) this.legacy = saved
+    else this.session = saved
+    // Connexion gardée vivante quand l'appli reste ouverte (le renouvellement au démarrage passe par refresh()).
+    this.keepAlive ??= setInterval(() => {
+      if (this.session || this.legacy) this.renew().catch((err: unknown) => log.info(`Connexion non renouvelée : ${(err as Error).message}`))
+    }, KEEP_ALIVE)
+    this.keepAlive.unref?.()
+  }
+
+  dispose(): void {
+    if (this.keepAlive) clearInterval(this.keepAlive)
+    this.keepAlive = null
   }
 
   /** Compte connecté (dernier état connu, sans réseau). */
   current(): AccountMe | null {
-    return this.session?.me ?? null
+    return this.session?.me ?? this.legacy?.me ?? null
   }
 
-  /** Relit le compte (GET /auth/me). Hors ligne : l'état enregistré est gardé. */
+  /** Relit le compte (GET /auth/me), en renouvelant la connexion si besoin. Hors ligne : l'état enregistré est gardé. */
   async refresh(): Promise<AccountMe | null> {
-    if (!this.session) return null
-    const me = await this.request<RemoteMe>('GET', '/auth/me', { auth: true })
+    if (!this.session && !this.legacy) return null
+    const me = await this.authed<RemoteMe>('GET', '/auth/me')
     if (!me.authenticated) {
       await this.forget()
       return null
@@ -271,12 +361,12 @@ export class Account {
 
   async login(login: string, password: string): Promise<AccountMe> {
     if (!login.trim() || !password) throw new Error('Saisissez votre adresse e-mail et votre mot de passe.')
-    return this.signIn(await this.request<TokenResponse>('POST', '/auth/token', { json: { login: login.trim(), password, deviceName: deviceName() } }))
+    return this.signIn(await this.request<SessionResponse>('POST', '/auth/app/login', { json: { login: login.trim(), password, deviceName: deviceName() } }))
   }
 
   async register(email: string, password: string, displayName: string): Promise<AccountMe> {
     const body = { email: email.trim(), password, displayName: displayName.trim(), deviceName: deviceName() }
-    return this.signIn(await this.request<TokenResponse>('POST', '/auth/token/register', { json: body }))
+    return this.signIn(await this.request<SessionResponse>('POST', '/auth/app/register', { json: body }))
   }
 
   /** Connexion Google dans le navigateur (une seule à la fois : un nouvel essai abandonne le précédent). */
@@ -285,14 +375,14 @@ export class Account {
     const abort = new AbortController()
     this.google = abort
     try {
-      const config = await this.request<GoogleConfig>('GET', '/auth/token/google/config')
+      const config = await this.request<GoogleConfig>('GET', '/auth/app/google/config')
       const { verifier, challenge } = createPkce()
       const state = randomBytes(24).toString('base64url')
       const { code, redirectUri } = await waitForLoopback(state, abort.signal, (redirectUri) =>
         this.deps.openExternal(googleAuthUrl(config, { redirectUri, challenge, state }))
       )
       const body = { code, codeVerifier: verifier, redirectUri, deviceName: deviceName() }
-      return this.signIn(await this.request<TokenResponse>('POST', '/auth/token/google', { json: body }))
+      return this.signIn(await this.request<SessionResponse>('POST', '/auth/app/google', { json: body }))
     } finally {
       if (this.google === abort) this.google = null
     }
@@ -302,20 +392,25 @@ export class Account {
     this.google?.abort()
   }
 
-  /** Déconnexion : le jeton est supprimé sur le serveur (si possible) et sur ce PC dans tous les cas. */
+  /** Déconnexion : l'appareil est déconnecté sur le serveur (si possible) et la connexion effacée de ce PC dans tous les cas. */
   async logout(): Promise<void> {
-    if (!this.session) return
-    try {
-      await this.request('DELETE', '/auth/token', { auth: true })
-    } catch (err) {
-      log.info(`Déconnexion : jeton non révoqué sur le serveur (${(err as Error).message})`)
+    // Un renouvellement en cours remplace le jeton de renouvellement : c'est le nouveau qu'il faut envoyer.
+    await this.renewing?.catch(() => undefined)
+    if (!this.session && !this.legacy) return
+    const refreshToken = this.session?.refreshToken
+    if (refreshToken) {
+      try {
+        await this.request('POST', '/auth/app/logout', { json: { refreshToken } })
+      } catch (err) {
+        log.info(`Déconnexion : appareil non déconnecté sur le serveur (${(err as Error).message})`)
+      }
     }
     await this.forget()
     log.info('Compte : déconnecté')
   }
 
   async profile(): Promise<AccountProfile> {
-    return this.withProfile(await this.request<RemoteProfile>('GET', '/me', { auth: true }))
+    return this.withProfile(await this.authed<RemoteProfile>('GET', '/me'))
   }
 
   async saveProfile(input: ProfileInput): Promise<AccountProfile> {
@@ -324,7 +419,7 @@ export class Account {
       bio: input.bio.trim(),
       links: input.links.map((l) => ({ label: l.label.trim(), url: l.url.trim() })).filter((l) => l.label || l.url)
     }
-    return this.withProfile(await this.request<RemoteProfile>('PUT', '/me', { auth: true, json: body }))
+    return this.withProfile(await this.authed<RemoteProfile>('PUT', '/me', { json: body }))
   }
 
   /** Envoie la photo d'un fichier image (PNG, JPEG, GIF, BMP ; 8 Mo au plus). */
@@ -334,33 +429,43 @@ export class Account {
     const st = await fs.stat(file)
     if (st.size > AVATAR_MAX) throw new Error('Photo trop lourde (8 Mo au plus).')
     const data = await fs.readFile(file)
-    return this.withProfile(await this.request<RemoteProfile>('PUT', '/me/avatar', { auth: true, raw: { data, type }, timeout: 60_000 }))
+    return this.withProfile(await this.authed<RemoteProfile>('PUT', '/me/avatar', { raw: { data, type }, timeout: 60_000 }))
   }
 
   async removeAvatar(): Promise<AccountProfile> {
-    return this.withProfile(await this.request<RemoteProfile>('DELETE', '/me/avatar', { auth: true }))
+    return this.withProfile(await this.authed<RemoteProfile>('DELETE', '/me/avatar'))
   }
 
   /** Les autres appareils sont déconnectés ; celui-ci reste connecté. */
   async changePassword(currentPassword: string | null, newPassword: string): Promise<AccountMe> {
     const body = currentPassword === null ? { newPassword } : { currentPassword, newPassword }
-    await this.updateMe(toMe(await this.request<RemoteMe>('POST', '/auth/password', { auth: true, json: body })))
+    await this.updateMe(toMe(await this.authed<RemoteMe>('POST', '/auth/password', { json: body })))
     return this.current()!
   }
 
   // ----------------------------------------------------------------
 
-  private async signIn(r: TokenResponse): Promise<AccountMe> {
-    if (typeof r?.token !== 'string' || !r.token || !r.me) throw new Error('Le serveur ne répond pas correctement.')
-    this.session = { token: r.token, expiresAt: r.expiresAt ?? null, me: toMe(r.me) }
-    await this.deps.store.save(this.session)
-    log.info(`Compte : connecté (compte ${this.session.me.id})`)
-    this.deps.onChange(this.session.me)
-    return this.session.me
+  private async signIn(r: SessionResponse): Promise<AccountMe> {
+    const session = toSession(r)
+    await this.adopt(session)
+    log.info(`Compte : connecté (compte ${session.me.id})`)
+    this.deps.onChange(session.me)
+    return session.me
+  }
+
+  /**
+   * Nouvelle session : gardée en mémoire tout de suite (une mise à jour du profil pendant l'écriture garde ainsi les
+   * nouveaux jetons), enregistrée avant que le nouveau jeton d'accès serve (les requêtes attendent `renewing`).
+   */
+  private async adopt(session: Session): Promise<void> {
+    this.session = session
+    this.legacy = null
+    await this.deps.store.save(session).catch((err: unknown) => log.warn(`Connexion non enregistrée : ${(err as Error).message}`))
   }
 
   private async forget(): Promise<void> {
     this.session = null
+    this.legacy = null
     await this.deps.store.clear().catch((err: unknown) => log.warn(`Connexion enregistrée non effacée : ${(err as Error).message}`))
     this.deps.onChange(null)
   }
@@ -384,6 +489,90 @@ export class Account {
     return profile
   }
 
+  // ---------------------------------------------------------------- jetons
+
+  /** Un seul renouvellement (ou conversion) à la fois : les appels simultanés attendent le même. */
+  private renew(): Promise<void> {
+    this.renewing ??= (this.legacy ? this.migrate(this.legacy) : this.renewSession()).finally(() => {
+      this.renewing = null
+    })
+    return this.renewing
+  }
+
+  private async renewSession(): Promise<void> {
+    const current = this.session
+    if (!current) return
+    // Comparaison par jeton : une mise à jour du profil pendant la requête remplace l'objet session, pas les jetons.
+    const unchanged = (): boolean => this.session?.refreshToken === current.refreshToken
+    let r: SessionResponse
+    try {
+      r = await this.request<SessionResponse>('POST', '/auth/app/refresh', { json: { refreshToken: current.refreshToken } })
+    } catch (err) {
+      // Seul un refus explicite déconnecte : hors ligne ou serveur indisponible, la connexion est gardée.
+      if (err instanceof ApiError && err.status === 401 && err.code === 'refresh-invalid' && unchanged()) {
+        log.info('Compte : connexion expirée ou révoquée')
+        await this.forget()
+      }
+      throw err
+    }
+    // Déconnexion pendant le renouvellement : la nouvelle session n'est pas gardée.
+    if (!unchanged()) return
+    const next = toSession(r)
+    const changed = JSON.stringify(next.me) !== JSON.stringify(this.current())
+    await this.adopt(next)
+    if (changed) this.deps.onChange(next.me)
+  }
+
+  /** Ancien jeton « pm_… » échangé contre une session (l'API le supprime). */
+  private async migrate(legacy: LegacySession): Promise<void> {
+    let r: SessionResponse
+    try {
+      r = await this.request<SessionResponse>('POST', '/auth/app/migrate', { json: { deviceName: deviceName() }, bearer: legacy.token })
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401 && this.legacy === legacy) {
+        log.info('Compte : ancienne connexion refusée, reconnectez-vous')
+        await this.forget()
+      }
+      throw err
+    }
+    if (this.legacy !== legacy) return
+    const next = toSession(r)
+    const changed = JSON.stringify(next.me) !== JSON.stringify(legacy.me)
+    await this.adopt(next)
+    log.info(`Compte : connexion convertie (compte ${next.me.id})`)
+    if (changed) this.deps.onChange(next.me)
+  }
+
+  /** Session prête pour une requête connectée : conversion, renouvellement en cours ou jeton d'accès bientôt expiré. */
+  private async ready(): Promise<Session> {
+    const session = this.session
+    if (this.renewing || this.legacy || (session && expiresWithin(session.accessTokenExpiresAt, RENEW_MARGIN))) {
+      try {
+        await this.renew()
+      } catch (err) {
+        // Renouvellement impossible (hors ligne...) : le jeton d'accès sert tant qu'il n'a pas expiré.
+        if (!this.session || expiresWithin(this.session.accessTokenExpiresAt, 0)) throw err
+      }
+    }
+    if (!this.session) throw signedOut()
+    return this.session
+  }
+
+  /** Requête connectée. Jeton d'accès refusé (401 « token-invalid ») : renouvelé une fois, puis la requête est rejouée. */
+  private async authed<T>(method: string, pathname: string, opts: Omit<RequestOptions, 'bearer'> = {}): Promise<T> {
+    const session = await this.ready()
+    try {
+      return await this.request<T>(method, pathname, { ...opts, bearer: session.accessToken })
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 401 && err.code === 'token-invalid')) throw err
+    }
+    // Déjà renouvelé par une autre requête entre-temps : la nouvelle session suffit.
+    if (this.session?.accessToken === session.accessToken) await this.renew()
+    const next = await this.ready()
+    return this.request<T>(method, pathname, { ...opts, bearer: next.accessToken })
+  }
+
+  /** Le corps est reconstruit à chaque appel : une requête peut être rejouée. */
   private async request<T>(method: string, pathname: string, opts: RequestOptions = {}): Promise<T> {
     const headers: Record<string, string> = { Accept: 'application/json' }
     let body: RequestInit['body']
@@ -394,11 +583,7 @@ export class Account {
       headers['Content-Type'] = opts.raw.type
       body = new Uint8Array(opts.raw.data)
     }
-    const session = this.session
-    if (opts.auth) {
-      if (!session) throw new ApiError('Vous n’êtes pas connecté.', 401, 'signed-out')
-      headers.Authorization = `Bearer ${session.token}`
-    }
+    if (opts.bearer) headers.Authorization = `Bearer ${opts.bearer}`
 
     let response: Response
     try {
@@ -410,8 +595,6 @@ export class Account {
 
     const problem = (await response.json().catch(() => null)) as { detail?: unknown; code?: unknown; retryAfter?: unknown } | null
     const code = typeof problem?.code === 'string' ? problem.code : undefined
-    // Jeton expiré ou révoqué (seulement s'il s'agit toujours de celui de la session : une connexion a pu avoir lieu entre-temps).
-    if (opts.auth && response.status === 401 && code === 'token-invalid' && this.session === session) await this.forget()
     if (response.status === 403 && code === 'password-change-required' && this.session && !this.session.me.mustChangePassword)
       await this.updateMe({ ...this.session.me, mustChangePassword: true })
     throw new ApiError(problemMessage(response.status, problem), response.status, code)

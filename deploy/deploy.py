@@ -152,45 +152,71 @@ class Config:
 # API
 
 class Api:
+    """Connexion comme le site : POST /auth/login {login, password} renvoie un jeton d'accès (15 minutes), envoyé dans
+    l'en-tête Authorization: Bearer ; le jeton de renouvellement reste dans le cookie PACKS_REFRESH de la session HTTP.
+    Jeton d'accès refusé pendant un long envoi (401 « token-invalid ») : renouvelé, puis la requête est rejouée."""
+
     def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
         self.http = requests.Session()
         self.http.headers["User-Agent"] = "reflect-fivem-deploy"
+        self.access_token: str | None = None
 
-    def _xsrf(self) -> dict[str, str]:
-        token = next((c.value for c in self.http.cookies if c.name == "XSRF-TOKEN"), None)
-        if not token:
-            self.request("GET", "/auth/me", check=False)
-            token = next((c.value for c in self.http.cookies if c.name == "XSRF-TOKEN"), "")
-        return {"X-XSRF-TOKEN": token}
+    def _send(self, method: str, path: str, **kwargs) -> requests.Response:
+        """Requête connectée, rejouée une fois après renouvellement du jeton d'accès. Lève requests.RequestException."""
+        headers = kwargs.pop("headers", {})
+        for attempt in range(2):
+            auth = {"Authorization": f"Bearer {self.access_token}"} if self.access_token else {}
+            response = self.http.request(method, self.cfg.api + path, headers={**headers, **auth}, **kwargs)
+            if attempt or not self.access_token or response.status_code != 401 or safe_json(response).get("code") != "token-invalid":
+                return response
+            self._renew()
+        return response
 
     def request(self, method: str, path: str, check: bool = True, **kwargs) -> requests.Response:
-        headers = kwargs.pop("headers", {})
-        if method != "GET":
-            headers.update(self._xsrf())
         try:
-            response = self.http.request(method, self.cfg.api + path, headers=headers, timeout=kwargs.pop("timeout", 60), **kwargs)
+            response = self._send(method, path, timeout=kwargs.pop("timeout", 60), **kwargs)
         except requests.RequestException as exc:
             raise fail(f"API injoignable ({self.cfg.api}) : {exc.__class__.__name__}")
         if check and not response.ok:
             raise fail(f"{method} {path} : {problem(response)}")
         return response
 
+    def _open(self) -> dict:
+        try:
+            response = self.http.post(f"{self.cfg.api}/auth/login", json={"login": self.cfg.user, "password": self.cfg.password}, timeout=60)
+        except requests.RequestException as exc:
+            raise fail(f"API injoignable ({self.cfg.api}) : {exc.__class__.__name__}")
+        body = safe_json(response)
+        if response.status_code != 200 or not body.get("accessToken"):
+            raise fail(f"connexion au compte « {self.cfg.user} » refusée : {problem(response)}")
+        self.access_token = body["accessToken"]
+        return body
+
+    def _renew(self) -> None:
+        """Nouveau jeton d'accès par le cookie de renouvellement, sinon nouvelle connexion."""
+        try:
+            response = self.http.post(f"{self.cfg.api}/auth/refresh", timeout=60)
+            if response.ok and safe_json(response).get("accessToken"):
+                self.access_token = safe_json(response)["accessToken"]
+                return
+        except requests.RequestException:
+            pass
+        self._open()
+
     def login(self) -> None:
         self.cfg.require_password()
-        self.request("GET", "/auth/me", check=False)
-        response = self.request("POST", "/auth/login", check=False, data={"username": self.cfg.user, "password": self.cfg.password})
-        if response.status_code != 200:
-            raise fail(f"connexion au compte « {self.cfg.user} » refusée : {problem(response)}")
-        if response.json().get("mustChangePassword"):
+        body = self._open()
+        if (body.get("me") or {}).get("mustChangePassword"):
             raise fail(f"le mot de passe initial doit d'abord être changé sur {self.cfg.site}/admin, puis renseigné dans deploy.env")
         ok(f"connecté à {self.cfg.api} ({self.cfg.user})")
 
     def logout(self) -> None:
         try:
-            self.request("POST", "/auth/logout", check=False)
-        except DeployError:
+            self.http.post(f"{self.cfg.api}/auth/logout", timeout=15)
+        except requests.RequestException:
             pass
+        self.access_token = None
 
     def upload(self, release_id: str, kind: str, path: Path) -> None:
         """Envoi en morceaux : reprise à la bonne position (409), morceaux plus petits si un proxy refuse. Un envoi
@@ -220,8 +246,8 @@ class Api:
                 handle.seek(offset)
                 data = handle.read(chunk_size)
                 try:
-                    response = self.http.put(f"{self.cfg.api}/admin/uploads/{upload_id}", params={"offset": offset}, data=data,
-                                             headers={**self._xsrf(), "Content-Type": "application/octet-stream"}, timeout=300)
+                    response = self._send("PUT", f"/admin/uploads/{upload_id}", params={"offset": offset}, data=data,
+                                          headers={"Content-Type": "application/octet-stream"}, timeout=300)
                 except requests.RequestException:
                     response = None
                 if response is not None and response.ok:

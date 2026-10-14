@@ -13,6 +13,7 @@
 //
 // Les notes et commentaires des packs passent aussi par ici (call) : au nom du compte s'il y en a un, anonymes sinon.
 // Les téléchargements de la Marketplace demandent un jeton d'accès valide (accessToken) pour être comptés au compte.
+// Maintenance (503 « maintenance », voir http.ts) : l'erreur remonte telle quelle, la connexion est gardée.
 //
 // Connexion des versions 1.7.0 à 1.8.2 ({token: "pm_…"}) : convertie par /auth/app/migrate à la première requête
 // (l'ancien jeton est alors supprimé par l'API) ; hors ligne, l'ancien fichier est gardé jusqu'au prochain essai.
@@ -33,6 +34,7 @@ import path from 'node:path'
 import type { AccountMe, AccountProfile, AuthorRef, ProfileInput, ProfileLink } from '@shared/types'
 import { t } from 'i18next'
 import { currentLocale } from '@shared/i18n'
+import { ApiError, MaintenanceError, maintenanceError } from './http'
 import type { SystemProtection } from './keys'
 import { log } from '../util/log'
 
@@ -53,16 +55,7 @@ const AVATAR_TYPES: Record<string, string> = {
 }
 export const AVATAR_EXTENSIONS = Object.keys(AVATAR_TYPES).map((e) => e.slice(1))
 
-/** Erreur renvoyée par l'API : `detail` (message à afficher) et `code` facultatif. */
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public code?: string
-  ) {
-    super(message)
-  }
-}
+export { ApiError }
 
 // ------------------------------------------------------------------ fonctions pures (testées)
 
@@ -358,6 +351,11 @@ export class Account {
     return this.session?.me ?? this.legacy?.me ?? null
   }
 
+  /** Compte admin connecté : jamais bloqué par une maintenance (ses requêtes doivent porter son jeton). */
+  isAdmin(): boolean {
+    return !!this.current()?.admin
+  }
+
   /** Relit le compte (GET /auth/me), en renouvelant la connexion si besoin. Hors ligne : l'état enregistré est gardé. */
   async refresh(): Promise<AccountMe | null> {
     if (!this.session && !this.legacy) return null
@@ -633,11 +631,16 @@ export class Account {
     let response: Response
     try {
       response = await this.deps.fetch(`${this.deps.apiUrl}${pathname}`, { method, headers, body, signal: AbortSignal.timeout(opts.timeout ?? TIMEOUT) })
-    } catch {
+    } catch (err) {
+      // Maintenance (serverFetch) : ni perte de réseau, ni raison de déconnecter le compte.
+      if (err instanceof MaintenanceError) throw err
       throw new Error(t('errors.network'))
     }
     if (response.ok) return (response.status === 204 ? undefined : await response.json()) as T
 
+    // fetch donné sans serverFetch (tests) : la maintenance est reconnue ici aussi.
+    const maintenance = await maintenanceError(response)
+    if (maintenance) throw maintenance
     const problem = (await response.json().catch(() => null)) as { detail?: unknown; code?: unknown; retryAfter?: unknown } | null
     const code = typeof problem?.code === 'string' ? problem.code : undefined
     if (response.status === 403 && code === 'password-change-required' && this.session && !this.session.me.mustChangePassword)

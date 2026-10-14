@@ -325,8 +325,17 @@ export interface Overview {
   apiUrl: string
   /** Packs et mods de la bibliothèque dont une nouvelle version est en ligne, et ceux retirés de la Marketplace. */
   market: { updates: string[]; gone: string[] }
+  /** Téléchargements arrêtés par une maintenance, repris automatiquement à sa fin. */
+  pausedDownloads: PausedDownloadInfo[]
   game: GameState
   update: UpdateState
+}
+
+export interface PausedDownloadInfo {
+  /** Identifiant du pack ou du mod sur la Marketplace. */
+  id: string
+  kind: MarketKind
+  name: string
 }
 
 /** Changement de pack demandé pendant que FiveM tourne : fait dès que le jeu est fermé. */

@@ -27,6 +27,7 @@ import type {
 } from './types'
 import type { GraphicsState, GraphicsTarget } from './graphics'
 import type { HardwareOverride, MachineProfile, PerformanceDetail } from './performance'
+import type { MaintenanceState } from './maintenance'
 
 export interface ComponentFile {
   rel: string
@@ -226,6 +227,11 @@ export interface PackManagerApi {
   /** Ferme l'application et installe tout de suite la mise à jour téléchargée et vérifiée. */
   installUpdate(): Promise<void>
 
+  /** Maintenances prévues par l'admin : dernier état connu (sans réseau). */
+  maintenanceGet(): Promise<MaintenanceState>
+  /** Interroge l'API tout de suite (« Réessayer » de l'écran de maintenance). */
+  maintenanceCheck(): Promise<MaintenanceState>
+
   onTask(cb: (p: TaskProgress) => void): () => void
   onChanged(cb: () => void): () => void
   onUpdate(cb: (s: UpdateState) => void): () => void
@@ -233,6 +239,8 @@ export interface PackManagerApi {
   onAccount(cb: (me: AccountMe | null) => void): () => void
   /** Langue changée (réglages, ou langue du compte appliquée à la connexion). */
   onLanguage(cb: (code: string) => void): () => void
+  /** Maintenances : état changé (vérification, requête refusée pour maintenance, maintenance terminée). */
+  onMaintenance(cb: (state: MaintenanceState) => void): () => void
   /** Lien « fivem-pack-manager://pack/<id> » ou « …://mod/<id> » reçu du site : ouvrir cette fiche dans la Marketplace. */
   onOpenMarketPack(cb: (id: string, kind: MarketKind) => void): () => void
 }
@@ -291,6 +299,7 @@ export const IPC = {
   update: 'pm:update',
   account: 'pm:account',
   language: 'pm:language',
+  maintenance: 'pm:maintenance',
   openMarketPack: 'pm:open-market-pack'
 } as const
 
@@ -300,6 +309,9 @@ export const PENDING = 'pending'
 /** Codes d'erreur de marketDetail quand l'API ne connaît pas (ou plus) le pack ou le mod : inutile de réessayer. */
 export const PACK_GONE = 'pack-gone'
 export const MOD_GONE = 'mod-gone'
+
+/** Code d'une erreur de l'API pendant une maintenance (503) : l'écran de maintenance l'explique, pas de message d'erreur. */
+export const MAINTENANCE = 'maintenance'
 
 /**
  * Une erreur ne passe d'un processus à l'autre qu'avec son message : le statut HTTP et le `code` d'une erreur de l'API

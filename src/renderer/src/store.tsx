@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import type { AccountMe, Overview, TaskProgress, UpdateState } from '@shared/types'
-import { PENDING, readApiError } from '@shared/api'
+import { MAINTENANCE, PENDING, readApiError } from '@shared/api'
+import type { MaintenanceState } from '@shared/maintenance'
 import i18next, { t } from 'i18next'
 import { num, q } from './lib/format'
 
@@ -18,6 +19,10 @@ interface Store {
   /** Compte connecté (null sans compte, undefined tant qu'il n'est pas chargé). */
   account: AccountMe | null | undefined
   setAccount: (me: AccountMe | null) => void
+  /** Maintenances prévues par l'admin (null tant que l'état n'est pas chargé). */
+  maintenance: MaintenanceState | null
+  /** Interroge l'API tout de suite (« Réessayer »). */
+  checkMaintenance: () => Promise<void>
   message: Message | null
   setMessage: (m: Message | null) => void
   /** Appelle l'API ; une erreur s'affiche dans la barre de message. */
@@ -37,6 +42,7 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
   const [message, setMessage] = useState<Message | null>(null)
   const [update, setUpdate] = useState<UpdateState | null>(null)
   const [account, setAccount] = useState<AccountMe | null | undefined>(undefined)
+  const [maintenance, setMaintenance] = useState<MaintenanceState | null>(null)
   const lastTask = useRef<string | null>(null)
   // Changement fait pendant une partie (à sa fermeture) : il prendra effet au prochain lancement.
   const relaunchRef = useRef(false)
@@ -56,8 +62,18 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
     try {
       return await fn()
     } catch (e) {
-      setMessage({ kind: 'error', text: cleanError(e) })
+      // Maintenance : pas une erreur, le bandeau ou l'écran de maintenance l'explique.
+      if (apiError(e).code === MAINTENANCE) setMessage({ kind: 'info', text: t('maintenance.unavailable') })
+      else setMessage({ kind: 'error', text: cleanError(e) })
       return undefined
+    }
+  }, [])
+
+  const checkMaintenance = useCallback(async (): Promise<void> => {
+    try {
+      setMaintenance(await window.api.maintenanceCheck())
+    } catch {
+      /* état inchangé */
     }
   }, [])
 
@@ -81,6 +97,8 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
       void i18next.changeLanguage(lng).then(() => refresh())
     })
     window.api.accountGet().then(setAccount, () => setAccount(null))
+    const offMaintenance = window.api.onMaintenance(setMaintenance)
+    window.api.maintenanceGet().then(setMaintenance, () => undefined)
     const offTask = window.api.onTask((p) => {
       if (!p.done) {
         // Nouvelle action : l'ancien message n'a plus lieu d'être.
@@ -110,6 +128,7 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
       offUpdate()
       offAccount()
       offLanguage()
+      offMaintenance()
       window.removeEventListener('keydown', onKey)
     }
   }, [refresh])
@@ -127,8 +146,8 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
   }, [overview?.accent])
 
   const value = useMemo<Store>(
-    () => ({ overview, refresh, task, update, account, setAccount, message, setMessage, run, changeGame }),
-    [overview, refresh, task, update, account, message, run, changeGame]
+    () => ({ overview, refresh, task, update, account, setAccount, maintenance, checkMaintenance, message, setMessage, run, changeGame }),
+    [overview, refresh, task, update, account, maintenance, checkMaintenance, message, run, changeGame]
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
@@ -170,6 +189,7 @@ function resultMessage(p: TaskProgress): Message | null {
   if (p.kind === 'download') {
     const d = (p.result ?? {}) as { name?: string; status?: string; note?: string; kind?: string; enabled?: boolean }
     if (d.note) return { kind: 'info', text: d.note }
+    if (d.status === 'paused') return { kind: 'info', text: t('maintenance.downloadPaused', { name: q(d.name ?? (d.kind === 'mod' ? t('store.theMod') : t('store.thePack'))) }) }
     if (d.kind === 'mod' && (d.status === 'added' || d.status === 'updated')) {
       const name = q(d.name ?? t('store.theMod'))
       if (d.status === 'updated') return { kind: 'info', text: d.enabled ? t('store.download.modUpdatedEnabled', { name }) : t('store.download.updated', { name }) }

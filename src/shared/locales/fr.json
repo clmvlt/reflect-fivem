@@ -821,6 +821,39 @@
     },
     "title": "Bibliothèque"
   },
+  "maintenance": {
+    "admin": "Maintenance en cours (vous êtes admin, l’application reste accessible pour vous). Fin prévue : {{end}}.",
+    "announce": "Maintenance {{range}} : l’application et le site seront inaccessibles.",
+    "announceTitle": "Maintenance prévue",
+    "banner": "Reflect FiveM est en maintenance jusqu’à {{end}} : la Marketplace et le compte sont indisponibles, vos packs installés restent utilisables.",
+    "bannerOverdue": "Reflect FiveM est en maintenance, un peu plus longtemps que prévu : la Marketplace et le compte sont indisponibles, vos packs installés restent utilisables.",
+    "countdown": {
+      "days": "{{days}} j {{clock}}"
+    },
+    "downloadPaused": "Téléchargement de {{name}} en pause pendant la maintenance : il reprendra tout seul à la fin.",
+    "inProgress": "Reflect FiveM est en maintenance.",
+    "notification": {
+      "body": "Reflect FiveM et le site seront inaccessibles de {{start}} à {{end}}.",
+      "title": "Maintenance dans 15 minutes"
+    },
+    "paused_one": "Téléchargement en pause : {{names}}. Il reprendra tout seul à la fin de la maintenance.",
+    "paused_other": "Téléchargements en pause : {{names}}. Ils reprendront tout seuls à la fin de la maintenance.",
+    "pausedShort": "En pause pendant la maintenance",
+    "range": {
+      "days": "du {{start}} au {{end}}",
+      "sameDay": "le {{date}} de {{start}} à {{end}}"
+    },
+    "screen": {
+      "checking": "Vérification…",
+      "local": "Vos packs installés restent utilisables : la bibliothèque, l’installation et la désinstallation ne dépendent pas du serveur.",
+      "overdue": "La maintenance prend un peu plus de temps que prévu. L’application se rouvrira d’elle-même dès qu’elle sera terminée.",
+      "remaining": "Temps restant",
+      "title": "Reflect FiveM est en maintenance",
+      "until": "Fin prévue : {{end}}"
+    },
+    "soonTitle": "Maintenance dans",
+    "unavailable": "Indisponible pendant la maintenance."
+  },
   "market": {
     "authorGone": "Cet auteur n’existe pas ou plus.",
     "errors": {

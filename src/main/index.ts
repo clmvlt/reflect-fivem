@@ -43,6 +43,9 @@ function startApp(): void {
     return
   }
 
+  // Notifications de Windows (maintenance prévue) : même identifiant que le raccourci créé par l'installateur (appId).
+  if (process.platform === 'win32') app.setAppUserModelId('fr.fivem.packmanager')
+
   protocol.registerSchemesAsPrivileged([{ scheme: 'pm-media', privileges: { standard: true, secure: true, supportFetchAPI: true } }])
 
   // Adresse de l'API (Marketplace et mises à jour) : production, sauf en développement (npm run dev) où l'API

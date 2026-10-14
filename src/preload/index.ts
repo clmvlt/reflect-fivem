@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { PackManagerApi } from '../shared/api'
 import type { AccountMe, MarketKind, TaskProgress, UpdateState } from '../shared/types'
+import type { MaintenanceState } from '../shared/maintenance'
 
 // Canaux dupliqués ici : un preload « sandbox » ne peut importer que le module electron.
 const IPC = {
@@ -10,6 +11,7 @@ const IPC = {
   update: 'pm:update',
   account: 'pm:account',
   language: 'pm:language',
+  maintenance: 'pm:maintenance',
   openMarketPack: 'pm:open-market-pack'
 }
 
@@ -108,7 +110,9 @@ const methods = [
   'setLanguage',
   'listLanguages',
   'checkForUpdates',
-  'installUpdate'
+  'installUpdate',
+  'maintenanceGet',
+  'maintenanceCheck'
 ] as const
 
 const api = Object.fromEntries(methods.map((m) => [m, call(m)])) as unknown as PackManagerApi
@@ -141,6 +145,12 @@ api.onLanguage = (cb: (code: string) => void) => {
   const h = (_e: unknown, code: string): void => cb(code)
   ipcRenderer.on(IPC.language, h)
   return () => ipcRenderer.removeListener(IPC.language, h)
+}
+
+api.onMaintenance = (cb: (state: MaintenanceState) => void) => {
+  const h = (_e: unknown, state: MaintenanceState): void => cb(state)
+  ipcRenderer.on(IPC.maintenance, h)
+  return () => ipcRenderer.removeListener(IPC.maintenance, h)
 }
 
 // Pack ou mod demandé par un lien du site : gardé s'il arrive avant que l'interface ne s'abonne (démarrage).

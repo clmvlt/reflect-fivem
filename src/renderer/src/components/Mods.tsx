@@ -219,9 +219,11 @@ function ModRow({
   onOpenMarket: (id: string, kind: MarketKind) => void
 }) {
   const { t } = useTranslation()
-  const { run } = useStore()
+  const { run, overview } = useStore()
   const [details, setDetails] = useState(false)
   const enabled = !!installed?.enabled
+  // Mise à jour arrêtée par une maintenance : reprise toute seule à la fin.
+  const paused = !!mod.marketplace && !!overview?.pausedDownloads.some((d) => d.id === mod.marketplace!.id)
   const mine = task && task.detail === mod.id ? task : task?.kind === 'download' && task.detail === mod.marketplace?.id ? task : null
   const meta = [
     category,
@@ -266,7 +268,7 @@ function ModRow({
         </div>
         <div className="meta">
           {meta}
-          {update && <span className="accent-text small"> · {t('modsView.newVersion')}</span>}
+          {update && <span className="accent-text small"> · {paused ? t('maintenance.pausedShort') : t('modsView.newVersion')}</span>}
           {gone && <span className="muted small"> · {t('modsView.gone')}</span>}
         </div>
         {shadowed > 0 && <div className="meta small">{t('modsView.shadowed', { count: shadowed, n: num(shadowed) })}</div>}
@@ -276,7 +278,7 @@ function ModRow({
         <Progress task={mine} />
       ) : (
         <div className="actions">
-          {update && (
+          {update && !paused && (
             <button onClick={() => void run(() => window.api.marketInstall(mod.marketplace!.id, 'mod'))} disabled={!!task}>
               {t('modsView.update')}
             </button>

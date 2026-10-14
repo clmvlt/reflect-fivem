@@ -63,6 +63,8 @@ export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest;
   const updateAvailable = overview.market.updates.includes(pack.id)
   const gone = overview.market.gone.includes(pack.id)
   const downloading = task?.kind === 'download' && market && task.detail === market.id ? task : null
+  // Mise à jour arrêtée par une maintenance : reprise toute seule à la fin.
+  const paused = !!market && overview.pausedDownloads.some((d) => d.id === market.id)
   const report = perfDetail?.report ?? null
   // undefined : rien à montrer (pas de fiche, API plus ancienne, analyse en cours de chargement) ; null : pas analysé.
   const installedPerf =
@@ -120,6 +122,8 @@ export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest;
             <div className="side-update">
               {downloading ? (
                 <Progress task={downloading} />
+              ) : paused ? (
+                <span>{t('maintenance.pausedShort')}</span>
               ) : (
                 <>
                   <span>{t('packDetail.updateAvailable')}</span>

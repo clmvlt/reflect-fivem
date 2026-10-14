@@ -13,6 +13,7 @@ import { Avatar } from './components/common'
 import { UpdatePanel } from './components/UpdatePanel'
 import { DiscordIcon, DiscordView } from './components/DiscordView'
 import { GameControl } from './components/GameControl'
+import { MaintenanceBanner, MaintenanceScreen, useMaintenance } from './components/Maintenance'
 import icon from './assets/icon.png'
 
 type Page = 'library' | 'market' | 'graphics' | 'cleanup' | 'discord' | 'account' | 'settings'
@@ -41,6 +42,7 @@ export function App() {
   // Connexion demandée depuis une fiche (pour noter, commenter) : retour à la fiche une fois connecté.
   const [signInFromMarket, setSignInFromMarket] = useState(false)
   const [dragging, setDragging] = useState(false)
+  const maintenance = useMaintenance()
 
   // Glisser-déposer d'archives (ou de dossiers) n'importe où dans la fenêtre.
   useEffect(() => {
@@ -153,6 +155,10 @@ export function App() {
     setPage('account')
     setSignInFromMarket(true)
   }
+  // Maintenance (sauf pour l'admin) : écran de maintenance à la place des pages qui passent par le serveur. La connexion
+  // reste possible (l'API la permet) : un admin peut se connecter pour ne plus être bloqué.
+  const serverPage = page === 'market' || (page === 'account' && !!account)
+  const maintenanceScreen = maintenance.blocked && serverPage && maintenance.ongoing && maintenance.state
 
   return (
     <div className="app">
@@ -232,7 +238,9 @@ export function App() {
       </aside>
 
       <main className="layer">
-        {overview && (
+        <MaintenanceBanner info={maintenance} screen={!!maintenanceScreen} />
+        {maintenanceScreen && <MaintenanceScreen ongoing={maintenance.ongoing!} state={maintenance.state!} />}
+        {overview && !maintenanceScreen && (
           <>
             {page === 'library' &&
               (detail ? (

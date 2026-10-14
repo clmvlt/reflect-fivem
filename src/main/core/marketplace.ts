@@ -12,6 +12,9 @@
 // photos des auteurs par pm-media://avatar/... (même cache).
 // Compte connecté : l'archive, le paquet chiffré et sa clé sont demandés avec son jeton d'accès, pour que le
 // téléchargement lui soit compté (nécessaire pour noter le pack). Sans connexion, le téléchargement reste anonyme.
+// Maintenance (MaintenanceError, voir http.ts) : jamais réessayée ici. Un téléchargement interrompu par une maintenance
+// garde son fichier partiel et s'arrête ; le service le reprend (requête Range) à la fin de la maintenance. L'admin
+// n'est pas bloqué : les requêtes publiques refusées sont refaites avec son jeton.
 
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream, promises as fs } from 'node:fs'
@@ -36,8 +39,8 @@ import type {
 import { MOD_GONE, PACK_GONE, type AuthorQuery, type MarketQuery } from '@shared/api'
 import { formatBytes as displayBytes } from '@shared/intl'
 import { parsePackPerformance, parsePerformanceDetail, type PerformanceDetail } from '@shared/performance'
-import { ApiError, toAuthorRef } from './account'
-import { languageFetch } from './http'
+import { toAuthorRef } from './account'
+import { ApiError, MaintenanceError, serverFetch } from './http'
 import type { Report } from './installer'
 import type { ImportProgress, Library, StoredManifest } from './library'
 import { KEY_SIZE, packageId } from './sealed'
@@ -128,6 +131,8 @@ export interface DownloadAuth {
   accessToken(): Promise<string | null>
   /** Jeton refusé par l'API : renouvelé, puis renvoyé (null si la connexion a expiré). */
   renewRejected(token: string): Promise<string | null>
+  /** Compte admin connecté (jamais bloqué par une maintenance). */
+  isAdmin?(): boolean
 }
 
 export interface InstallHooks {
@@ -168,8 +173,8 @@ const catalogPath = (kind: MarketKind): string => (kind === 'mod' ? '/mods' : '/
 const goneError = (kind: MarketKind): ApiError =>
   kind === 'mod' ? new ApiError(t('market.modGone'), 404, MOD_GONE) : new ApiError(t('market.packGone'), 404, PACK_GONE)
 const isGone = (err: unknown): boolean => err instanceof ApiError && (err.code === PACK_GONE || err.code === MOD_GONE)
-/** Requêtes vers l'API, avec la langue affichée (Accept-Language). */
-const apiFetch = languageFetch((url, init) => net.fetch(url, init))
+/** Requêtes vers l'API, avec la langue affichée (Accept-Language) ; 503 « maintenance » levé en MaintenanceError. */
+const apiFetch = serverFetch((url, init) => net.fetch(url, init))
 const kindOf = (r: { kind?: string }): MarketKind => (r.kind === 'mod' ? 'mod' : 'pack')
 
 /** Vidéo YouTube de la fiche (null si aucune, ou si l'identifiant reçu n'en est pas un). */
@@ -273,8 +278,9 @@ export class Marketplace {
     let response: Response
     try {
       const signal = AbortSignal.timeout(20_000)
-      response = asAccount ? await this.fetchAsAccount(url, { signal }) : await apiFetch(url, { signal })
-    } catch {
+      response = asAccount ? await this.fetchAsAccount(url, { signal }) : await this.fetchPublic(url, { signal })
+    } catch (err) {
+      if (err instanceof MaintenanceError) throw err
       throw new Error(t('market.errors.unreachable'))
     }
     if (response.status === 404) throw notFound()
@@ -310,6 +316,16 @@ export class Marketplace {
       log.info(`Téléchargement anonyme : connexion non renouvelée (${(err as Error).message})`)
     }
     return send(next)
+  }
+
+  /** Requête anonyme ; refusée pour maintenance, refaite avec le jeton de l'admin connecté (jamais bloqué). */
+  private async fetchPublic(url: string, init: { signal: AbortSignal }): Promise<Response> {
+    try {
+      return await apiFetch(url, init)
+    } catch (err) {
+      if (err instanceof MaintenanceError && this.auth?.isAdmin?.()) return this.fetchAsAccount(url, init)
+      throw err
+    }
   }
 
   private async localIndex(kind: MarketKind = 'pack'): Promise<Map<string, StoredManifest>> {
@@ -498,7 +514,7 @@ export class Marketplace {
     const file = path.join(this.cacheDir, `avatar-${userId}-${version}.jpg`)
     if (await exists(file)) return net.fetch(pathToFileURL(file).toString())
     try {
-      const response = await apiFetch(`${this.apiUrl}/users/${userId}/avatar?v=${version}`, { signal: AbortSignal.timeout(30_000) })
+      const response = await this.fetchPublic(`${this.apiUrl}/users/${userId}/avatar?v=${version}`, { signal: AbortSignal.timeout(30_000) })
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const data = Buffer.from(await response.arrayBuffer())
       if (data[0] !== 0xff || data[1] !== 0xd8) throw new Error('Image invalide')
@@ -513,7 +529,7 @@ export class Marketplace {
   }
 
   private async fetchImage(packId: string, imageId: string, thumb: boolean, kind: MarketKind): Promise<Buffer> {
-    const response = await apiFetch(`${this.apiUrl}${catalogPath(kind)}/${packId}/images/${imageId}${thumb ? '?size=thumb' : ''}`, {
+    const response = await this.fetchPublic(`${this.apiUrl}${catalogPath(kind)}/${packId}/images/${imageId}${thumb ? '?size=thumb' : ''}`, {
       signal: AbortSignal.timeout(30_000)
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
@@ -712,7 +728,8 @@ export class Marketplace {
         await this.fetchInto(url, part, size, sha, report, signal, kindOf(remote))
         break
       } catch (err) {
-        if (signal.aborted || attempt >= 5 || (err as Error & { fatal?: boolean }).fatal) throw err
+        // Maintenance : pas de nouvel essai, le fichier partiel attend la fin de la maintenance (reprise par Range).
+        if (signal.aborted || attempt >= 5 || err instanceof MaintenanceError || (err as Error & { fatal?: boolean }).fatal) throw err
         log.warn(`Téléchargement interrompu (${(err as Error).message}), reprise dans ${attempt * 2} s`)
         report(t('market.phase.resuming'), 0, 0)
         await new Promise((r) => setTimeout(r, attempt * 2000))

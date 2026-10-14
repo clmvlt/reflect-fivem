@@ -2342,3 +2342,74 @@ button.google {
 .empty-panel .hint {
   max-width: 420px;
 }
+
+/* ------------------------------------------------------------ Maintenance */
+
+/* Bandeau en haut de la page : annonce, maintenance en cours, rappel pour l'admin. */
+.maint-bar {
+  flex: none;
+  align-items: flex-start;
+  margin: 12px 32px 0;
+}
+.maint-bar .bar-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 0;
+}
+.maint-bar .close {
+  margin: 0;
+}
+.maint-bar.is-admin {
+  min-height: 0;
+  padding: 4px 16px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.maint-clock,
+.maint-countdown {
+  font-variant-numeric: tabular-nums;
+}
+.maint-message {
+  margin: 4px 0 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--accent-text);
+  white-space: pre-line;
+  user-select: text;
+}
+.maint-paused {
+  margin: 4px 0 0;
+  color: var(--text-2);
+}
+
+/* Écran de maintenance, à la place des pages qui passent par le serveur. */
+.maint-page {
+  display: grid;
+  place-items: center;
+}
+.maint-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 520px;
+  text-align: center;
+}
+.maint-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+.maint-countdown {
+  margin: 4px 0;
+  font-size: 36px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.maint-screen .maint-message {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background: var(--surface);
+  text-align: left;
+}

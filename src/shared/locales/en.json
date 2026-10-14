@@ -821,6 +821,39 @@
     },
     "title": "Library"
   },
+  "maintenance": {
+    "admin": "Maintenance in progress (you are an admin, the app remains accessible to you). Expected end: {{end}}.",
+    "announce": "Maintenance {{range}}: the app and the website will be unavailable.",
+    "announceTitle": "Scheduled maintenance",
+    "banner": "Reflect FiveM is under maintenance until {{end}}: the Marketplace and your account are unavailable, your installed packs remain usable.",
+    "bannerOverdue": "Reflect FiveM is under maintenance, a little longer than expected: the Marketplace and your account are unavailable, your installed packs remain usable.",
+    "countdown": {
+      "days": "{{days}} d {{clock}}"
+    },
+    "downloadPaused": "Download of {{name}} paused during maintenance: it will resume on its own when it ends.",
+    "inProgress": "Reflect FiveM is under maintenance.",
+    "notification": {
+      "body": "Reflect FiveM and the website will be unavailable from {{start}} to {{end}}.",
+      "title": "Maintenance in 15 minutes"
+    },
+    "paused_one": "Download paused: {{names}}. It will resume on its own when the maintenance ends.",
+    "paused_other": "Downloads paused: {{names}}. They will resume on their own when the maintenance ends.",
+    "pausedShort": "Paused during maintenance",
+    "range": {
+      "days": "from {{start}} to {{end}}",
+      "sameDay": "on {{date}} from {{start}} to {{end}}"
+    },
+    "screen": {
+      "checking": "Checking…",
+      "local": "Your installed packs remain usable: the library, installing and uninstalling don’t depend on the server.",
+      "overdue": "The maintenance is taking a little longer than expected. The app will reopen on its own as soon as it is over.",
+      "remaining": "Time remaining",
+      "title": "Reflect FiveM is under maintenance",
+      "until": "Expected end: {{end}}"
+    },
+    "soonTitle": "Maintenance in",
+    "unavailable": "Unavailable during maintenance."
+  },
   "market": {
     "authorGone": "This author doesn’t exist (anymore).",
     "errors": {

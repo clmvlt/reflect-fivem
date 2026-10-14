@@ -2,14 +2,15 @@
 
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { app, BrowserWindow, dialog, Menu, nativeImage, net, safeStorage, screen, shell, systemPreferences } from 'electron'
+import { app, BrowserWindow, dialog, Menu, nativeImage, net, Notification, safeStorage, screen, shell, systemPreferences } from 'electron'
 import type { AppState, GamesInfo, MarketKind, Overview, PackPatch, RootId, Settings, TaskProgress } from '@shared/types'
 import type { AccountMe, ProfileInput } from '@shared/types'
 import type { AuthorQuery, CommentQuery, ComponentFile, ForeignSelection, MarketQuery, MenuItem, PackManagerApi } from '@shared/api'
 import { IPC, PENDING } from '@shared/api'
 import i18next, { t } from 'i18next'
 import { currentLocale, initI18n, msg, supportedLocale } from '@shared/i18n'
-import { formatMegabytes, formatNumber, quote } from '@shared/intl'
+import { formatDateTime, formatMegabytes, formatNumber, quote } from '@shared/intl'
+import type { Maintenance } from '@shared/maintenance'
 import { detectGames, inspectFiveM, inspectGta, normalizeFiveMPath } from './core/games'
 import { Installer, type Report } from './core/installer'
 import { FPS_LIMIT_MAX, FPS_LIMIT_MIN } from './core/enb'
@@ -20,8 +21,9 @@ import { Library, toPublic, type StoredManifest } from './core/library'
 import { GraphicsManager, screenSize } from './core/graphics'
 import { Hardware } from './core/hardware'
 import { PerformanceModels } from './core/performance'
-import { languageFetch } from './core/http'
+import { languageFetch, MaintenanceError, onMaintenanceError, serverFetch } from './core/http'
 import { accountLanguageAction, fetchLanguages, startupLocale } from './core/language'
+import { MaintenanceWatch, PausedDownloads } from './core/maintenance'
 import { Marketplace } from './core/marketplace'
 import { AppUpdater } from './core/updater'
 import { killProcesses, launchDetached, readVideoAdapters, runningGameProcesses } from './util/win'
@@ -32,15 +34,15 @@ import { defaultSettings, emptyState, JsonStore, normalizeState, pushHistory } f
 import { exists, isInside, moveDir, readJson, writeJsonAtomic } from './util/fsx'
 import { log } from './util/log'
 
-type ServerApi = Omit<PackManagerApi, 'onTask' | 'onChanged' | 'onUpdate' | 'onAccount' | 'onLanguage' | 'onOpenMarketPack' | 'getPathForFile'>
+type ServerApi = Omit<PackManagerApi, 'onTask' | 'onChanged' | 'onUpdate' | 'onAccount' | 'onLanguage' | 'onMaintenance' | 'onOpenMarketPack' | 'getPathForFile'>
 
 const MARKET_REFRESH = 6 * 60 * 60 * 1000
 /** Bibliothèque des mods : sous-dossier de la bibliothèque des packs (ignoré par celle-ci, comme tout dossier « . »). */
 const modsDir = (libraryDir: string): string => path.join(libraryDir, '.mods')
 /** FiveM lancé ou fermé : vérifié toutes les 4 secondes (liste des processus). */
 const GAME_WATCH = 4000
-/** Requêtes vers l'API, avec la langue affichée (Accept-Language). */
-const apiFetch = languageFetch((url, init) => net.fetch(url, init))
+/** Requêtes vers l'API, avec la langue affichée (Accept-Language) ; 503 « maintenance » levé en MaintenanceError. */
+const apiFetch = serverFetch((url, init) => net.fetch(url, init))
 
 /** Dernière détection des jeux, enregistrée pour le démarrage suivant. */
 interface SavedGames {
@@ -83,6 +85,12 @@ export class Service {
   hardware: Hardware
   /** Modèle de comparaison des performances de l'API. */
   perfModels: PerformanceModels
+  /** Maintenances prévues par l'admin (GET /maintenance), envoyées à l'interface. */
+  maintenance: MaintenanceWatch
+  /** Téléchargements arrêtés par une maintenance, repris à sa fin. */
+  private paused: PausedDownloads
+  private resumingPaused = false
+  private resumeTimer: NodeJS.Timeout | null = null
   /** État de l'application changé (zone de notification : jeu lancé, changement en attente). */
   onStateChange: (() => void) | null = null
   private gameWasRunning = false
@@ -136,6 +144,45 @@ export class Service {
       }
     })
     this.perfModels = new PerformanceModels(apiUrl, path.join(dataDir, 'performance-model.json'), apiFetch)
+    this.maintenance = new MaintenanceWatch({
+      apiUrl,
+      // GET /maintenance n'est jamais refusé pour maintenance.
+      fetch: languageFetch((url, init) => net.fetch(url, init)),
+      file: path.join(dataDir, 'maintenance.json'),
+      onChange: (state) => this.emit(IPC.maintenance, state),
+      notify: (m) => this.notifyMaintenance(m)
+    })
+    this.paused = new PausedDownloads(path.join(dataDir, 'paused-downloads.json'), (d) =>
+      d.claim ? this.api.marketClaim(d.id, d.kind) : this.api.marketInstall(d.id, d.kind)
+    )
+  }
+
+  /** Notification de Windows 15 minutes avant le début d'une maintenance. */
+  private notifyMaintenance(m: Maintenance): void {
+    if (!Notification.isSupported()) return
+    const time = { timeStyle: 'short' } as const
+    new Notification({
+      title: t('maintenance.notification.title'),
+      body: t('maintenance.notification.body', { start: formatDateTime(m.startsAt, time), end: formatDateTime(m.endsAt, time) })
+    }).show()
+  }
+
+  /**
+   * Reprend un téléchargement arrêté par une maintenance, quand aucune n'est en cours et qu'aucune tâche ne tourne
+   * (appelé à la fin d'une maintenance et après chaque tâche, jusqu'à ce que tous soient repris).
+   */
+  private resumePaused(): void {
+    if (this.resumingPaused || this.running || this.maintenance.ongoing() || !this.paused.list().length) return
+    this.resumingPaused = true
+    void this.paused.resumeNext().finally(() => {
+      this.resumingPaused = false
+      this.emit(IPC.changed)
+      // Reprise en échec (réseau, serveur) : nouvel essai un peu plus tard.
+      const delay = this.paused.retryDelay()
+      if (!delay || !this.paused.list().length) return
+      if (this.resumeTimer) clearTimeout(this.resumeTimer)
+      this.resumeTimer = setTimeout(() => this.resumePaused(), delay + 100)
+    })
   }
 
   /** Machine et modèle de comparaison ; `refresh` : nouvelle détection de la carte graphique. */
@@ -195,6 +242,11 @@ export class Service {
       fpsLimit: () => this.settings.get().fpsLimit ?? null
     })
     await fs.rm(path.join(this.dataDir, 'jobs'), { recursive: true, force: true }).catch(() => undefined)
+    // Maintenances : dernier état connu (écran de maintenance tout de suite, même hors ligne), vérifié au démarrage.
+    await this.maintenance.load()
+    await this.paused.load()
+    onMaintenanceError((err) => this.maintenance.report(err))
+    this.maintenance.onOver(() => this.resumePaused())
     // Téléchargements faits avec le jeton du compte connecté : comptés pour lui (et nécessaires pour noter).
     this.marketplace = new Marketplace(this.apiUrl, path.join(this.dataDir, 'Marketplace', 'images'), () => this.library, this.account, () => this.modLibrary)
     this.community = new Community(this.account, (items) => this.marketplace.toPacks(items))
@@ -229,6 +281,8 @@ export class Service {
 
   /** Tâches de fond : catalogue de la Marketplace (mises à jour des packs), caches, mises à jour de l'app. */
   startBackground(): void {
+    // Maintenances : vérifiées tout de suite (l'écran de maintenance ne doit pas attendre), puis à leur rythme.
+    void this.maintenance.start().then(() => this.resumePaused())
     const refreshMarket = async (): Promise<void> => {
       try {
         await this.marketplace.refreshCatalog()
@@ -288,6 +342,8 @@ export class Service {
     this.onStateChange?.()
     // FiveM fermé (ou opération précédente terminée) : le changement en attente est fait.
     if (this.pending && !this.gameRunning && !this.running) setTimeout(() => this.startPending(), 0)
+    // Opération terminée : téléchargement en pause à reprendre (le changement en attente passe d'abord).
+    else if (!this.running) setTimeout(() => this.resumePaused(), 0)
   }
 
   /** Changement de pack : tout de suite, ou à la fermeture du jeu s'il est lancé (le dernier demandé remplace l'autre). */
@@ -428,6 +484,7 @@ export class Service {
         dataDir: this.dataDir,
         apiUrl: this.apiUrl,
         market,
+        pausedDownloads: this.paused.list().map(({ id, kind, name }) => ({ id, kind, name })),
         update: this.updater.state,
         game: { pending: this.pending && { title: this.pending.title, packId: this.pending.packId }, relaunch: this.relaunchHint }
       }
@@ -910,7 +967,16 @@ export class Service {
           enableMod: (modId: string, r: Report) => this.enableIfFree(modId, r),
           replaceMod: (oldId: string, next: StoredManifest, r: Report) => this.installer.replaceMod(oldId, next, r)
         }
-        const result = await this.marketplace.install(remote.id, report, signal, hooks, kind)
+        let result
+        try {
+          result = await this.marketplace.install(remote.id, report, signal, hooks, kind)
+        } catch (err) {
+          // Maintenance : téléchargement en pause (son fichier partiel est gardé), repris à la fin de la maintenance.
+          if (!(err instanceof MaintenanceError)) throw err
+          await this.paused.pause({ id: remote.id, kind, name: remote.name })
+          return { name: remote.name, kind, status: 'paused' }
+        }
+        await this.paused.forget(remote.id)
         if (result.status !== 'up-to-date') {
           const summary = msg({ added: 'history.downloaded', updated: 'history.updated', linked: 'history.linked' }[result.status])
           await this.state.set(pushHistory(this.state.get(), { action: 'download', packName: result.name, ok: true, msg: summary }))
@@ -922,11 +988,17 @@ export class Service {
     marketClaim: async (id: string, kind: MarketKind = 'pack') => {
       if (!this.account.current()) throw this.toError(t('service.errors.signInToClaim'))
       const remote = await this.marketplace.detail(id, kind)
-      return this.startTask('download', t('service.tasks.claim', { name: remote.name }), remote.id, async (report, signal) => ({
-        ...(await this.marketplace.claim(remote.id, report, signal, kind)),
-        kind,
-        status: 'claimed'
-      }))
+      return this.startTask('download', t('service.tasks.claim', { name: remote.name }), remote.id, async (report, signal) => {
+        try {
+          const result = await this.marketplace.claim(remote.id, report, signal, kind)
+          await this.paused.forget(remote.id)
+          return { ...result, kind, status: 'claimed' }
+        } catch (err) {
+          if (!(err instanceof MaintenanceError)) throw err
+          await this.paused.pause({ id: remote.id, kind, name: remote.name, claim: true })
+          return { name: remote.name, kind, status: 'paused' }
+        }
+      })
     },
 
     marketAuthors: (query: AuthorQuery) => this.marketplace.authors(query),
@@ -1043,7 +1115,11 @@ export class Service {
     installUpdate: async () => {
       if (this.running) throw this.toError(t('service.errors.waitForTask'))
       this.updater.install()
-    }
+    },
+
+    maintenanceGet: async () => this.maintenance.current,
+
+    maintenanceCheck: () => this.maintenance.check()
   }
 }
 

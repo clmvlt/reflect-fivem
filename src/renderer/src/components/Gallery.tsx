@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
+import { num } from '../lib/format'
 
 /** Lecteur YouTube sans cookies, lancé tout de suite (il n'est chargé qu'au clic sur « lecture »). */
 const embedUrl = (id: string): string => `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=1&rel=0`
@@ -29,6 +31,7 @@ export function Gallery({
   /** Sous la galerie, selon l'image affichée (null pendant la vidéo). */
   actions?: (key: string | null) => ReactNode
 }) {
+  const { t } = useTranslation()
   const [shown, setShown] = useState(0)
   const [playing, setPlaying] = useState(false)
   const items: Item[] = images.map((key, index) => ({ kind: 'image', key, index }))
@@ -51,17 +54,17 @@ export function Gallery({
         ) : playing ? (
           <iframe
             src={embedUrl(current.id)}
-            title="Vidéo du pack"
+            title={t('gallery.videoTitle')}
             allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
             referrerPolicy="strict-origin-when-cross-origin"
           />
         ) : (
-          <button className="video-facade" onClick={() => setPlaying(true)} aria-label="Lire la vidéo">
+          <button className="video-facade" onClick={() => setPlaying(true)} aria-label={t('gallery.play')}>
             {images[0] && image(images[0])}
             <span className="video-play" aria-hidden="true">
               <PlayIcon size={26} />
             </span>
-            <span className="video-note">Vidéo YouTube</span>
+            <span className="video-note">{t('gallery.youtube')}</span>
           </button>
         )}
       </div>
@@ -69,13 +72,13 @@ export function Gallery({
         <div className="thumbs">
           {items.map((item, i) =>
             item.kind === 'image' ? (
-              <button key={item.key} className={`thumb ${i === at ? 'is-selected' : ''}`} onClick={() => select(i)} aria-label={`Image ${item.index + 1}`}>
+              <button key={item.key} className={`thumb ${i === at ? 'is-selected' : ''}`} onClick={() => select(i)} aria-label={t('gallery.image', { n: num(item.index + 1) })}>
                 <img src={thumb(item.key)} alt="" draggable={false} />
               </button>
             ) : (
-              <button key="video" className={`thumb thumb-video ${i === at ? 'is-selected' : ''}`} onClick={() => select(i)} aria-label="Vidéo">
+              <button key="video" className={`thumb thumb-video ${i === at ? 'is-selected' : ''}`} onClick={() => select(i)} aria-label={t('gallery.video')}>
                 <PlayIcon size={14} />
-                <span>Vidéo</span>
+                <span>{t('gallery.video')}</span>
               </button>
             )
           )}

@@ -3,13 +3,29 @@
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { tm, type Msg } from '@shared/i18n'
 import type { Destination, Insight } from '@shared/types'
 import { inspectRpfHead, parsePe, parseVersion, versionAtLeast, type PeInfo } from './binary'
 import type { PackContent } from './content'
-import { base, ext, PROXY_DLLS } from './knowledge'
+import { base, ext, PROXY_DLLS, textMsg } from './knowledge'
 
 /** À incrémenter quand les vérifications changent : les packs déjà importés sont revérifiés. */
-export const INSIGHTS_VERSION = 4
+export const INSIGHTS_VERSION = 5
+
+/**
+ * Vérification enregistrée dans le manifeste : {@link title} (nom de fichier, gardé tel quel, ou texte à traduire) et
+ * {@link text} sont gardés sous forme de clé, avec leur traduction du moment comme texte de repli.
+ */
+export function insight(rel: string, level: Insight['level'], title: string | Msg, text: Msg, builds?: number[]): Insight {
+  return {
+    rel,
+    level,
+    ...(typeof title === 'string' ? { title } : { title: tm(title), titleMsg: title }),
+    text: tm(text),
+    textMsg: text,
+    ...(builds ? { builds } : {})
+  }
+}
 
 export interface InspectResult {
   insights: Insight[]
@@ -33,7 +49,7 @@ export async function inspectPack(content: PackContent, installMap: { rel: strin
 
     if (PROXY_DLLS.has(lower)) {
       if (dest.root === 'gta') {
-        insights.push({ rel, level: 'warn', title: name, text: 'Dans le dossier GTA V, FiveM ne la charge pas.' })
+        insights.push(insight(rel, 'warn', name, textMsg('insights.checks.proxyInGta')))
         continue
       }
       if (!topLevel(dest, 'plugins')) continue
@@ -43,74 +59,77 @@ export async function inspectPack(content: PackContent, installMap: { rel: strin
       const vs = v.join('.')
       if (/^reshade$/i.test(product)) {
         reshadeVersion = vs || null
-        if (!versionAtLeast(v, [3, 1])) insights.push({ rel, level: 'bad', title: `ReShade ${vs}`, text: 'Trop ancien, refusé par FiveM.' })
-        else if (vs.startsWith('5.9.0')) insights.push({ rel, level: 'bad', title: `ReShade ${vs}`, text: 'Version bloquée par FiveM.' })
-        else if (versionAtLeast(v, [5])) insights.push({ rel, level: 'ok', title: `ReShade ${vs}`, text: 'Accepté par FiveM.' })
-        else insights.push({ rel, level: 'ok', title: `ReShade ${vs}`, text: 'Accepté par FiveM.' })
+        if (!versionAtLeast(v, [3, 1])) insights.push(insight(rel, 'bad', `ReShade ${vs}`, textMsg('insights.checks.tooOld')))
+        else if (vs.startsWith('5.9.0')) insights.push(insight(rel, 'bad', `ReShade ${vs}`, textMsg('insights.checks.blocked')))
+        else if (versionAtLeast(v, [5])) insights.push(insight(rel, 'ok', `ReShade ${vs}`, textMsg('insights.checks.accepted')))
+        else insights.push(insight(rel, 'ok', `ReShade ${vs}`, textMsg('insights.checks.accepted')))
       } else if (/^enbseries$/i.test(product)) {
         const old = !versionAtLeast(v, [0, 3, 8, 7]) || /2019,\s*Boris/i.test(info?.copyright ?? '')
         insights.push(
           old
-            ? { rel, level: 'bad', title: `ENBSeries ${vs}`, text: 'Trop ancien, refusé par FiveM.' }
-            : { rel, level: 'ok', title: `ENBSeries ${vs}`, text: 'Accepté par FiveM.' }
+            ? insight(rel, 'bad', `ENBSeries ${vs}`, textMsg('insights.checks.tooOld'))
+            : insight(rel, 'ok', `ENBSeries ${vs}`, textMsg('insights.checks.accepted'))
         )
       } else {
-        insights.push({ rel, level: 'warn', title: name, text: 'Ni ReShade ni ENB : ignorée par FiveM.' })
+        insights.push(insight(rel, 'warn', name, textMsg('insights.checks.notReshadeEnb')))
       }
       continue
     }
 
     if (e === '.asi') {
       if (lower === 'openiv.asi') {
-        insights.push({ rel, level: 'bad', title: name, text: 'Provoque une erreur fatale dans FiveM.' })
+        insights.push(insight(rel, 'bad', name, textMsg('insights.checks.openiv')))
         continue
       }
       if (!topLevel(dest, 'plugins')) {
-        insights.push({ rel, level: 'warn', title: name, text: 'Hors de plugins, FiveM ne le charge pas.' })
+        insights.push(insight(rel, 'warn', name, textMsg('insights.checks.asiOutside')))
         continue
       }
       const info = await pe(rel)
       if (!info) continue
       if (!info.asiBuilds.length)
-        insights.push({ rel, level: 'warn', title: name, text: 'Ne déclare aucune build : FiveM ne le chargera pas.' })
+        insights.push(insight(rel, 'warn', name, textMsg('insights.checks.noBuild')))
       else
-        insights.push({
-          rel,
-          level: 'info',
-          title: name,
-          text: `Builds ${info.asiBuilds[0]} à ${info.asiBuilds[info.asiBuilds.length - 1]}.`,
-          builds: info.asiBuilds
-        })
+        insights.push(
+          insight(
+            rel,
+            'info',
+            name,
+            textMsg('insights.checks.builds', { from: info.asiBuilds[0], to: info.asiBuilds[info.asiBuilds.length - 1] }),
+            info.asiBuilds
+          )
+        )
       continue
     }
 
     if (e === '.rpf' && dest.root === 'fivem' && /^mods\//i.test(dest.path)) {
       if (!topLevel(dest, 'mods')) {
-        insights.push({ rel, level: 'warn', title: name, text: 'Dans un sous-dossier de mods, ignoré par FiveM.' })
+        insights.push(insight(rel, 'warn', name, textMsg('insights.checks.rpfSubfolder')))
         continue
       }
       const r = await inspectRpfHead((bytes) => content.head(rel, bytes))
-      if (!r.valid) insights.push({ rel, level: 'bad', title: name, text: 'Archive RPF invalide, ignorée par FiveM.' })
+      if (!r.valid) insights.push(insight(rel, 'bad', name, textMsg('insights.checks.rpfInvalid')))
       else if (r.encryption === 'AES' || r.encryption === 'NG' || r.encryption === 'UNKNOWN')
-        insights.push({ rel, level: 'bad', title: name, text: 'Archive chiffrée, ignorée par FiveM.' })
-      else if (r.hasAssembly === false)
-        insights.push({ rel, level: 'warn', title: name, text: 'Pas de assembly.xml, ignoré par FiveM.' })
-      else if (r.encryption === 'CFXP') insights.push({ rel, level: 'ok', title: name, text: 'Signé Cfx, accepté en mode pur.' })
-      else insights.push({ rel, level: 'ok', title: name, text: 'Valide.' })
+        insights.push(insight(rel, 'bad', name, textMsg('insights.checks.rpfEncrypted')))
+      else if (r.hasAssembly === false) insights.push(insight(rel, 'warn', name, textMsg('insights.checks.rpfNoAssembly')))
+      else if (r.encryption === 'CFXP') insights.push(insight(rel, 'ok', name, textMsg('insights.checks.rpfCfx')))
+      else insights.push(insight(rel, 'ok', name, textMsg('insights.checks.rpfValid')))
       continue
     }
 
     if (lower === 'enbhelper.dll') {
-      insights.push({ rel, level: 'info', title: name, text: 'Bloqué par FiveM, sans effet.' })
+      insights.push(insight(rel, 'info', name, textMsg('insights.checks.enbHelper')))
       continue
     }
 
-    if (dest.root === 'fivem' && /^citizen\//i.test(dest.path) && !insights.some((i) => i.title === 'Fichiers citizen')) {
-      insights.push({ rel, level: 'warn', title: 'Fichiers citizen', text: 'Ignorés par les serveurs en mode pur.' })
+    if (dest.root === 'fivem' && /^citizen\//i.test(dest.path) && !insights.some((i) => i.titleMsg?.key === CITIZEN_TITLE)) {
+      insights.push(insight(rel, 'warn', textMsg(CITIZEN_TITLE), textMsg('insights.checks.citizenText')))
     }
   }
   return { insights, reshadeVersion }
 }
+
+const CITIZEN_TITLE = 'insights.checks.citizenTitle'
 
 /**
  * Corrige un ReShade.ini exporté depuis le PC de l'auteur : les chemins absolus (C:\Users\auteur\...)

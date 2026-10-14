@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { AccountMe, AccountProfile, ProfileInput, ProfileLink } from '@shared/types'
 import { cleanError, useStore } from '../store'
+import { num } from '../lib/format'
 import { Avatar } from './common'
 
 const BIO_MAX = 2000
@@ -8,11 +10,12 @@ const LINKS_MAX = 8
 
 /** Compte reflect-fivem.com : connexion, puis profil public, mot de passe et déconnexion. */
 export function AccountView({ onOpenAuthor }: { onOpenAuthor: (slug: string) => void }) {
+  const { t } = useTranslation()
   const { account } = useStore()
   return (
     <div className="page">
       <header className="page-head">
-        <h1>Compte</h1>
+        <h1>{t('accountView.title')}</h1>
       </header>
       {account === undefined ? null : !account ? (
         <SignIn />
@@ -48,6 +51,7 @@ function Field({ label, hint, children }: { label: string; hint?: ReactNode; chi
 // ------------------------------------------------------------------ connexion
 
 function SignIn() {
+  const { t } = useTranslation()
   const { setAccount } = useStore()
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
@@ -82,32 +86,34 @@ function SignIn() {
     setError(null)
   }
 
+  const submitLabel = (): string => {
+    if (busy === 'form') return mode === 'login' ? t('accountView.signIn.loggingIn') : t('accountView.signIn.registering')
+    return mode === 'login' ? t('accountView.signIn.login') : t('accountView.signIn.submitRegister')
+  }
+
   return (
     <div className="auth">
-      <p className="muted auth-intro">
-        Le compte est facultatif : la bibliothèque et la Marketplace fonctionnent sans. Il vous donne une page d’auteur (photo, nom public, description, liens)
-        affichée avec vos packs.
-      </p>
+      <p className="muted auth-intro">{t('accountView.signIn.intro')}</p>
 
       <div className="segmented" role="tablist">
         <button role="tab" aria-selected={mode === 'login'} className={mode === 'login' ? 'is-selected' : ''} onClick={() => switchMode('login')}>
-          Se connecter
+          {t('accountView.signIn.login')}
         </button>
         <button role="tab" aria-selected={mode === 'register'} className={mode === 'register' ? 'is-selected' : ''} onClick={() => switchMode('register')}>
-          Créer un compte
+          {t('accountView.signIn.register')}
         </button>
       </div>
 
       <form className="auth-form" onSubmit={(e) => void submit(e)}>
-        <Field label="Adresse e-mail">
+        <Field label={t('accountView.fields.email')}>
           <input className="input" type={mode === 'login' ? 'text' : 'email'} autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </Field>
         {mode === 'register' && (
-          <Field label="Nom public" hint="Affiché avec vos packs, de 2 à 40 caractères.">
+          <Field label={t('accountView.fields.displayName')} hint={t('accountView.fields.displayNameHint')}>
             <input className="input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} minLength={2} maxLength={40} required />
           </Field>
         )}
-        <Field label="Mot de passe" hint={mode === 'register' ? '8 caractères au moins.' : undefined}>
+        <Field label={t('accountView.fields.password')} hint={mode === 'register' ? t('accountView.fields.passwordHint') : undefined}>
           <input
             className="input"
             type="password"
@@ -121,23 +127,23 @@ function SignIn() {
         </Field>
         <FormError text={error} />
         <button type="submit" className="primary wide" disabled={!!busy}>
-          {busy === 'form' ? (mode === 'login' ? 'Connexion…' : 'Création du compte…') : mode === 'login' ? 'Se connecter' : 'Créer le compte'}
+          {submitLabel()}
         </button>
       </form>
 
-      <div className="divider">ou</div>
+      <div className="divider">{t('accountView.signIn.or')}</div>
 
       {busy === 'google' ? (
         <div className="google-wait">
-          <span>Terminez la connexion dans votre navigateur…</span>
+          <span>{t('accountView.signIn.googleWait')}</span>
           <button className="link" onClick={() => void window.api.accountCancelGoogle()}>
-            Annuler
+            {t('common.cancel')}
           </button>
         </div>
       ) : (
         <button className="wide google" onClick={() => void google()} disabled={!!busy}>
           <GoogleLogo />
-          Continuer avec Google
+          {t('accountView.signIn.google')}
         </button>
       )}
     </div>
@@ -158,6 +164,7 @@ function GoogleLogo() {
 // ------------------------------------------------------------------ mot de passe
 
 function PasswordForm({ me, onDone }: { me: AccountMe; onDone?: () => void }) {
+  const { t } = useTranslation()
   const { setMessage } = useStore()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
@@ -167,7 +174,7 @@ function PasswordForm({ me, onDone }: { me: AccountMe; onDone?: () => void }) {
 
   const submit = async (e: FormEvent): Promise<void> => {
     e.preventDefault()
-    if (next !== confirm) return setError('Les deux mots de passe ne correspondent pas.')
+    if (next !== confirm) return setError(t('accountView.password.mismatch'))
     setBusy(true)
     setError(null)
     try {
@@ -175,7 +182,7 @@ function PasswordForm({ me, onDone }: { me: AccountMe; onDone?: () => void }) {
       setCurrent('')
       setNext('')
       setConfirm('')
-      setMessage({ kind: 'info', text: me.hasPassword ? 'Mot de passe modifié. Vos autres appareils sont déconnectés.' : 'Mot de passe ajouté.' })
+      setMessage({ kind: 'info', text: me.hasPassword ? t('accountView.password.changed') : t('accountView.password.added') })
       onDone?.()
     } catch (err) {
       setError(cleanError(err))
@@ -186,26 +193,26 @@ function PasswordForm({ me, onDone }: { me: AccountMe; onDone?: () => void }) {
 
   return (
     <form className="form-panel" onSubmit={(e) => void submit(e)}>
-      {!me.hasPassword && <p className="muted">Compte créé avec Google : ajoutez un mot de passe pour vous connecter aussi avec votre adresse e-mail.</p>}
+      {!me.hasPassword && <p className="muted">{t('accountView.password.googleOnly')}</p>}
       {me.hasPassword && (
-        <Field label="Mot de passe actuel">
+        <Field label={t('accountView.password.current')}>
           <input className="input" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
         </Field>
       )}
       <div className="field-pair">
-        <Field label="Nouveau mot de passe" hint="8 caractères au moins.">
+        <Field label={t('accountView.password.new')} hint={t('accountView.fields.passwordHint')}>
           <input className="input" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} minLength={8} maxLength={128} required />
         </Field>
-        <Field label="Confirmation">
+        <Field label={t('accountView.password.confirm')}>
           <input className="input" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} maxLength={128} required />
         </Field>
       </div>
       <FormError text={error} />
       <div className="form-actions">
-        {me.hasPassword && <span className="hint">Vos autres appareils seront déconnectés.</span>}
+        {me.hasPassword && <span className="hint">{t('accountView.password.othersSignedOut')}</span>}
         <div className="spacer" />
         <button type="submit" className="primary" disabled={busy}>
-          {me.hasPassword ? 'Changer le mot de passe' : 'Ajouter un mot de passe'}
+          {me.hasPassword ? t('accountView.password.change') : t('accountView.password.add')}
         </button>
       </div>
     </form>
@@ -213,17 +220,19 @@ function PasswordForm({ me, onDone }: { me: AccountMe; onDone?: () => void }) {
 }
 
 function LogoutButton() {
+  const { t } = useTranslation()
   const { run } = useStore()
-  return <button onClick={() => void run(() => window.api.accountLogout())}>Se déconnecter</button>
+  return <button onClick={() => void run(() => window.api.accountLogout())}>{t('accountView.logout')}</button>
 }
 
 /** Mot de passe imposé (initial ou fixé par l'administrateur) : à changer avant tout le reste. */
 function ForcedPassword({ me }: { me: AccountMe }) {
+  const { t } = useTranslation()
   return (
     <div className="account">
       <AccountHead me={me} actions={<LogoutButton />} />
       <div className="bar bar-warning form-error">
-        <span className="bar-text">Un nouveau mot de passe est demandé pour ce compte. Choisissez-en un pour continuer.</span>
+        <span className="bar-text">{t('accountView.password.forced')}</span>
       </div>
       <PasswordForm me={me} />
     </div>
@@ -233,7 +242,12 @@ function ForcedPassword({ me }: { me: AccountMe }) {
 // ------------------------------------------------------------------ profil
 
 function AccountHead({ me, actions }: { me: AccountMe; actions?: ReactNode }) {
-  const badges = [me.admin && 'Administrateur', me.canPublish && 'Auteur', me.googleLinked && 'Google'].filter(Boolean) as string[]
+  const { t } = useTranslation()
+  const badges = [
+    me.admin && t('accountView.badges.admin'),
+    me.canPublish && t('accountView.badges.author'),
+    me.googleLinked && 'Google'
+  ].filter(Boolean) as string[]
   return (
     <div className="profile-head">
       <Avatar url={me.avatarUrl} name={me.displayName} size={72} />
@@ -258,6 +272,7 @@ function AccountHead({ me, actions }: { me: AccountMe; actions?: ReactNode }) {
 const toInput = (p: AccountProfile): ProfileInput => ({ displayName: p.displayName, bio: p.bio, links: p.links.map((l) => ({ ...l })) })
 
 function Profile({ me, onOpenAuthor }: { me: AccountMe; onOpenAuthor: (slug: string) => void }) {
+  const { t } = useTranslation()
   const { setMessage } = useStore()
   const [profile, setProfile] = useState<AccountProfile | null>(null)
   const [draft, setDraft] = useState<ProfileInput | null>(null)
@@ -301,7 +316,7 @@ function Profile({ me, onOpenAuthor }: { me: AccountMe; onOpenAuthor: (slug: str
       const p = await window.api.accountSaveProfile(draft)
       setProfile(p)
       setDraft(toInput(p))
-      setMessage({ kind: 'info', text: 'Profil enregistré.' })
+      setMessage({ kind: 'info', text: t('accountView.profile.saved') })
     } catch (err) {
       setError(cleanError(err))
     } finally {
@@ -313,6 +328,10 @@ function Profile({ me, onOpenAuthor }: { me: AccountMe; onOpenAuthor: (slug: str
     setDraft((d) => (d ? { ...d, links: d.links.map((l, j) => (j === i ? { ...l, ...patch } : l)) } : d))
   const dirty = !!profile && !!draft && JSON.stringify(toInput(profile)) !== JSON.stringify(draft)
   const hasAvatar = !!(profile?.avatarUrl ?? me.avatarUrl)
+  const avatarLabel = (): string => {
+    if (busy === 'avatar') return t('accountView.profile.uploading')
+    return hasAvatar ? t('accountView.profile.changePhoto') : t('accountView.profile.addPhoto')
+  }
 
   return (
     <div className="account">
@@ -321,11 +340,11 @@ function Profile({ me, onOpenAuthor }: { me: AccountMe; onOpenAuthor: (slug: str
         actions={
           <>
             <button onClick={() => void avatar(() => window.api.accountPickAvatar())} disabled={!!busy}>
-              {busy === 'avatar' ? 'Envoi…' : hasAvatar ? 'Changer la photo…' : 'Ajouter une photo…'}
+              {avatarLabel()}
             </button>
             {hasAvatar && (
               <button onClick={() => void avatar(() => window.api.accountRemoveAvatar())} disabled={!!busy}>
-                Retirer la photo
+                {t('accountView.profile.removePhoto')}
               </button>
             )}
           </>
@@ -333,37 +352,44 @@ function Profile({ me, onOpenAuthor }: { me: AccountMe; onOpenAuthor: (slug: str
       />
 
       <div className="section-head">
-        <h2>Profil public</h2>
-        {me.canPublish && me.slug && <button onClick={() => onOpenAuthor(me.slug)}>Voir ma page d’auteur</button>}
+        <h2>{t('accountView.profile.title')}</h2>
+        {me.canPublish && me.slug && <button onClick={() => onOpenAuthor(me.slug)}>{t('accountView.profile.authorPage')}</button>}
       </div>
       {loadError ? (
         <div className="form-panel">
           <p className="muted">{loadError}</p>
           <div>
-            <button onClick={() => void load()}>Réessayer</button>
+            <button onClick={() => void load()}>{t('common.retry')}</button>
           </div>
         </div>
       ) : !draft ? (
-        <p className="muted">Chargement…</p>
+        <p className="muted">{t('common.loading')}</p>
       ) : (
         <form className="form-panel" onSubmit={(e) => void save(e)}>
-          <Field label="Nom public" hint="Affiché avec vos packs, de 2 à 40 caractères.">
+          <Field label={t('accountView.fields.displayName')} hint={t('accountView.fields.displayNameHint')}>
             <input className="input" value={draft.displayName} onChange={(e) => setDraft({ ...draft, displayName: e.target.value })} minLength={2} maxLength={40} required />
           </Field>
-          <Field label="Description" hint={`${draft.bio.length.toLocaleString('fr-FR')} / ${BIO_MAX.toLocaleString('fr-FR')}`}>
+          <Field label={t('accountView.profile.bio')} hint={`${num(draft.bio.length)} / ${num(BIO_MAX)}`}>
             <textarea className="input" rows={5} value={draft.bio} onChange={(e) => setDraft({ ...draft, bio: e.target.value })} maxLength={BIO_MAX} />
           </Field>
           <div className="field">
-            <span className="field-label">Liens</span>
+            <span className="field-label">{t('accountView.profile.links')}</span>
             {draft.links.map((l, i) => (
               <div key={i} className="link-row">
-                <input className="input" placeholder="Nom (ex. YouTube)" aria-label="Nom du lien" value={l.label} maxLength={40} onChange={(e) => setLink(i, { label: e.target.value })} />
-                <input className="input" placeholder="https://…" aria-label="Adresse du lien" value={l.url} maxLength={300} onChange={(e) => setLink(i, { url: e.target.value })} />
+                <input
+                  className="input"
+                  placeholder={t('accountView.profile.linkLabelPlaceholder')}
+                  aria-label={t('accountView.profile.linkLabel')}
+                  value={l.label}
+                  maxLength={40}
+                  onChange={(e) => setLink(i, { label: e.target.value })}
+                />
+                <input className="input" placeholder="https://…" aria-label={t('accountView.profile.linkUrl')} value={l.url} maxLength={300} onChange={(e) => setLink(i, { url: e.target.value })} />
                 <button
                   type="button"
                   className="close"
-                  aria-label="Retirer ce lien"
-                  title="Retirer ce lien"
+                  aria-label={t('accountView.profile.removeLink')}
+                  title={t('accountView.profile.removeLink')}
                   onClick={() => setDraft({ ...draft, links: draft.links.filter((_, j) => j !== i) })}
                 >
                   ×
@@ -372,9 +398,9 @@ function Profile({ me, onOpenAuthor }: { me: AccountMe; onOpenAuthor: (slug: str
             ))}
             <div>
               <button type="button" onClick={() => setDraft({ ...draft, links: [...draft.links, { label: '', url: '' }] })} disabled={draft.links.length >= LINKS_MAX}>
-                Ajouter un lien
+                {t('accountView.profile.addLink')}
               </button>
-              {draft.links.length >= LINKS_MAX && <span className="hint inline">{LINKS_MAX} liens au plus.</span>}
+              {draft.links.length >= LINKS_MAX && <span className="hint inline">{t('accountView.profile.linksMax', { n: num(LINKS_MAX) })}</span>}
             </div>
           </div>
           <FormError text={error} />
@@ -382,29 +408,29 @@ function Profile({ me, onOpenAuthor }: { me: AccountMe; onOpenAuthor: (slug: str
             <div className="spacer" />
             {dirty && (
               <button type="button" onClick={() => profile && setDraft(toInput(profile))}>
-                Annuler les modifications
+                {t('accountView.profile.discard')}
               </button>
             )}
             <button type="submit" className="primary" disabled={!dirty || busy === 'save'}>
-              Enregistrer
+              {t('common.save')}
             </button>
           </div>
         </form>
       )}
 
       <div className="section-head">
-        <h2>Mot de passe</h2>
+        <h2>{t('accountView.fields.password')}</h2>
       </div>
       <PasswordForm me={me} />
 
       <div className="section-head">
-        <h2>Connexion</h2>
+        <h2>{t('accountView.session.title')}</h2>
       </div>
       <ul className="list">
         <li className="row">
           <div className="row-main">
-            <div className="name">Connecté sur cet appareil</div>
-            <div className="meta">La connexion est gardée chiffrée sur ce PC et expire après 180 jours sans utilisation.</div>
+            <div className="name">{t('accountView.session.device')}</div>
+            <div className="meta">{t('accountView.session.deviceHelp')}</div>
           </div>
           <div className="actions">
             <LogoutButton />

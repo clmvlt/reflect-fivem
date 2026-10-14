@@ -5,6 +5,7 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { GRAPHICS_KEYS, GRAPHICS_SETTINGS, type GraphicsState, type GraphicsTarget } from '@shared/graphics'
+import { t } from 'i18next'
 import { exists } from '../util/fsx'
 
 const INFO_KEYS = new Set(['ScreenWidth', 'ScreenHeight', 'RefreshRate'])
@@ -24,17 +25,17 @@ export function parseGraphics(xml: string): { values: Record<string, string>; vi
 /** Valide et met au format du jeu (les nombres à virgule sont écrits avec 6 décimales). */
 export function normalizeValue(key: string, value: string): string {
   const def = GRAPHICS_SETTINGS.find((s) => s.key === key)
-  if (!def) throw new Error(`Réglage inconnu : ${key}`)
+  if (!def) throw new Error(t('graphics.errors.unknown', { key }))
   if (def.kind === 'bool') {
-    if (value !== 'true' && value !== 'false') throw new Error(`Valeur invalide pour ${def.label}.`)
+    if (value !== 'true' && value !== 'false') throw new Error(t('graphics.errors.invalid', { label: def.label }))
     return value
   }
   if (def.kind === 'choice') {
-    if (!def.options?.some((o) => o.value === value)) throw new Error(`Valeur invalide pour ${def.label}.`)
+    if (!def.options?.some((o) => o.value === value)) throw new Error(t('graphics.errors.invalid', { label: def.label }))
     return value
   }
   const n = Number(value)
-  if (!Number.isFinite(n) || n < (def.min ?? 0) - 1e-9 || n > (def.max ?? 1) + 1e-9) throw new Error(`Valeur invalide pour ${def.label}.`)
+  if (!Number.isFinite(n) || n < (def.min ?? 0) - 1e-9 || n > (def.max ?? 1) + 1e-9) throw new Error(t('graphics.errors.invalid', { label: def.label }))
   return n.toFixed(6)
 }
 
@@ -59,12 +60,12 @@ export class GraphicsManager {
     const localAppData = process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local')
     for (const p of [path.join(appData, 'CitizenFX', 'gta5_settings.xml'), path.join(localAppData, 'CitizenFX', 'gta5_settings.xml')]) {
       if (await exists(p)) {
-        out.push({ id: 'fivem', label: 'FiveM', path: p })
+        out.push({ id: 'fivem', label: t('graphics.targets.fivem'), path: p })
         break
       }
     }
     const sp = path.join(documentsDir, 'Rockstar Games', 'GTA V', 'settings.xml')
-    if (await exists(sp)) out.push({ id: 'gta', label: 'GTA V solo', path: sp })
+    if (await exists(sp)) out.push({ id: 'gta', label: t('graphics.targets.gta'), path: sp })
     return out
   }
 
@@ -99,7 +100,7 @@ export class GraphicsManager {
 
   async restore(target: GraphicsTarget): Promise<void> {
     const b = this.backupFile(target.id)
-    if (!(await exists(b))) throw new Error('Aucune sauvegarde des réglages d’origine.')
+    if (!(await exists(b))) throw new Error(t('graphics.errors.noBackup'))
     await this.replace(target.path, await fs.readFile(b, 'utf8'))
     await fs.rm(b, { force: true })
   }

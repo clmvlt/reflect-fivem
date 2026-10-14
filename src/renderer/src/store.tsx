@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import type { AccountMe, Overview, TaskProgress, UpdateState } from '@shared/types'
+import { readApiError } from '@shared/api'
+import i18next, { t } from 'i18next'
 import { q } from './lib/format'
 
 export interface Message {
@@ -56,6 +58,12 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
     const offChanged = window.api.onChanged(() => void refresh())
     const offUpdate = window.api.onUpdate(setUpdate)
     const offAccount = window.api.onAccount(setAccount)
+    // Langue changée (réglages, ou langue du compte à la connexion) : textes de l'interface, puis données relues (les
+    // textes produits par le processus principal ou par l'API suivent la nouvelle langue).
+    const offLanguage = window.api.onLanguage((lng) => {
+      document.documentElement.lang = lng
+      void i18next.changeLanguage(lng).then(() => refresh())
+    })
     window.api.accountGet().then(setAccount, () => setAccount(null))
     const offTask = window.api.onTask((p) => {
       if (!p.done) {
@@ -66,7 +74,7 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
         return
       }
       setTask(null)
-      if (!p.ok) setMessage({ kind: 'error', text: p.error ?? 'Échec.' })
+      if (!p.ok) setMessage({ kind: 'error', text: p.error ?? t('common.failed') })
       else {
         const info = resultMessage(p)
         if (info) setMessage(info)
@@ -81,6 +89,7 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
       offTask()
       offUpdate()
       offAccount()
+      offLanguage()
       window.removeEventListener('keydown', onKey)
     }
   }, [refresh])
@@ -88,8 +97,8 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
   // Les messages disparaissent seuls (un peu plus tard pour une erreur, le temps de la lire).
   useEffect(() => {
     if (!message) return
-    const t = window.setTimeout(() => setMessage(null), message.kind === 'error' ? 10000 : 7000)
-    return () => window.clearTimeout(t)
+    const timer = window.setTimeout(() => setMessage(null), message.kind === 'error' ? 10000 : 7000)
+    return () => window.clearTimeout(timer)
   }, [message])
 
   // Couleur d'accent de Windows
@@ -111,26 +120,30 @@ export function useStore(): Store {
 }
 
 export function cleanError(e: unknown): string {
+  return apiError(e).message
+}
+
+/** Message à afficher, et statut HTTP et `code` d'une erreur de l'API (null pour les autres erreurs). */
+export function apiError(e: unknown): { message: string; status: number | null; code: string | null } {
   const msg = (e as Error)?.message ?? String(e)
   // Les erreurs IPC sont préfixées par « Error invoking remote method 'pm:invoke': Error: ».
-  return msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, '')
+  return readApiError(msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, ''))
 }
 
 function resultMessage(p: TaskProgress): Message | null {
   if (p.kind === 'download') {
     const d = (p.result ?? {}) as { name?: string; status?: string; note?: string }
     if (d.note) return { kind: 'info', text: d.note }
-    const name = q(d.name ?? 'Le pack')
-    if (d.status === 'updated') return { kind: 'info', text: `${name} est à jour.` }
-    if (d.status === 'linked') return { kind: 'info', text: `${name} était déjà dans la bibliothèque : il est maintenant relié à la Marketplace.` }
-    if (d.status === 'up-to-date') return { kind: 'info', text: `${name} est déjà à jour.` }
-    return { kind: 'info', text: `${name} est dans la bibliothèque.` }
+    const name = q(d.name ?? t('store.thePack'))
+    if (d.status === 'updated') return { kind: 'info', text: t('store.download.updated', { name }) }
+    if (d.status === 'linked') return { kind: 'info', text: t('store.download.linked', { name }) }
+    if (d.status === 'up-to-date') return { kind: 'info', text: t('store.download.upToDate', { name }) }
+    return { kind: 'info', text: t('store.download.added', { name }) }
   }
   const r = (p.result ?? {}) as { captured?: string | null; errors?: string[] }
   if (p.kind === 'clean')
-    return { kind: 'info', text: r.captured ? `Jeu remis d’origine. Vos mods sont rangés dans ${q(r.captured)}.` : 'Jeu remis d’origine.' }
-  if ((p.kind === 'apply' || p.kind === 'stash') && r.captured)
-    return { kind: 'info', text: `Vos anciens mods sont rangés dans ${q(r.captured)}. Installez-le pour les retrouver.` }
+    return { kind: 'info', text: r.captured ? t('store.clean.restoredCaptured', { name: q(r.captured) }) : t('store.clean.restored') }
+  if ((p.kind === 'apply' || p.kind === 'stash') && r.captured) return { kind: 'info', text: t('store.captured', { name: q(r.captured) }) }
   if (p.kind === 'import' && r.errors?.length) return { kind: 'error', text: r.errors.join('\n') }
   return null
 }

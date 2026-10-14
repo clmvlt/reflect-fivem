@@ -3,10 +3,13 @@ import path from 'node:path'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, ipcMain, Menu, nativeTheme, net, protocol, screen, session, shell } from 'electron'
-import { IPC } from '@shared/api'
+import { IPC, tagApiError } from '@shared/api'
+import { t } from 'i18next'
+import { initI18n } from '@shared/i18n'
+import { ApiError } from './core/account'
 import { resolveDataDir } from './core/dataDir'
 import { describeLink, findDeepLink, parsePackLink, PROTOCOL } from './core/deepLink'
-import { EXEC_FLAG, runElevatedWorker } from './core/elevation'
+import { EXEC_FLAG, LOCALE_FLAG, runElevatedWorker } from './core/elevation'
 import { Service } from './service'
 import { isInside } from './util/fsx'
 import { log } from './util/log'
@@ -17,6 +20,7 @@ if (isElevatedWorker) {
   // Processus administrateur éphémère : exécute un plan puis quitte, sans fenêtre.
   app.setPath('userData', path.join(os.tmpdir(), 'reflect-fivem-elevated'))
   app.disableHardwareAcceleration()
+  initI18n(process.argv.find((a) => a.startsWith(LOCALE_FLAG))?.slice(LOCALE_FLAG.length) ?? 'fr')
   void app.whenReady().then(async () => {
     const code = await runElevatedWorker(process.argv)
     app.exit(code)
@@ -129,11 +133,13 @@ function startApp(): void {
 
     ipcMain.handle(IPC.invoke, async (_e, method: string, args: unknown[]) => {
       const fn = (service.api as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[method]
-      if (typeof fn !== 'function') throw new Error(`Méthode inconnue : ${method}`)
+      if (typeof fn !== 'function') throw new Error(t('errors.unknownMethod', { method }))
       try {
         return await fn(...args)
       } catch (err) {
         log.warn(`${method} : ${(err as Error).message}`)
+        // Statut et code de l'erreur de l'API : perdus dans l'IPC, ajoutés au message (l'interface s'en sert).
+        if (err instanceof ApiError) throw new Error(tagApiError(err.message, err.status, err.code))
         throw err
       }
     })

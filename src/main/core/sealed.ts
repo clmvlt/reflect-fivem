@@ -21,6 +21,7 @@ import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:cr
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { deflateRawSync, inflateRawSync } from 'node:zlib'
+import { t } from 'i18next'
 
 const PACKAGE_MAGIC = Buffer.from('FPMPACK1', 'latin1')
 const SEALED_MAGIC = Buffer.from('FPMSEAL1', 'latin1')
@@ -34,7 +35,8 @@ export const KEY_SIZE = 32
 
 export class SealedError extends Error {}
 
-const DAMAGED = 'Fichier chiffré endommagé ou clé incorrecte.'
+/** Message d'un fichier chiffré illisible (dans la langue courante, d'où l'appel au moment de l'erreur). */
+const damaged = (): string => t('protection.damaged')
 
 /** Flux chiffré dans un fichier : position, longueur et clé (hexadécimal, pour passer dans un plan d'installation). */
 export interface SealedRef {
@@ -82,13 +84,13 @@ function openChunk(key: Buffer, index: number, last: boolean, sealed: Buffer): B
     decipher.setAuthTag(sealed.subarray(sealed.length - TAG))
     body = Buffer.concat([decipher.update(sealed.subarray(0, sealed.length - TAG)), decipher.final()])
   } catch {
-    throw new SealedError(DAMAGED)
+    throw new SealedError(damaged())
   }
   if (body[0] === 0) return body.subarray(1)
   try {
     return inflateRawSync(body.subarray(1), { maxOutputLength: CHUNK })
   } catch {
-    throw new SealedError(DAMAGED)
+    throw new SealedError(damaged())
   }
 }
 
@@ -115,11 +117,11 @@ async function* unsealChunks(file: string, ref: SealedRef, limit = Infinity): As
     let pos = ref.offset
     let given = 0
     for (let index = 0; pos < end && given < limit; index++) {
-      if ((await h.read(head, 0, 4, pos)).bytesRead !== 4) throw new SealedError(DAMAGED)
+      if ((await h.read(head, 0, 4, pos)).bytesRead !== 4) throw new SealedError(damaged())
       const size = head.readUInt32BE(0)
-      if (size < TAG + 1 || size > CHUNK + 1 + TAG || pos + 4 + size > end) throw new SealedError(DAMAGED)
+      if (size < TAG + 1 || size > CHUNK + 1 + TAG || pos + 4 + size > end) throw new SealedError(damaged())
       const sealed = Buffer.alloc(size)
-      if ((await h.read(sealed, 0, size, pos + 4)).bytesRead !== size) throw new SealedError(DAMAGED)
+      if ((await h.read(sealed, 0, size, pos + 4)).bytesRead !== size) throw new SealedError(damaged())
       pos += 4 + size
       const data = openChunk(key, index, pos === end, sealed)
       given += data.length
@@ -191,26 +193,26 @@ export async function readPackageIndex(file: string, key: Buffer): Promise<Packa
     const tail = Buffer.alloc(PACKAGE_TRAILER)
     await h.read(head, 0, PACKAGE_HEADER, 0)
     await h.read(tail, 0, PACKAGE_TRAILER, Math.max(0, size - PACKAGE_TRAILER))
-    if (size < PACKAGE_HEADER + PACKAGE_TRAILER || !head.subarray(0, 8).equals(PACKAGE_MAGIC)) throw new SealedError('Ce fichier n’est pas un paquet chiffré.')
+    if (size < PACKAGE_HEADER + PACKAGE_TRAILER || !head.subarray(0, 8).equals(PACKAGE_MAGIC)) throw new SealedError(t('protection.notPackage'))
     id = Buffer.from(head.subarray(8, 8 + ID_SIZE))
     indexOffset = Number(tail.readBigUInt64BE(0))
     indexLength = Number(tail.readBigUInt64BE(8))
   } finally {
     await h.close()
   }
-  if (indexOffset < PACKAGE_HEADER || indexLength <= 0 || indexOffset + indexLength > size - PACKAGE_TRAILER) throw new SealedError(DAMAGED)
+  if (indexOffset < PACKAGE_HEADER || indexLength <= 0 || indexOffset + indexLength > size - PACKAGE_TRAILER) throw new SealedError(damaged())
   const json = await unsealToBuffer(file, { offset: indexOffset, length: indexLength, key: hkdf(key, id, 'fpm-pack/index').toString('hex') })
   let index: { v?: unknown; files?: unknown }
   try {
     index = JSON.parse(json.toString('utf8')) as typeof index
   } catch {
-    throw new SealedError(DAMAGED)
+    throw new SealedError(damaged())
   }
-  if (index.v !== 1 || !Array.isArray(index.files)) throw new SealedError('Version de paquet chiffré inconnue : mettez l’application à jour.')
+  if (index.v !== 1 || !Array.isArray(index.files)) throw new SealedError(t('protection.unknownVersion'))
   const entries = (index.files as { p?: unknown; s?: unknown; o?: unknown; l?: unknown }[]).map((f, i) => {
     const ok =
       typeof f.p === 'string' && [f.s, f.o, f.l].every((n) => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0) && (f.o as number) >= PACKAGE_HEADER && (f.o as number) + (f.l as number) <= indexOffset
-    if (!ok) throw new SealedError(DAMAGED)
+    if (!ok) throw new SealedError(damaged())
     return { path: f.p as string, size: f.s as number, ref: { offset: f.o as number, length: f.l as number, key: hkdf(key, id, `fpm-pack/file/${i}`).toString('hex') } }
   })
   return { id: id.toString('hex'), entries }
@@ -280,7 +282,7 @@ export async function sealedFileRef(file: string, localKey: Buffer): Promise<Sea
 
 export async function readSealedFile(file: string, localKey: Buffer): Promise<Buffer> {
   const ref = await sealedFileRef(file, localKey)
-  if (!ref) throw new SealedError('Ce fichier n’est pas chiffré.')
+  if (!ref) throw new SealedError(t('protection.notSealed'))
   return unsealToBuffer(file, ref)
 }
 

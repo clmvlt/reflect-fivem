@@ -3,6 +3,7 @@
 
 import { constants as fsc, promises as fs } from 'node:fs'
 import path from 'node:path'
+import { t } from 'i18next'
 import { moveDir, moveFile } from '../util/fsx'
 import { unsealToFile } from './sealed'
 
@@ -85,16 +86,16 @@ function errMsg(err: unknown): string {
   const e = err as NodeJS.ErrnoException
   switch (e?.code) {
     case 'EBUSY':
-      return 'Un fichier est utilisé par un autre programme. Fermez FiveM et réessayez.'
+      return t('executor.errors.busy')
     case 'EPERM':
     case 'EACCES':
-      return `Accès refusé : ${e.path ?? ''}`
+      return t('executor.errors.accessDenied', { path: e.path ?? '' })
     case 'ENOSPC':
-      return 'Pas assez de place sur le disque.'
+      return t('executor.errors.noSpace')
     case 'EEXIST':
-      return `Un fichier existe déjà : ${e.path ?? ''}`
+      return t('executor.errors.exists', { path: e.path ?? '' })
     case 'ENOENT':
-      return `Fichier introuvable : ${e.path ?? ''}`
+      return t('executor.errors.notFound', { path: e.path ?? '' })
     default:
       return e?.message ?? String(err)
   }
@@ -169,7 +170,7 @@ async function runOp(op: Op): Promise<Omit<OpResult, 'i'>> {
     }
     case 'unstash': {
       if (await pathExists(op.to)) {
-        const e = new Error(`Emplacement occupé : ${op.to}`) as NodeJS.ErrnoException
+        const e = new Error(t('executor.errors.occupied', { path: op.to })) as NodeJS.ErrnoException
         e.code = 'EEXIST'
         e.path = op.to
         throw e
@@ -272,7 +273,7 @@ export async function executePlan(plan: Plan, onProgress: (p: ExecProgress) => v
       const error = errMsg(err)
       results.push({ i, ok: false, error })
       if (plan.mode === 'atomic') {
-        emit(i, 'Annulation des modifications…', true)
+        emit(i, t('executor.rollingBack'), true)
         // Ordre inverse : les fichiers sont retirés avant les dossiers qui les contiennent.
         for (let j = results.length - 2; j >= 0; j--) await undoOp(plan.ops[results[j].i], results[j])
         // Dossiers temporaires du plan : supprimés seulement s'ils ne contiennent plus aucun fichier.
@@ -287,7 +288,7 @@ export async function executePlan(plan: Plan, onProgress: (p: ExecProgress) => v
   return {
     ok: failed.length === 0,
     results,
-    error: failed.length ? `${failed.length} opération(s) en échec : ${failed[0].error}` : undefined,
+    error: failed.length ? t('executor.errors.failed', { count: failed.length, error: failed[0].error ?? '' }) : undefined,
     rolledBack: false
   }
 }

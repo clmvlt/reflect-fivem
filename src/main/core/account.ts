@@ -28,6 +28,8 @@ import type { AddressInfo } from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import type { AccountMe, AccountProfile, AuthorRef, ProfileInput, ProfileLink } from '@shared/types'
+import { t } from 'i18next'
+import { currentLocale } from '@shared/i18n'
 import type { SystemProtection } from './keys'
 import { log } from '../util/log'
 
@@ -81,7 +83,7 @@ export interface GoogleConfig {
 /** Adresse de la page de connexion Google. */
 export function googleAuthUrl(config: GoogleConfig, p: { redirectUri: string; challenge: string; state: string }): string {
   const url = new URL(config.authorizationEndpoint)
-  if (url.protocol !== 'https:') throw new Error('Connexion Google indisponible (adresse invalide).')
+  if (url.protocol !== 'https:') throw new Error(t('account.google.invalidUrl'))
   url.search = new URLSearchParams({
     client_id: config.clientId,
     redirect_uri: p.redirectUri,
@@ -146,6 +148,7 @@ interface RemoteMe {
   mustChangePassword?: boolean
   hasPassword: boolean
   googleLinked: boolean
+  locale?: string | null
 }
 
 interface RemoteProfile extends RemoteMe {
@@ -175,7 +178,8 @@ function toMe(r: RemoteMe): AccountMe {
     canPublish: !!r.canPublish,
     mustChangePassword: !!r.mustChangePassword,
     hasPassword: !!r.hasPassword,
-    googleLinked: !!r.googleLinked
+    googleLinked: !!r.googleLinked,
+    locale: typeof r.locale === 'string' && r.locale ? r.locale : null
   }
 }
 
@@ -191,7 +195,7 @@ export function toAuthorRef(r: { id: number; slug: string; displayName: string; 
 
 function toSession(r: SessionResponse): Session {
   const ok = (s: unknown): s is string => typeof s === 'string' && s.length > 0
-  if (!ok(r?.accessToken) || !ok(r.refreshToken) || !ok(r.accessTokenExpiresAt) || !r.me) throw new Error('Le serveur ne répond pas correctement.')
+  if (!ok(r?.accessToken) || !ok(r.refreshToken) || !ok(r.accessTokenExpiresAt) || !r.me) throw new Error(t('account.errors.badResponse'))
   return {
     accessToken: r.accessToken,
     accessTokenExpiresAt: r.accessTokenExpiresAt,
@@ -203,8 +207,8 @@ function toSession(r: SessionResponse): Session {
 
 /** Expire dans moins de `margin` ms (date illisible : considéré comme expiré). */
 function expiresWithin(at: string, margin: number): boolean {
-  const t = Date.parse(at)
-  return !Number.isFinite(t) || t - Date.now() < margin
+  const time = Date.parse(at)
+  return !Number.isFinite(time) || time - Date.now() < margin
 }
 
 // ------------------------------------------------------------------ jetons chiffrés
@@ -313,7 +317,7 @@ interface RequestOptions {
   timeout?: number
 }
 
-const signedOut = (): ApiError => new ApiError('Vous n’êtes pas connecté.', 401, 'signed-out')
+const signedOut = (): ApiError => new ApiError(t('account.errors.signedOut'), 401, 'signed-out')
 
 export class Account {
   private session: Session | null = null
@@ -360,12 +364,12 @@ export class Account {
   }
 
   async login(login: string, password: string): Promise<AccountMe> {
-    if (!login.trim() || !password) throw new Error('Saisissez votre adresse e-mail et votre mot de passe.')
+    if (!login.trim() || !password) throw new Error(t('account.errors.missingCredentials'))
     return this.signIn(await this.request<SessionResponse>('POST', '/auth/app/login', { json: { login: login.trim(), password, deviceName: deviceName() } }))
   }
 
   async register(email: string, password: string, displayName: string): Promise<AccountMe> {
-    const body = { email: email.trim(), password, displayName: displayName.trim(), deviceName: deviceName() }
+    const body = { email: email.trim(), password, displayName: displayName.trim(), deviceName: deviceName(), locale: currentLocale() }
     return this.signIn(await this.request<SessionResponse>('POST', '/auth/app/register', { json: body }))
   }
 
@@ -425,15 +429,20 @@ export class Account {
   /** Envoie la photo d'un fichier image (PNG, JPEG, GIF, BMP ; 8 Mo au plus). */
   async setAvatarFile(file: string): Promise<AccountProfile> {
     const type = AVATAR_TYPES[path.extname(file).toLowerCase()]
-    if (!type) throw new Error('Format non pris en charge : choisissez une image PNG, JPEG, GIF ou BMP.')
+    if (!type) throw new Error(t('account.errors.avatarFormat'))
     const st = await fs.stat(file)
-    if (st.size > AVATAR_MAX) throw new Error('Photo trop lourde (8 Mo au plus).')
+    if (st.size > AVATAR_MAX) throw new Error(t('account.errors.avatarTooLarge'))
     const data = await fs.readFile(file)
     return this.withProfile(await this.authed<RemoteProfile>('PUT', '/me/avatar', { raw: { data, type }, timeout: 60_000 }))
   }
 
   async removeAvatar(): Promise<AccountProfile> {
     return this.withProfile(await this.authed<RemoteProfile>('DELETE', '/me/avatar'))
+  }
+
+  /** Langue enregistrée dans le compte (PUT /me/locale). */
+  async setLocale(locale: string): Promise<AccountProfile> {
+    return this.withProfile(await this.authed<RemoteProfile>('PUT', '/me/locale', { json: { locale } }))
   }
 
   /** Les autres appareils sont déconnectés ; celui-ci reste connecté. */
@@ -589,7 +598,7 @@ export class Account {
     try {
       response = await this.deps.fetch(`${this.deps.apiUrl}${pathname}`, { method, headers, body, signal: AbortSignal.timeout(opts.timeout ?? TIMEOUT) })
     } catch {
-      throw new Error('Serveur injoignable. Vérifiez votre connexion à Internet.')
+      throw new Error(t('errors.network'))
     }
     if (response.ok) return (response.status === 204 ? undefined : await response.json()) as T
 
@@ -605,15 +614,17 @@ function problemMessage(status: number, problem: { detail?: unknown; retryAfter?
   if (typeof problem?.detail === 'string' && problem.detail.trim()) return problem.detail
   if (status === 429) {
     const s = typeof problem?.retryAfter === 'number' ? problem.retryAfter : null
-    return s ? `Trop d’essais. Réessayez dans ${s < 60 ? `${s} s` : `${Math.ceil(s / 60)} min`}.` : 'Trop d’essais. Réessayez plus tard.'
+    if (!s) return t('account.errors.tooMany')
+    return s < 60 ? t('account.errors.tooManySeconds', { count: s }) : t('account.errors.tooManyMinutes', { count: Math.ceil(s / 60) })
   }
-  return `Le serveur ne répond pas correctement (erreur ${status}).`
+  return t('account.errors.badStatus', { status })
 }
 
 // ------------------------------------------------------------------ retour de la connexion Google
 
+/** Page affichée dans le navigateur au retour de Google, dans la langue de l'application. */
 const PAGE = (title: string, text: string): string =>
-  `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${title}</title><style>` +
+  `<!doctype html><html lang="${currentLocale()}"><head><meta charset="utf-8"><title>${title}</title><style>` +
   'html{color-scheme:light dark}body{margin:0;display:grid;place-items:center;height:100vh;font:15px/1.5 "Segoe UI",system-ui,sans-serif;' +
   'background:Canvas;color:CanvasText}main{text-align:center;padding:24px}h1{font-size:20px;margin:0 0 8px}p{margin:0;opacity:.75}</style>' +
   `</head><body><main><h1>${title}</h1><p>${text}</p></main></body></html>`
@@ -651,29 +662,29 @@ export function waitForLoopback(
       const result = parseLoopbackCallback(req.url, state)
       switch (result.type) {
         case 'code':
-          reply(res, 200, PAGE('Connexion réussie', 'Vous pouvez fermer cet onglet et revenir à Reflect FiveM.'))
+          reply(res, 200, PAGE(t('account.google.page.successTitle'), t('account.google.page.successText')))
           finish(null, result.code)
           break
         case 'error':
-          reply(res, 200, PAGE('Connexion annulée', 'Vous pouvez fermer cet onglet.'))
-          finish(new Error('Connexion annulée.'))
+          reply(res, 200, PAGE(t('account.google.page.cancelledTitle'), t('account.google.page.cancelledText')))
+          finish(new Error(t('account.google.cancelled')))
           break
         case 'invalid':
-          reply(res, 400, PAGE('Requête invalide', 'Relancez la connexion depuis Reflect FiveM.'))
+          reply(res, 400, PAGE(t('account.google.page.invalidTitle'), t('account.google.page.invalidText')))
           break
         default:
           res.writeHead(404, { Connection: 'close' })
           res.end()
       }
     })
-    const onAbort = (): void => finish(new Error('Connexion annulée.'))
-    const timer = setTimeout(() => finish(new Error('Connexion Google expirée : réessayez.')), timeoutMs)
+    const onAbort = (): void => finish(new Error(t('account.google.cancelled')))
+    const timer = setTimeout(() => finish(new Error(t('account.google.expired'))), timeoutMs)
     if (signal.aborted) return onAbort()
     signal.addEventListener('abort', onAbort)
-    server.on('error', (err) => finish(new Error(`Connexion Google impossible : ${err.message}`)))
+    server.on('error', (err) => finish(new Error(t('account.google.failed', { error: err.message }))))
     server.listen(0, '127.0.0.1', () => {
       redirectUri = `http://127.0.0.1:${(server.address() as AddressInfo).port}/callback`
-      open(redirectUri).catch((err: unknown) => finish(new Error(`Navigateur introuvable : ${(err as Error).message}`)))
+      open(redirectUri).catch((err: unknown) => finish(new Error(t('account.google.noBrowser', { error: (err as Error).message }))))
     })
   })
 }

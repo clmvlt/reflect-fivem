@@ -1,3 +1,4 @@
+import { t } from 'i18next'
 import type { Insight, PackManifest } from './types'
 
 export type Level = 'ok' | 'info' | 'warn' | 'bad'
@@ -14,10 +15,10 @@ export function levelOf(i: Insight, build: number | null): Level {
 
 /** Texte d'un .asi selon la dernière build lancée par FiveM. */
 export function asiBuildText(builds: number[], build: number): string {
-  const range = builds.length > 1 ? `les builds ${builds[0]} à ${builds[builds.length - 1]}` : `la build ${builds[0]}`
-  return builds.includes(build)
-    ? `Chargé par FiveM : prévu pour ${range}, dont la ${build} utilisée en dernier.`
-    : `Ignoré par FiveM en build ${build} (prévu pour ${range}). Le reste du pack n’est pas concerné ; il se charge sur les serveurs qui utilisent une de ces builds.`
+  const p = { build, from: builds[0], to: builds[builds.length - 1] }
+  const range = builds.length > 1
+  if (builds.includes(build)) return range ? t('insights.asi.loadedRange', p) : t('insights.asi.loadedSingle', p)
+  return range ? t('insights.asi.ignoredRange', p) : t('insights.asi.ignoredSingle', p)
 }
 
 export function problemCount(pack: PackManifest, build: number | null): number {
@@ -27,4 +28,18 @@ export function problemCount(pack: PackManifest, build: number | null): number {
   }).length
 }
 
-export const LEVEL_LABEL: Record<Level, string> = { ok: 'OK', info: 'Info', warn: 'Attention', bad: 'Problème' }
+/** Libellés des niveaux, dans la langue affichée au moment de la lecture. */
+export const LEVEL_LABEL: Record<Level, string> = {
+  get ok() {
+    return t('insights.level.ok')
+  },
+  get info() {
+    return t('insights.level.info')
+  },
+  get warn() {
+    return t('insights.level.warn')
+  },
+  get bad() {
+    return t('insights.level.bad')
+  }
+}

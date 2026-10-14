@@ -124,6 +124,16 @@ export interface PackManagerApi {
   /** currentPassword : null pour un compte qui n'a pas encore de mot de passe. */
   accountChangePassword(currentPassword: string | null, newPassword: string): Promise<AccountMe>
 
+  /** Langue affichée (choisie par le processus principal). */
+  getLanguage(): Promise<string>
+  /**
+   * Change la langue de l'application (toutes les fenêtres, menus du processus principal), l'enregistre sur ce poste
+   * et, si un compte est connecté, dans le compte.
+   */
+  setLanguage(code: string): Promise<void>
+  /** Langues proposées (GET /locales, sinon la liste embarquée hors ligne). */
+  listLanguages(): Promise<LanguageOption[]>
+
   /** Recherche une mise à jour ; une nouvelle version est ensuite téléchargée et vérifiée automatiquement. */
   checkForUpdates(): Promise<UpdateState>
   /** Ferme l'application et installe tout de suite la mise à jour téléchargée et vérifiée. */
@@ -134,6 +144,8 @@ export interface PackManagerApi {
   onUpdate(cb: (s: UpdateState) => void): () => void
   /** Connexion, déconnexion, profil modifié ou connexion expirée. */
   onAccount(cb: (me: AccountMe | null) => void): () => void
+  /** Langue changée (réglages, ou langue du compte appliquée à la connexion). */
+  onLanguage(cb: (code: string) => void): () => void
   /** Lien « fivem-pack-manager://pack/<id> » reçu du site : ouvrir la fiche de ce pack dans la Marketplace. */
   onOpenMarketPack(cb: (id: string) => void): () => void
 }
@@ -145,6 +157,12 @@ export interface MarketQuery {
   author?: string
   sort?: 'recent' | 'popular' | 'name'
   page?: number
+}
+
+export interface LanguageOption {
+  code: string
+  /** Nom de la langue dans cette langue (« Français », « English »). */
+  name: string
 }
 
 export interface AuthorQuery {
@@ -159,8 +177,25 @@ export const IPC = {
   changed: 'pm:changed',
   update: 'pm:update',
   account: 'pm:account',
+  language: 'pm:language',
   openMarketPack: 'pm:open-market-pack'
 } as const
 
-/** Erreur de marketDetail quand l'API ne connaît pas (ou plus) le pack : inutile de réessayer. */
-export const PACK_GONE = 'Ce pack n’est plus disponible sur la Marketplace.'
+/** Code d'erreur de marketDetail quand l'API ne connaît pas (ou plus) le pack : inutile de réessayer. */
+export const PACK_GONE = 'pack-gone'
+
+/**
+ * Une erreur ne passe d'un processus à l'autre qu'avec son message : le statut HTTP et le `code` d'une erreur de l'API
+ * y sont ajoutés à la fin, puis retirés par l'interface (le message seul est affiché, le code sert à la logique).
+ */
+const API_ERROR_TAG = /\s*\{api:(\d{3})(?::([A-Za-z0-9_-]+))?\}\s*$/
+
+export function tagApiError(message: string, status: number, code?: string): string {
+  return `${message} {api:${status}${code ? `:${code}` : ''}}`
+}
+
+export function readApiError(message: string): { message: string; status: number | null; code: string | null } {
+  const m = API_ERROR_TAG.exec(message)
+  if (!m) return { message, status: null, code: null }
+  return { message: message.slice(0, m.index), status: Number(m[1]), code: m[2] ?? null }
+}

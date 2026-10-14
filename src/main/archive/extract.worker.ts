@@ -14,5 +14,7 @@ extractArchive(job.file, job.target, (p) => parentPort?.postMessage({ type: 'pro
   .then((res) => parentPort?.postMessage({ type: 'done', result: res }))
   .catch((err: unknown) => {
     const code = err instanceof ArchiveError ? err.code : 'unknown'
-    parentPort?.postMessage({ type: 'error', code, message: (err as Error)?.message ?? String(err) })
+    // Message à traduire (text) renvoyé tel quel : les traductions ne sont pas chargées dans ce worker.
+    const text = err instanceof ArchiveError ? err.text : null
+    parentPort?.postMessage({ type: 'error', code, text, message: (err as Error)?.message ?? String(err) })
   })

@@ -31,6 +31,11 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+  # Installateur en français ou en anglais selon la langue de Windows (français pour les autres langues, comme
+  # l'application). Ajouter une langue à l'application : l'ajouter aussi ici (code NSIS, ex. de_DE).
+  multiLanguageInstaller: true
+  installerLanguages: [fr_FR, en_US]
+  language: '1036'
   artifactName: Reflect-FiveM-Setup-${version}.${ext}
 portable:
   artifactName: Reflect-FiveM-Portable-${version}.${ext}

@@ -9,6 +9,7 @@ const IPC = {
   changed: 'pm:changed',
   update: 'pm:update',
   account: 'pm:account',
+  language: 'pm:language',
   openMarketPack: 'pm:open-market-pack'
 }
 
@@ -72,6 +73,9 @@ const methods = [
   'accountPickAvatar',
   'accountRemoveAvatar',
   'accountChangePassword',
+  'getLanguage',
+  'setLanguage',
+  'listLanguages',
   'checkForUpdates',
   'installUpdate'
 ] as const
@@ -100,6 +104,12 @@ api.onAccount = (cb: (me: AccountMe | null) => void) => {
   const h = (_e: unknown, me: AccountMe | null): void => cb(me)
   ipcRenderer.on(IPC.account, h)
   return () => ipcRenderer.removeListener(IPC.account, h)
+}
+
+api.onLanguage = (cb: (code: string) => void) => {
+  const h = (_e: unknown, code: string): void => cb(code)
+  ipcRenderer.on(IPC.language, h)
+  return () => ipcRenderer.removeListener(IPC.language, h)
 }
 
 // Pack demandé par un lien du site : gardé s'il arrive avant que l'interface ne s'abonne (démarrage).

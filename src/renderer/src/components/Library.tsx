@@ -1,11 +1,13 @@
 import { useMemo, useState, type MouseEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { PackManifest, RootId, TaskProgress } from '@shared/types'
 import { useStore } from '../store'
-import { bytes } from '../lib/format'
+import { bytes, num } from '../lib/format'
 import { problemCount } from '@shared/insights'
 import { Cover, packMenuAction, packMeta, Progress, RenameInput } from './common'
 
 export function Library({ onOpen }: { onOpen: (id: string) => void }) {
+  const { t } = useTranslation()
   const { overview, task, run } = useStore()
   const [query, setQuery] = useState('')
   const library = overview?.library
@@ -26,53 +28,57 @@ export function Library({ onOpen }: { onOpen: (id: string) => void }) {
     if (paths.length) await run(() => window.api.importPacks(paths))
   }
   const choose = async (which: RootId): Promise<void> => {
-    const p = await window.api.pickFolder(which === 'fivem' ? 'Dossier FiveM.app' : 'Dossier de GTA V')
+    const p = await window.api.pickFolder(which === 'fivem' ? t('libraryView.pickFivem') : t('libraryView.pickGta'))
     if (p) await run(() => window.api.setGamePath(which, p))
   }
 
   const problems: { text: string; which: RootId }[] = []
-  if (!games.fivem.valid) problems.push({ text: 'Dossier FiveM introuvable.', which: 'fivem' })
-  if (!games.gta.valid) problems.push({ text: 'Dossier GTA V introuvable.', which: 'gta' })
-  else if (games.gta.edition === 'enhanced') problems.push({ text: "Le dossier GTA V choisi est l'édition Enhanced, qui n'accepte pas les mods FiveM.", which: 'gta' })
+  if (!games.fivem.valid) problems.push({ text: t('libraryView.problems.fivemMissing'), which: 'fivem' })
+  if (!games.gta.valid) problems.push({ text: t('libraryView.problems.gtaMissing'), which: 'gta' })
+  else if (games.gta.edition === 'enhanced') problems.push({ text: t('libraryView.problems.gtaEnhanced'), which: 'gta' })
 
   const importing = task?.kind === 'import' ? task : null
   const showForeign = !!foreign && !state.active && !query
   const empty = !(library ?? []).length && !showForeign && !importing
 
+  const note = (library ?? []).length
+    ? t('libraryView.packsNote', { count: library!.length, n: num(library!.length), size: bytes(library!.reduce((s, p) => s + p.contentSize, 0)) })
+    : ''
+
   return (
     <div className="page">
       <header className="page-head">
-        <h1>Bibliothèque</h1>
-        <span className="page-note">{(library ?? []).length ? `${library!.length} pack${library!.length > 1 ? 's' : ''} · ${bytes(library!.reduce((s, p) => s + p.contentSize, 0))}` : ''}</span>
+        <h1>{t('libraryView.title')}</h1>
+        <span className="page-note">{note}</span>
         <div className="spacer" />
-        {(library ?? []).length > 3 && <input className="search" type="search" placeholder="Rechercher" value={query} onChange={(e) => setQuery(e.target.value)} />}
+        {(library ?? []).length > 3 && <input className="search" type="search" placeholder={t('common.search')} value={query} onChange={(e) => setQuery(e.target.value)} />}
         <button className="primary" onClick={() => void add()} disabled={!!task}>
-          Ajouter un pack…
+          {t('libraryView.addPack')}
         </button>
       </header>
 
       {problems.map((p) => (
         <div key={p.which} className="bar bar-warning">
           <span className="bar-text">{p.text}</span>
-          <button onClick={() => void choose(p.which)}>Choisir le dossier…</button>
+          <button onClick={() => void choose(p.which)}>{t('libraryView.chooseFolder')}</button>
         </div>
       ))}
 
       {empty ? (
         <div className="empty-state">
-          <p>Votre bibliothèque est vide.</p>
-          <p className="muted">Glissez une archive .zip, .rar ou .7z dans cette fenêtre, ou utilisez « Ajouter un pack… ».</p>
+          <p>{t('libraryView.empty.title')}</p>
+          <p className="muted">{t('libraryView.empty.text')}</p>
         </div>
       ) : (
         <div className="grid">
           {importing && (
             <article className="card">
               <div className="cover">
-                <div className="cover-empty">{importing.title.replace(/^Ajout de /, '')}</div>
+                <div className="cover-empty">{importing.detail ?? importing.title}</div>
               </div>
               <div className="card-body">
-                <div className="name">{importing.title}</div>
-                <div className="meta">{importing.phase || 'Préparation'}</div>
+                <div className="name">{importing.detail ?? importing.title}</div>
+                <div className="meta">{importing.phase || t('libraryView.preparing')}</div>
                 <div className="card-foot">
                   <Progress task={importing} />
                 </div>
@@ -115,6 +121,7 @@ function PackCard({
   task: TaskProgress | null
   onOpen: () => void
 }) {
+  const { t } = useTranslation()
   const { run } = useStore()
   const [renaming, setRenaming] = useState(false)
   const mine = task && task.detail === pack.id ? task : null
@@ -139,25 +146,23 @@ function PackCard({
           ) : (
             <>
               {active ? (
-                <span className="state">{partial ? 'Retrait incomplet' : 'Installé'}</span>
+                <span className="state">{partial ? t('libraryView.card.partial') : t('libraryView.card.installed')}</span>
               ) : update ? (
-                <span className="accent-text small">Nouvelle version</span>
+                <span className="accent-text small">{t('libraryView.card.update')}</span>
               ) : problems > 0 ? (
-                <span className="warn-text small">
-                  {problems} point{problems > 1 ? 's' : ''} à vérifier
-                </span>
+                <span className="warn-text small">{t('libraryView.card.problems', { count: problems, n: num(problems) })}</span>
               ) : null}
               <div className="spacer" />
               {active ? (
                 <button onClick={() => void run(() => window.api.removeActive())} disabled={!!task}>
-                  Retirer
+                  {t('common.remove')}
                 </button>
               ) : (
                 <button onClick={() => void run(() => window.api.applyPack(pack.id))} disabled={!!task}>
-                  Installer
+                  {t('libraryView.card.install')}
                 </button>
               )}
-              <button className="more" onClick={(e) => void menu(e)} aria-label="Plus d’options" title="Plus d’options">
+              <button className="more" onClick={(e) => void menu(e)} aria-label={t('libraryView.moreOptions')} title={t('libraryView.moreOptions')}>
                 ⋯
               </button>
             </>
@@ -169,27 +174,28 @@ function PackCard({
 }
 
 function ForeignCard({ files, size, task }: { files: number; size: number; task: TaskProgress | null }) {
+  const { t } = useTranslation()
   const { run } = useStore()
   const mine = task && task.detail === 'foreign' ? task : null
   return (
     <article className="card is-active">
       <div className="cover">
-        <div className="cover-empty">Mods installés à la main</div>
+        <div className="cover-empty">{t('libraryView.foreign.title')}</div>
       </div>
       <div className="card-body">
-        <div className="name">Mods installés à la main</div>
+        <div className="name">{t('libraryView.foreign.title')}</div>
         <div className="meta">
-          {files} fichier{files > 1 ? 's' : ''} · {bytes(size)}
+          {t('libraryView.foreign.meta', { count: files, n: num(files), size: bytes(size) })}
         </div>
         <div className="card-foot">
           {mine ? (
             <Progress task={mine} />
           ) : (
             <>
-              <span className="state">Installé</span>
+              <span className="state">{t('libraryView.card.installed')}</span>
               <div className="spacer" />
-              <button onClick={() => void run(() => window.api.stashForeign())} disabled={!!task} title="Les ranger dans un pack « Ancienne installation »">
-                Retirer
+              <button onClick={() => void run(() => window.api.stashForeign())} disabled={!!task} title={t('libraryView.foreign.removeTitle')}>
+                {t('common.remove')}
               </button>
             </>
           )}

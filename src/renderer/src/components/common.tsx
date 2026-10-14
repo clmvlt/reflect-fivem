@@ -1,34 +1,26 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { t } from 'i18next'
 import type { PackManifest, TaskProgress } from '@shared/types'
 import { useStore } from '../store'
-import { bytes, mediaUrl, packImages, q } from '../lib/format'
+import { bytes, mediaUrl, num, packImages, q } from '../lib/format'
 
-/** Explication d'un pack protégé (chiffré sur la Marketplace). */
-export const PROTECTED_HINT =
-  'Pack protégé : il reste chiffré dans votre bibliothèque. Ses fichiers ne sont lisibles que dans le jeu, pendant qu’il y est installé.'
-
-const TASK_LABEL: Partial<Record<TaskProgress['kind'], string>> = {
-  apply: 'Installation',
-  remove: 'Retrait',
-  delete: 'Suppression',
-  stash: 'Rangement',
-  clean: 'Nettoyage',
-  cache: 'Vidage',
-  screenshots: 'Déplacement',
-  trash: 'Suppression',
-  download: 'Téléchargement'
-}
+/** Tâches dont la barre de progression porte un libellé (clés progress.task.*). */
+const TASK_LABEL = ['apply', 'remove', 'delete', 'stash', 'clean', 'cache', 'screenshots', 'trash', 'download'] as const
+type LabeledTask = (typeof TASK_LABEL)[number]
+const isLabeled = (kind: TaskProgress['kind']): kind is LabeledTask => (TASK_LABEL as readonly string[]).includes(kind)
 
 export function Progress({ task }: { task: TaskProgress }) {
+  const { t } = useTranslation()
   const pct = task.total > 0 ? Math.min(100, Math.round((task.current / task.total) * 100)) : null
-  const label = TASK_LABEL[task.kind]
+  const label = isLabeled(task.kind) ? t(`progress.task.${task.kind}`) : null
   return (
     <div className="progress" title={task.phase}>
       {label && <span className="progress-label">{label}</span>}
       <div className="track">
         <div className={`fill ${pct === null ? 'is-waiting' : ''}`} style={pct === null ? undefined : { width: `${pct}%` }} />
       </div>
-      <span className="pct">{pct === null ? '' : `${pct} %`}</span>
+      <span className="pct">{pct === null ? '' : t('progress.percent', { value: num(pct) })}</span>
     </div>
   )
 }
@@ -64,7 +56,7 @@ export async function packMenuAction(pack: PackManifest, run: <T>(fn: () => Prom
   if (choice === 'image') await run(() => window.api.setCoverFromFile(pack.id))
   else if (choice === 'open') await run(() => window.api.openPackFolder(pack.id))
   else if (choice === 'delete') {
-    const ok = await window.api.confirm(`Supprimer ${q(pack.name)} ?`, 'Le pack est retiré de la bibliothèque et ses fichiers sont effacés. Le jeu n’est pas modifié.', 'Supprimer')
+    const ok = await window.api.confirm(t('app.packMenu.deleteTitle', { name: q(pack.name) }), t('app.packMenu.deleteDetail'), t('common.delete'))
     if (ok) await run(() => window.api.deletePack(pack.id))
   }
   return false

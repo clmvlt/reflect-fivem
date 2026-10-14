@@ -1,6 +1,8 @@
 import { promises as fs, constants as fsc } from 'node:fs'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
+import { t } from 'i18next'
+import { formatBytes as formatSize } from '@shared/intl'
 
 export async function exists(p: string): Promise<boolean> {
   try {
@@ -142,9 +144,9 @@ export function isInside(parent: string, child: string): boolean {
 /** Résout un chemin relatif POSIX sous une racine en refusant toute sortie de la racine. */
 export function safeJoin(root: string, rel: string): string {
   const parts = rel.split('/').filter((p) => p && p !== '.')
-  if (parts.some((p) => p === '..')) throw new Error(`Chemin invalide : ${rel}`)
+  if (parts.some((p) => p === '..')) throw new Error(t('files.invalidPath', { path: rel }))
   const abs = path.resolve(root, ...parts)
-  if (abs !== path.resolve(root) && !isInside(root, abs)) throw new Error(`Chemin hors de la racine : ${rel}`)
+  if (abs !== path.resolve(root) && !isInside(root, abs)) throw new Error(t('files.outsideRoot', { path: rel }))
   return abs
 }
 
@@ -152,21 +154,14 @@ export function toPosix(p: string): string {
   return p.split(path.sep).join('/')
 }
 
+/** Taille lisible dans la langue affichée (« 1,5 Go » / « 1.5 GB »). */
 export function formatBytes(n: number): string {
-  if (n < 1024) return `${n} o`
-  const units = ['Ko', 'Mo', 'Go', 'To']
-  let v = n / 1024
-  let i = 0
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024
-    i++
-  }
-  return `${v.toFixed(v < 10 ? 1 : 0).replace('.', ',')} ${units[i]}`
+  return formatSize(n)
 }
 
 export function newId(prefix = ''): string {
-  const t = Date.now().toString(36)
-  return `${prefix}${t}-${randomBytes(3).toString('hex')}`
+  const time = Date.now().toString(36)
+  return `${prefix}${time}-${randomBytes(3).toString('hex')}`
 }
 
 export function slugify(s: string): string {

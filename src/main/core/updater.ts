@@ -15,13 +15,18 @@ import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { app, net } from 'electron'
 import type { BaseUpdater, UpdateInfo } from 'electron-updater'
+import { t } from 'i18next'
 import type { UpdateState } from '@shared/types'
 import { log } from '../util/log'
+import { languageFetch } from './http'
 import { launchSwap, prepareSwapScript } from './portableSwap'
 import { releaseMessage, sha512File, verifyRelease } from './releaseSignature'
 
 const FIRST_CHECK = 10_000
 const CHECK_EVERY = 60 * 60 * 1000
+
+/** Requêtes vers l'API, avec la langue affichée (notes de version). */
+const apiFetch = languageFetch((url, init) => net.fetch(url, init))
 
 type AutoUpdater = (typeof import('electron-updater'))['autoUpdater']
 
@@ -178,14 +183,14 @@ export class AppUpdater {
     try {
       const remote = await this.fetchRelease(version)
       const setup = remote?.files.find((f) => f.kind === 'setup')
-      if (!setup) throw new Error('Version introuvable.')
+      if (!setup) throw new Error(t('updater.errors.versionNotFound'))
       await verifyFile(file, version, setup)
       log.info(`Mise à jour ${version} téléchargée et vérifiée : installée à la fermeture`)
       this.set({ ...this.state, status: 'ready', version })
     } catch (err) {
       log.error(`Mise à jour ${version} refusée : ${(err as Error).message}`)
       await fs.rm(file, { force: true }).catch(() => undefined)
-      this.set({ ...this.state, status: 'error', error: `Mise à jour refusée : ${(err as Error).message}` })
+      this.set({ ...this.state, status: 'error', error: t('updater.errors.rejected', { error: (err as Error).message }) })
     }
   }
 
@@ -208,8 +213,8 @@ export class AppUpdater {
       await fs.mkdir(workDir, { recursive: true })
       const already = await fs.stat(target).catch(() => null)
       if (already?.size !== file.size) {
-        const response = await net.fetch(`${this.apiUrl}/${file.url}`)
-        if (!response.ok || !response.body) throw new Error(`téléchargement impossible (erreur ${response.status})`)
+        const response = await apiFetch(`${this.apiUrl}/${file.url}`)
+        if (!response.ok || !response.body) throw new Error(t('updater.errors.downloadFailed', { status: response.status }))
         let received = 0
         const body = Readable.fromWeb(response.body as unknown as import('node:stream/web').ReadableStream)
         body.on('data', (chunk: Buffer) => {
@@ -228,7 +233,7 @@ export class AppUpdater {
     } catch (err) {
       log.error(`Mise à jour portable ${release.version} refusée : ${(err as Error).message}`)
       await fs.rm(target, { force: true }).catch(() => undefined)
-      this.set({ ...this.state, status: 'error', error: `Mise à jour impossible : ${friendly(err)}` })
+      this.set({ ...this.state, status: 'error', error: t('updater.errors.failed', { error: friendly(err) }) })
     }
   }
 
@@ -236,7 +241,7 @@ export class AppUpdater {
 
   /** « Redémarrer maintenant ». */
   install(): void {
-    if (this.state.status !== 'ready') throw new Error('Aucune mise à jour prête.')
+    if (this.state.status !== 'ready') throw new Error(t('updater.errors.notReady'))
     if (this.mode === 'installer') {
       this.installRequested = true
       // Installation silencieuse puis relance de l'application (« ready » : electron-updater déjà chargé).
@@ -270,7 +275,7 @@ export class AppUpdater {
   }
 
   private async fetchRelease(version: string): Promise<RemoteRelease | null> {
-    const response = await net.fetch(`${this.apiUrl}/app/releases/${encodeURIComponent(version)}`)
+    const response = await apiFetch(`${this.apiUrl}/app/releases/${encodeURIComponent(version)}`)
     if (response.status === 404) return null
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     return (await response.json()) as RemoteRelease
@@ -279,10 +284,10 @@ export class AppUpdater {
 
 /** Taille, SHA-512 et signature Ed25519 du fichier téléchargé, comparés à la version publiée. */
 async function verifyFile(file: string, version: string, expected: { size: number; sha512: string; signature: string | null }): Promise<void> {
-  if (!expected.signature) throw new Error('Version non signée.')
+  if (!expected.signature) throw new Error(t('updater.errors.unsigned'))
   const [size, sha512] = await Promise.all([fs.stat(file).then((s) => s.size), sha512File(file)])
-  if (size !== expected.size || sha512 !== expected.sha512) throw new Error('Le fichier téléchargé ne correspond pas à la version publiée.')
-  if (!verifyRelease(releaseMessage(version, size, sha512), expected.signature)) throw new Error('Signature invalide.')
+  if (size !== expected.size || sha512 !== expected.sha512) throw new Error(t('updater.errors.mismatch'))
+  if (!verifyRelease(releaseMessage(version, size, sha512), expected.signature)) throw new Error(t('updater.errors.badSignature'))
 }
 
 function now(): string {
@@ -291,7 +296,7 @@ function now(): string {
 
 function friendly(err: unknown): string {
   const m = (err as Error)?.message ?? String(err)
-  if (/net::|ENOTFOUND|ECONN|ETIMEDOUT|socket/i.test(m)) return 'Connexion au serveur impossible.'
+  if (/net::|ENOTFOUND|ECONN|ETIMEDOUT|socket/i.test(m)) return t('updater.errors.network')
   return m.split('\n')[0]
 }
 

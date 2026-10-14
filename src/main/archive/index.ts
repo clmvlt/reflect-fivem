@@ -1,4 +1,6 @@
 import { Worker } from 'node:worker_threads'
+import { t } from 'i18next'
+import type { Msg } from '@shared/i18n'
 import workerPath from './extract.worker?modulePath'
 import type { ExtractProgress } from './extractors'
 import { ArchiveError } from './extractors'
@@ -31,15 +33,20 @@ export function extractInWorker(
       fn()
       void worker.terminate()
     }
-    signal?.addEventListener('abort', () => finish(() => reject(new ArchiveError('unknown', 'Ajout annulé.'))))
-    worker.on('message', (msg: { type: string; progress?: ExtractProgress; result?: { format: string; files: number; bytes: number }; code?: string; message?: string }) => {
-      if (msg.type === 'progress' && msg.progress) onProgress(msg.progress)
-      else if (msg.type === 'done' && msg.result) finish(() => resolve(msg.result!))
-      else if (msg.type === 'error') finish(() => reject(new ArchiveError((msg.code as ArchiveError['code']) ?? 'unknown', msg.message ?? 'Erreur')))
-    })
+    signal?.addEventListener('abort', () => finish(() => reject(new ArchiveError('unknown', t('archive.errors.canceled')))))
+    worker.on(
+      'message',
+      (msg: { type: string; progress?: ExtractProgress; result?: { format: string; files: number; bytes: number }; code?: string; text?: Msg | null; message?: string }) => {
+        if (msg.type === 'progress' && msg.progress) onProgress(msg.progress)
+        else if (msg.type === 'done' && msg.result) finish(() => resolve(msg.result!))
+        // Message traduit ici : le worker n'a pas les traductions.
+        else if (msg.type === 'error')
+          finish(() => reject(new ArchiveError((msg.code as ArchiveError['code']) ?? 'unknown', msg.text ?? msg.message ?? t('common.error'))))
+      }
+    )
     worker.on('error', (err) => finish(() => reject(err)))
     worker.on('exit', (code) => {
-      if (!settled) finish(() => reject(new Error(`L'extraction s'est arrêtée (code ${code}).`)))
+      if (!settled) finish(() => reject(new Error(t('archive.errors.stopped', { code }))))
     })
   })
 }

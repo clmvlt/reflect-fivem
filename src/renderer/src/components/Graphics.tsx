@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { t as translate } from 'i18next'
 import {
+  GRAPHICS_GROUP_LABEL,
   GRAPHICS_GROUPS,
   GRAPHICS_PRESETS,
   GRAPHICS_SETTINGS,
@@ -9,16 +12,18 @@ import {
   type GraphicsState,
   type GraphicsTarget
 } from '@shared/graphics'
+import { formatNumber } from '@shared/intl'
 import { useStore } from '../store'
-import { q } from '../lib/format'
+import { num, q } from '../lib/format'
 
 function displayRange(def: GraphicsSettingDef, v: string): string {
   const n = Number(v)
-  if ((def.max ?? 1) <= 1) return `${Math.round(n * 100)} %`
-  return `× ${n.toFixed(1).replace('.', ',')}`
+  if ((def.max ?? 1) <= 1) return formatNumber(Math.round(n * 100) / 100, { style: 'percent', maximumFractionDigits: 0 })
+  return translate('graphics.multiplier', { value: formatNumber(n, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) })
 }
 
 export function Graphics() {
+  const { t, i18n } = useTranslation()
   const { overview, run, setMessage } = useStore()
   const [state, setState] = useState<GraphicsState | null | undefined>(undefined)
   const [draft, setDraft] = useState<Record<string, string>>({})
@@ -47,7 +52,8 @@ export function Graphics() {
 
   const active = overview?.state.active ?? null
   const activePack = active ? overview?.library.find((p) => p.id === active.packId) : null
-  const recos = useMemo(() => unmet(recommendationsFor(activePack?.features ?? []), draft), [activePack, draft])
+  // Raisons traduites à l'appel : recalculées au changement de langue.
+  const recos = useMemo(() => unmet(recommendationsFor(activePack?.features ?? []), draft), [activePack, draft, i18n.language])
   const running = (overview?.games.runningProcesses.length ?? 0) > 0
 
   if (state === undefined) return <div className="page" />
@@ -55,9 +61,9 @@ export function Graphics() {
     return (
       <div className="page">
         <header className="page-head">
-          <h1>Graphismes</h1>
+          <h1>{t('graphics.title')}</h1>
         </header>
-        <p className="empty">Fichier de réglages introuvable. Lancez FiveM une première fois, puis revenez ici.</p>
+        <p className="empty">{t('graphics.notFound')}</p>
         <FpsLimit />
       </div>
     )
@@ -72,11 +78,11 @@ export function Graphics() {
     if (s) {
       setState(s)
       setDraft(s.values)
-      setMessage({ kind: 'info', text: `Réglages enregistrés. Ils s’appliqueront au prochain lancement de ${state.target.label}.` })
+      setMessage({ kind: 'info', text: t('graphics.saved', { game: state.target.label }) })
     }
   }
   const restore = async (): Promise<void> => {
-    const ok = await window.api.confirm('Restaurer les réglages d’origine ?', 'Vos réglages graphiques reviennent à ce qu’ils étaient avant la première modification faite ici.', 'Restaurer')
+    const ok = await window.api.confirm(t('graphics.restore.title'), t('graphics.restore.message'), t('graphics.restore.confirm'))
     if (!ok) return
     const s = await run(() => window.api.restoreGraphics(state.target.id))
     if (s) {
@@ -88,14 +94,14 @@ export function Graphics() {
   return (
     <div className="page with-savebar">
       <header className="page-head">
-        <h1>Graphismes</h1>
+        <h1>{t('graphics.title')}</h1>
         <span className="page-note">{[state.videoCard, state.resolution].filter(Boolean).join(' · ')}</span>
         <div className="spacer" />
         {state.targets.length > 1 && (
-          <select value={state.target.id} onChange={(e) => void load(e.target.value as GraphicsTarget['id'])} aria-label="Jeu">
-            {state.targets.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}
+          <select value={state.target.id} onChange={(e) => void load(e.target.value as GraphicsTarget['id'])} aria-label={t('graphics.game')}>
+            {state.targets.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.label}
               </option>
             ))}
           </select>
@@ -104,21 +110,19 @@ export function Graphics() {
 
       {running && (
         <div className="bar bar-warning">
-          <span className="bar-text">Fermez FiveM pour enregistrer : le jeu réécrit ces réglages en quittant.</span>
+          <span className="bar-text">{t('graphics.closeGame')}</span>
         </div>
       )}
 
       {activePack && recos.length > 0 && (
         <div className="bar">
-          <span className="bar-text">
-            {q(activePack.name)} rend mieux avec : {recos.map((r) => r.reason).join(', ')}.
-          </span>
-          <button onClick={() => applyValues(Object.fromEntries(recos.map((r) => [r.key, r.value])))}>Appliquer</button>
+          <span className="bar-text">{t('graphics.recommend', { pack: q(activePack.name), list: recos.map((r) => r.reason).join(', ') })}</span>
+          <button onClick={() => applyValues(Object.fromEntries(recos.map((r) => [r.key, r.value])))}>{t('common.apply')}</button>
         </div>
       )}
 
       <div className="presets">
-        <span className="muted">Préréglages</span>
+        <span className="muted">{t('graphics.presets')}</span>
         {GRAPHICS_PRESETS.map((p) => (
           <button key={p.id} onClick={() => applyValues(p.values)}>
             {p.label}
@@ -134,7 +138,7 @@ export function Graphics() {
         return (
           <section key={group}>
             <div className="section-head">
-              <h2>{group}</h2>
+              <h2>{GRAPHICS_GROUP_LABEL[group]}</h2>
             </div>
             <ul className="list settings-list">
               {defs.map((d) => (
@@ -150,24 +154,22 @@ export function Graphics() {
 
       <div className="gfx-foot">
         <span className="meta path">{state.target.path}</span>
-        {state.readOnly && <span className="meta">Fichier en lecture seule : il le reste après l’enregistrement.</span>}
+        {state.readOnly && <span className="meta">{t('graphics.readOnly')}</span>}
         <div className="actions">
-          <button onClick={() => void run(() => window.api.openPath(state.target.path.replace(/[\\/][^\\/]+$/, '')))}>Ouvrir le dossier</button>
-          {state.hasBackup && <button onClick={() => void restore()}>Restaurer les réglages d’origine</button>}
+          <button onClick={() => void run(() => window.api.openPath(state.target.path.replace(/[\\/][^\\/]+$/, '')))}>{t('graphics.openFolder')}</button>
+          {state.hasBackup && <button onClick={() => void restore()}>{t('graphics.restore.button')}</button>}
         </div>
       </div>
 
       {count > 0 && (
         <div className="savebar">
-          <span>
-            {count} modification{count > 1 ? 's' : ''}
-          </span>
+          <span>{t('graphics.changes', { count })}</span>
           <div className="spacer" />
           <button onClick={() => setDraft(state.values)} disabled={saving}>
-            Annuler
+            {t('common.cancel')}
           </button>
           <button className="primary" onClick={() => void save()} disabled={saving || running}>
-            Enregistrer
+            {t('common.save')}
           </button>
         </div>
       )}
@@ -182,6 +184,7 @@ const FPS_CHOICES = [60, 90, 120, 144, 165, 240]
  * est retenu pour toutes les installations et appliqué tout de suite au pack installé.
  */
 function FpsLimit() {
+  const { t } = useTranslation()
   const { overview, run, setMessage } = useStore()
   const [busy, setBusy] = useState(false)
   if (!overview) return null
@@ -197,37 +200,38 @@ function FpsLimit() {
     const updated = await run(() => window.api.setFpsLimit(next))
     setBusy(false)
     if (updated === undefined) return
-    const what = next === null ? 'la limite prévue par chaque pack' : next === 0 ? 'aucune limite' : `${next} images par seconde au maximum`
+    const what = next === null ? 'pack' : next === 0 ? 'none' : 'max'
+    const n = next ? num(next) : ''
     setMessage({
       kind: 'info',
-      text: updated && packName ? `${packName} : ${what}, dès le prochain lancement.` : `Choix enregistré : ${what}, pour les packs qui utilisent ENB.`
+      text: updated && packName ? t(`graphics.fps.savedPack.${what}`, { pack: packName, n }) : t(`graphics.fps.savedAll.${what}`, { n })
     })
   }
 
   const note = !active
-    ? 'Appliquée à l’installation des packs qui utilisent ENB.'
+    ? t('graphics.fps.noteNoPack')
     : hasEnb
-      ? `Appliquée par l’ENB de ${q(packName ?? '')}.`
-      : `${q(packName ?? '')} n’utilise pas ENB : la limite servira aux packs qui en ont. Pour celui-ci, réglez la limite dans le panneau NVIDIA ou AMD.`
+      ? t('graphics.fps.noteEnb', { pack: q(packName ?? '') })
+      : t('graphics.fps.noteNoEnb', { pack: q(packName ?? '') })
 
   return (
     <section>
       <div className="section-head">
-        <h2>Images par seconde</h2>
+        <h2>{t('graphics.fps.title')}</h2>
       </div>
       <ul className="list settings-list">
         <li className="row">
           <div className="row-main">
-            <div>Limite d’images par seconde</div>
+            <div>{t('graphics.fps.label')}</div>
             <div className="meta meta-wrap">{note}</div>
           </div>
-          <select value={value} onChange={(e) => void change(e.target.value)} disabled={busy} aria-label="Limite d’images par seconde">
-            <option value="pack">Celle du pack</option>
-            <option value="0">Aucune limite</option>
-            {limit !== null && limit > 0 && !FPS_CHOICES.includes(limit) && <option value={String(limit)}>{limit} FPS</option>}
-            {FPS_CHOICES.map((n) => (
-              <option key={n} value={String(n)}>
-                {n} FPS
+          <select value={value} onChange={(e) => void change(e.target.value)} disabled={busy} aria-label={t('graphics.fps.label')}>
+            <option value="pack">{t('graphics.fps.pack')}</option>
+            <option value="0">{t('graphics.fps.none')}</option>
+            {limit !== null && limit > 0 && !FPS_CHOICES.includes(limit) && <option value={String(limit)}>{t('graphics.fps.value', { n: num(limit) })}</option>}
+            {FPS_CHOICES.map((c) => (
+              <option key={c} value={String(c)}>
+                {t('graphics.fps.value', { n: num(c) })}
               </option>
             ))}
           </select>
@@ -238,12 +242,13 @@ function FpsLimit() {
 }
 
 function Control({ def, value, onChange }: { def: GraphicsSettingDef; value: string; onChange: (v: string) => void }) {
+  const { t } = useTranslation()
   if (def.kind === 'bool')
     return (
       <label className="switch">
         <input type="checkbox" checked={value === 'true'} onChange={(e) => onChange(e.target.checked ? 'true' : 'false')} />
         <span className="switch-track" />
-        <span className="switch-text">{value === 'true' ? 'Activé' : 'Désactivé'}</span>
+        <span className="switch-text">{value === 'true' ? t('common.enabled') : t('common.disabled')}</span>
       </label>
     )
   if (def.kind === 'range')
@@ -256,7 +261,7 @@ function Control({ def, value, onChange }: { def: GraphicsSettingDef; value: str
   const known = def.options?.some((o) => o.value === value)
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)}>
-      {!known && <option value={value}>Personnalisé ({value})</option>}
+      {!known && <option value={value}>{t('graphics.custom', { value })}</option>}
       {def.options?.map((o) => (
         <option key={o.value} value={o.value}>
           {o.label}

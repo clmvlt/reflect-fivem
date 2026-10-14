@@ -1,0 +1,1004 @@
+{
+  "account": {
+    "errors": {
+      "avatarFormat": "Format non pris en charge : choisissez une image PNG, JPEG, GIF ou BMP.",
+      "avatarTooLarge": "Photo trop lourde (8 Mo au plus).",
+      "badResponse": "Le serveur ne répond pas correctement.",
+      "badStatus": "Le serveur ne répond pas correctement (erreur {{status}}).",
+      "missingCredentials": "Saisissez votre adresse e-mail et votre mot de passe.",
+      "signedOut": "Vous n’êtes pas connecté.",
+      "tooMany": "Trop d’essais. Réessayez plus tard.",
+      "tooManyMinutes_one": "Trop d’essais. Réessayez dans {{count}} min.",
+      "tooManyMinutes_other": "Trop d’essais. Réessayez dans {{count}} min.",
+      "tooManySeconds_one": "Trop d’essais. Réessayez dans {{count}} s.",
+      "tooManySeconds_other": "Trop d’essais. Réessayez dans {{count}} s."
+    },
+    "google": {
+      "cancelled": "Connexion annulée.",
+      "expired": "Connexion Google expirée : réessayez.",
+      "failed": "Connexion Google impossible : {{error}}",
+      "invalidUrl": "Connexion Google indisponible (adresse invalide).",
+      "noBrowser": "Navigateur introuvable : {{error}}",
+      "page": {
+        "cancelledText": "Vous pouvez fermer cet onglet.",
+        "cancelledTitle": "Connexion annulée",
+        "invalidText": "Relancez la connexion depuis Reflect FiveM.",
+        "invalidTitle": "Requête invalide",
+        "successText": "Vous pouvez fermer cet onglet et revenir à Reflect FiveM.",
+        "successTitle": "Connexion réussie"
+      }
+    }
+  },
+  "accountView": {
+    "badges": {
+      "admin": "Administrateur",
+      "author": "Auteur"
+    },
+    "fields": {
+      "displayName": "Nom public",
+      "displayNameHint": "Affiché avec vos packs, de 2 à 40 caractères.",
+      "email": "Adresse e-mail",
+      "password": "Mot de passe",
+      "passwordHint": "8 caractères au moins."
+    },
+    "logout": "Se déconnecter",
+    "password": {
+      "add": "Ajouter un mot de passe",
+      "added": "Mot de passe ajouté.",
+      "change": "Changer le mot de passe",
+      "changed": "Mot de passe modifié. Vos autres appareils sont déconnectés.",
+      "confirm": "Confirmation",
+      "current": "Mot de passe actuel",
+      "forced": "Un nouveau mot de passe est demandé pour ce compte. Choisissez-en un pour continuer.",
+      "googleOnly": "Compte créé avec Google : ajoutez un mot de passe pour vous connecter aussi avec votre adresse e-mail.",
+      "mismatch": "Les deux mots de passe ne correspondent pas.",
+      "new": "Nouveau mot de passe",
+      "othersSignedOut": "Vos autres appareils seront déconnectés."
+    },
+    "profile": {
+      "addLink": "Ajouter un lien",
+      "addPhoto": "Ajouter une photo…",
+      "authorPage": "Voir ma page d’auteur",
+      "bio": "Description",
+      "changePhoto": "Changer la photo…",
+      "discard": "Annuler les modifications",
+      "linkLabel": "Nom du lien",
+      "linkLabelPlaceholder": "Nom (ex. YouTube)",
+      "linkUrl": "Adresse du lien",
+      "links": "Liens",
+      "linksMax": "{{n}} liens au plus.",
+      "removeLink": "Retirer ce lien",
+      "removePhoto": "Retirer la photo",
+      "saved": "Profil enregistré.",
+      "title": "Profil public",
+      "uploading": "Envoi…"
+    },
+    "session": {
+      "device": "Connecté sur cet appareil",
+      "deviceHelp": "La connexion est gardée chiffrée sur ce PC et expire après 180 jours sans utilisation.",
+      "title": "Connexion"
+    },
+    "signIn": {
+      "google": "Continuer avec Google",
+      "googleWait": "Terminez la connexion dans votre navigateur…",
+      "intro": "Le compte est facultatif : la bibliothèque et la Marketplace fonctionnent sans. Il vous donne une page d’auteur (photo, nom public, description, liens) affichée avec vos packs.",
+      "loggingIn": "Connexion…",
+      "login": "Se connecter",
+      "or": "ou",
+      "register": "Créer un compte",
+      "registering": "Création du compte…",
+      "submitRegister": "Créer le compte"
+    },
+    "title": "Compte"
+  },
+  "analyzer": {
+    "groups": {
+      "docs": "Documentation et aperçus",
+      "docsIn": "Documentation et aperçus ({{dir}})",
+      "enbIn_one": "{{count}} fichier ENB ({{dir}})",
+      "enbIn_other": "{{count}} fichiers ENB ({{dir}})",
+      "enb_one": "{{count}} fichier ENB",
+      "enb_other": "{{count}} fichiers ENB",
+      "filesIn_one": "{{count}} fichier ({{dir}})",
+      "filesIn_other": "{{count}} fichiers ({{dir}})",
+      "files_one": "{{count}} fichier",
+      "files_other": "{{count}} fichiers",
+      "modsIn_one": "{{count}} archive .rpf ({{dir}})",
+      "modsIn_other": "{{count}} archives .rpf ({{dir}})",
+      "mods_one": "{{count}} archive .rpf",
+      "mods_other": "{{count}} archives .rpf",
+      "pluginsIn_one": "{{count}} fichier de plugins ({{dir}})",
+      "pluginsIn_other": "{{count}} fichiers de plugins ({{dir}})",
+      "plugins_one": "{{count}} fichier de plugins",
+      "plugins_other": "{{count}} fichiers de plugins",
+      "unsupportedIn_one": "{{count}} fichier non compatible ({{dir}})",
+      "unsupportedIn_other": "{{count}} fichiers non compatibles ({{dir}})",
+      "unsupported_one": "{{count}} fichier non compatible",
+      "unsupported_other": "{{count}} fichiers non compatibles"
+    },
+    "reasons": {
+      "addonsDir": "Dossier « addons » : .rpf chargés par FiveM (serveurs sans mode pur uniquement)",
+      "asiConfig": "Configuration de {{stem}}.asi : suit son plugin dans plugins",
+      "citizenDir": "Dossier « citizen » : fichiers internes de FiveM remplacés",
+      "docs": "Documentation / aperçus : non installés",
+      "enbConfigDir": "Contient enbseries.ini / enblocal.ini : fichiers ENB à placer à la racine de GTA V",
+      "fivemRootDir": "Dossier « FiveM Application Data »",
+      "groupEnb": "Fichiers de configuration ENB → racine de GTA V",
+      "groupMods": "Archives .rpf → dossier mods de FiveM",
+      "groupPlugins": "DLL graphiques, .asi et configurations → plugins de FiveM",
+      "gtaRootDir": "Dossier à copier à la racine de GTA V (configuration ENB)",
+      "modsDir": "Dossier « mods » : archives .rpf chargées par FiveM",
+      "modsDirNoRpf": "Dossier « mods » : archives .rpf chargées par FiveM (aucun fichier .rpf trouvé)",
+      "pluginsContent": "Contient ReShade / DLL graphiques / .asi : contenu du dossier plugins de FiveM",
+      "pluginsDir": "Dossier « plugins » : ReShade, ENB (d3d11.dll), .asi graphiques",
+      "proxyNotInGta": "Sous FiveM, les DLL graphiques et les .asi doivent être dans plugins : FiveM ne les charge pas depuis le dossier GTA V",
+      "spLoader": "Chargeur du mode solo (ASI Loader / ScriptHookV) : inutile sous FiveM",
+      "spMods": "Dossier mods du mode solo (structure OpenIV : update/, x64/...) : non compatible avec le dossier mods de FiveM",
+      "specialDir": "Dossier {{name}} reconnu"
+    },
+    "warnings": {
+      "nothingInstallable": "Aucun fichier installable n'a été reconnu dans ce pack.",
+      "partialDuplicate_one": "{{count}} fichier(s) de « {{label}} » existent aussi dans « {{other}} » : seul le premier sera installé.",
+      "partialDuplicate_other": "{{count}} fichier(s) de « {{label}} » existent aussi dans « {{other}} » : seul le premier sera installé.",
+      "unknown_one": "{{count}} élément(s) non reconnu(s) : vérifiez leur destination avant d'appliquer.",
+      "unknown_other": "{{count}} élément(s) non reconnu(s) : vérifiez leur destination avant d'appliquer.",
+      "unsupported": "« {{label}} » : {{reason}}.",
+      "variant": "« {{label}} » installe les mêmes fichiers que « {{other}} » (variante probable) : désactivé par défaut."
+    }
+  },
+  "app": {
+    "drop": {
+      "library": "Déposez pour ajouter à la bibliothèque"
+    },
+    "gameProblem": {
+      "fivemMissing": "FiveM introuvable",
+      "gtaEnhanced": "GTA V Enhanced",
+      "gtaMissing": "GTA V introuvable"
+    },
+    "nav": {
+      "account": "Compte",
+      "cleanup": "Nettoyage",
+      "discord": "Notre serveur Discord",
+      "graphics": "Graphismes",
+      "library": "Bibliothèque",
+      "market": "Marketplace",
+      "mods": "Mods",
+      "packs": "Packs",
+      "settings": "Réglages"
+    },
+    "packMenu": {
+      "deleteDetail": "Le pack est retiré de la bibliothèque et ses fichiers sont effacés. Le jeu n’est pas modifié.",
+      "deleteTitle": "Supprimer {{name}} ?"
+    },
+    "passwordToChange": "Mot de passe à changer"
+  },
+  "archive": {
+    "errors": {
+      "canceled": "Ajout annulé.",
+      "corrupt": "Archive endommagée ou incomplète.",
+      "failed": "Extraction impossible ({{reason}}).",
+      "format": "Format non pris en charge. Utilisez une archive .zip, .rar ou .7z.",
+      "password": "Archive protégée par mot de passe. Extrayez-la avec WinRAR ou 7-Zip, puis déposez le dossier.",
+      "sevenZipUnavailable": "Extraction .7z indisponible.",
+      "space": "Pas assez de place sur le disque.",
+      "stopped": "L'extraction s'est arrêtée (code {{code}}).",
+      "stream": "flux indisponible",
+      "volume": "Il manque une partie de l’archive (.part2.rar, .part3.rar…). Placez-les toutes dans le même dossier.",
+      "zipMethod": "Méthode de compression ZIP {{method}} non gérée nativement"
+    }
+  },
+  "cleanup": {
+    "cache": {
+      "clear": "Vider",
+      "computing": "Calcul…",
+      "confirm": "Vider le cache de FiveM ?",
+      "confirmDetail": "FiveM le reconstruira au prochain lancement. Les fichiers du jeu téléchargés et vos réglages sont conservés.",
+      "empty": "Vide",
+      "help": "Les fichiers du jeu téléchargés et vos réglages ne sont pas touchés.",
+      "title": "Cache de FiveM"
+    },
+    "foreign": {
+      "dirMeta_one": "{{count}} fichier · {{size}}",
+      "dirMeta_other": "{{count}} fichiers · {{size}}",
+      "groupMeta_one": "{{count}} élément · {{size}}",
+      "groupMeta_other": "{{count}} éléments · {{size}}",
+      "hint": "Les éléments rangés quittent le jeu et deviennent un pack de la liste, réinstallable à tout moment.",
+      "none": "Aucun mod installé hors de l’application.",
+      "selected_one": "{{count}} sélectionné · {{size}}",
+      "selected_other": "{{count}} sélectionnés · {{size}}",
+      "stash": "Ranger dans un pack",
+      "title": "Mods installés à la main"
+    },
+    "game": {
+      "action": "Nettoyer le jeu",
+      "confirm": {
+        "shotsUntouched": "Les captures d’écran ne sont pas touchées.",
+        "stash": "Les mods installés à la main sont rangés dans un pack « Ancienne installation », réinstallable à tout moment.",
+        "title": "Remettre le jeu d’origine ?"
+      },
+      "nothing": "Aucun mod graphique installé.",
+      "removes": "Retire {{summary}}.",
+      "summary": {
+        "manualMods_one": "{{count}} mod installé à la main",
+        "manualMods_other": "{{count}} mods installés à la main",
+        "pack": "le pack {{name}}"
+      },
+      "title": "Remettre le jeu d’origine"
+    },
+    "scanning": "Analyse…",
+    "shots": {
+      "confirmDetail": "{{size}} seront mis à la corbeille de Windows.",
+      "confirm_one": "Supprimer {{count}} capture d’écran ?",
+      "confirm_other": "Supprimer {{count}} captures d’écran ?",
+      "count_one": "{{count}} capture dans le dossier plugins",
+      "count_other": "{{count}} captures dans le dossier plugins",
+      "move": "Déplacer dans Images",
+      "moveTitle": "Vers Images\\FiveM",
+      "title": "Captures d’écran ReShade"
+    },
+    "title": "Nettoyage"
+  },
+  "common": {
+    "add": "Ajouter",
+    "apply": "Appliquer",
+    "back": "Retour",
+    "cancel": "Annuler",
+    "change": "Modifier…",
+    "close": "Fermer",
+    "confirm": "Confirmer",
+    "delete": "Supprimer",
+    "disabled": "Désactivé",
+    "enabled": "Activé",
+    "error": "Erreur",
+    "failed": "Échec.",
+    "loading": "Chargement…",
+    "next": "Suivant",
+    "no": "Non",
+    "none": "Aucun",
+    "ok": "OK",
+    "open": "Ouvrir",
+    "previous": "Précédent",
+    "protectedPack": "Pack protégé : il reste chiffré dans votre bibliothèque. Ses fichiers ne sont lisibles que dans le jeu, pendant qu’il y est installé.",
+    "refresh": "Actualiser",
+    "remove": "Retirer",
+    "retry": "Réessayer",
+    "save": "Enregistrer",
+    "search": "Rechercher",
+    "yes": "Oui"
+  },
+  "errors": {
+    "busy": "Une opération est déjà en cours.",
+    "network": "Serveur injoignable. Vérifiez votre connexion à Internet.",
+    "unknownMethod": "Méthode inconnue : {{method}}"
+  },
+  "executor": {
+    "errors": {
+      "accessDenied": "Accès refusé : {{path}}",
+      "busy": "Un fichier est utilisé par un autre programme. Fermez FiveM et réessayez.",
+      "elevationDenied": "Autorisation administrateur refusée. Rien n'a été modifié.",
+      "exists": "Un fichier existe déjà : {{path}}",
+      "failed_one": "{{count}} opération(s) en échec : {{error}}",
+      "failed_other": "{{count}} opération(s) en échec : {{error}}",
+      "noResult": "Le processus administrateur n'a pas renvoyé de résultat.",
+      "noSpace": "Pas assez de place sur le disque.",
+      "notFound": "Fichier introuvable : {{path}}",
+      "occupied": "Emplacement occupé : {{path}}",
+      "planTampered": "Plan modifié : exécution refusée."
+    },
+    "rollingBack": "Annulation des modifications…"
+  },
+  "files": {
+    "invalidPath": "Chemin invalide : {{path}}",
+    "outsideRoot": "Chemin hors de la racine : {{path}}"
+  },
+  "foreign": {
+    "addonsArchive": "Archive du dossier addons",
+    "citizenFile": "Fichier ajouté dans citizen (mod timecycle / visualsettings…)",
+    "modsFile": "Fichier dans mods",
+    "modsFolder": "Dossier dans mods",
+    "rpfMod": "Mod .rpf"
+  },
+  "format": {
+    "bytes": {
+      "b": "{{value}} o",
+      "gb": "{{value}} Go",
+      "kb": "{{value}} Ko",
+      "mb": "{{value}} Mo",
+      "tb": "{{value}} To"
+    },
+    "justNow": "à l’instant",
+    "quote": "« {{text}} »"
+  },
+  "gallery": {
+    "image": "Image {{n}}",
+    "play": "Lire la vidéo",
+    "video": "Vidéo",
+    "videoTitle": "Vidéo du pack",
+    "youtube": "Vidéo YouTube"
+  },
+  "games": {
+    "checks": {
+      "citizenIni": "CitizenFX.ini (FiveM déjà lancé)",
+      "citizenIniMissing": "Lancez FiveM une première fois pour qu'il enregistre le dossier de GTA V.",
+      "executable": "Exécutable du jeu",
+      "executableEnhanced": "GTA5_Enhanced.exe (édition Enhanced)",
+      "executableLegacy": "GTA5.exe (édition Legacy)",
+      "executableMissing": "GTA5.exe introuvable",
+      "exists": "Dossier existant",
+      "fivemFiles": "Fichiers de FiveM (citizen, CoreRT.dll)",
+      "fivemFilesInvalid": "Ce dossier n'est pas un dossier FiveM.app valide.",
+      "fivemFound": "Dossier FiveM.app trouvé",
+      "fivemNotFound": "FiveM ne semble pas installé. Indiquez son dossier manuellement.",
+      "fivemNotWritable": "Droits administrateur nécessaires.",
+      "graphicsMods": "Compatible avec les mods graphiques FiveM",
+      "graphicsModsEnhanced": "Édition Enhanced : FiveM classique utilise GTA V Legacy, et « FiveM pour GTA V Enhanced » (accès anticipé) force le mode pur et n'accepte pas les mods graphiques.",
+      "gtaFiles": "Fichiers du jeu (common.rpf, x64*.rpf, update.rpf, audio)",
+      "gtaFilesMissing": "Manquant : {{files}}",
+      "gtaFound": "Dossier GTA V trouvé",
+      "gtaNotFound": "Indiquez le dossier de GTA V manuellement.",
+      "gtaNotWritable": "Dossier protégé (Program Files) : Windows demandera l'autorisation administrateur à l'application du pack.",
+      "sameFolder": "Même dossier que FiveM",
+      "sameFolderMismatch": "FiveM utilise « {{path}} » : les fichiers ENB doivent aller dans ce dossier-là.",
+      "writable": "Accès en écriture"
+    },
+    "edition": {
+      "unknown": "Inconnue"
+    },
+    "source": {
+      "citizenIni": "Configuration de FiveM (CitizenFX.ini)",
+      "default": "Emplacement par défaut",
+      "defaultEpic": "Emplacement par défaut (Epic)",
+      "enhanced": "{{source}} (Enhanced)",
+      "installed": "Registre (programme installé)",
+      "lastRun": "Registre (dernier lancement de FiveM)",
+      "manual": "Choisi manuellement",
+      "notFound": "Non trouvé",
+      "protocol": "Registre (protocole fivem://)",
+      "rockstarRegistry": "Registre Rockstar ({{value}})"
+    }
+  },
+  "graphics": {
+    "changes_one": "{{count}} modification",
+    "changes_other": "{{count}} modifications",
+    "closeGame": "Fermez FiveM pour enregistrer : le jeu réécrit ces réglages en quittant.",
+    "custom": "Personnalisé ({{value}})",
+    "errors": {
+      "invalid": "Valeur invalide pour {{label}}.",
+      "noBackup": "Aucune sauvegarde des réglages d’origine.",
+      "unknown": "Réglage inconnu : {{key}}"
+    },
+    "fps": {
+      "label": "Limite d’images par seconde",
+      "none": "Aucune limite",
+      "noteEnb": "Appliquée par l’ENB de {{pack}}.",
+      "noteNoEnb": "{{pack}} n’utilise pas ENB : la limite servira aux packs qui en ont. Pour celui-ci, réglez la limite dans le panneau NVIDIA ou AMD.",
+      "noteNoPack": "Appliquée à l’installation des packs qui utilisent ENB.",
+      "pack": "Celle du pack",
+      "savedAll": {
+        "max": "Choix enregistré : {{n}} images par seconde au maximum, pour les packs qui utilisent ENB.",
+        "none": "Choix enregistré : aucune limite, pour les packs qui utilisent ENB.",
+        "pack": "Choix enregistré : la limite prévue par chaque pack, pour les packs qui utilisent ENB."
+      },
+      "savedPack": {
+        "max": "{{pack}} : {{n}} images par seconde au maximum, dès le prochain lancement.",
+        "none": "{{pack}} : aucune limite, dès le prochain lancement.",
+        "pack": "{{pack}} : la limite prévue par chaque pack, dès le prochain lancement."
+      },
+      "title": "Images par seconde",
+      "value": "{{n}} FPS"
+    },
+    "game": "Jeu",
+    "groups": {
+      "antialiasing": "Anticrénelage",
+      "display": "Affichage",
+      "distance": "Distance et densité",
+      "effects": "Effets",
+      "quality": "Qualité"
+    },
+    "multiplier": "× {{value}}",
+    "notFound": "Fichier de réglages introuvable. Lancez FiveM une première fois, puis revenez ici.",
+    "openFolder": "Ouvrir le dossier",
+    "preset": {
+      "balanced": "Équilibré",
+      "performance": "Performance",
+      "quality": "Qualité",
+      "ultra": "Ultra"
+    },
+    "presets": "Préréglages",
+    "readOnly": "Fichier en lecture seule : il le reste après l’enregistrement.",
+    "reco": {
+      "dx11": "DirectX 11 (nécessaire pour ENB et ReShade)",
+      "msaa": "MSAA désactivé (effets de profondeur)",
+      "postFx": "post-traitement au moins en « Très élevé »",
+      "shaders": "shaders en « Très élevé »"
+    },
+    "recommend": "{{pack}} rend mieux avec : {{list}}.",
+    "restore": {
+      "button": "Restaurer les réglages d’origine",
+      "confirm": "Restaurer",
+      "message": "Vos réglages graphiques reviennent à ce qu’ils étaient avant la première modification faite ici.",
+      "title": "Restaurer les réglages d’origine ?"
+    },
+    "saved": "Réglages enregistrés. Ils s’appliqueront au prochain lancement de {{game}}.",
+    "settings": {
+      "anisotropic": "Filtrage anisotrope",
+      "cityDensity": "Densité de population",
+      "dof": "Profondeur de champ",
+      "dxVersion": "Version de DirectX",
+      "grass": "Herbe",
+      "hdStreaming": "Streaming haute définition en vol",
+      "lodScale": "Distance d'affichage",
+      "longShadows": "Ombres longues",
+      "maxLodScale": "Distance étendue",
+      "motionBlur": "Flou de mouvement",
+      "particles": "Particules",
+      "pedVariety": "Variété des piétons",
+      "postFx": "Post-traitement",
+      "reflectionMsaa": "MSAA des réflexions",
+      "reflections": "Réflexions",
+      "shaders": "Shaders",
+      "shadowDistance": "Distance des ombres",
+      "shadows": "Ombres",
+      "softShadows": "Ombres adoucies",
+      "ssao": "Occlusion ambiante",
+      "tessellation": "Tessellation",
+      "textures": "Textures",
+      "ultraShadows": "Ombres haute résolution",
+      "vehicleVariety": "Variété des véhicules",
+      "vsync": "Synchronisation verticale",
+      "water": "Eau",
+      "windowed": "Mode d'affichage"
+    },
+    "targets": {
+      "fivem": "FiveM",
+      "gta": "GTA V solo"
+    },
+    "title": "Graphismes",
+    "values": {
+      "borderless": "Fenêtré sans bordure",
+      "fullscreen": "Plein écran",
+      "half": "Moitié",
+      "high": "Élevé",
+      "normal": "Normal",
+      "off": "Désactivé",
+      "offFeminine": "Désactivée",
+      "offFemininePlural": "Désactivées",
+      "onFeminine": "Activée",
+      "sharp": "Nettes",
+      "soft": "Douces",
+      "softer": "Plus douces",
+      "softest": "Les plus douces",
+      "veryHigh": "Très élevé",
+      "windowed": "Fenêtré"
+    }
+  },
+  "history": {
+    "cacheFreed": "{{size}} libérés",
+    "captured_one": "{{n}} fichier rangé",
+    "captured_other": "{{n}} fichiers rangés",
+    "deleted": "Supprimé",
+    "downloaded": "Téléchargé depuis la Marketplace",
+    "failed": "Échec",
+    "files_one": "{{n}} fichier",
+    "files_other": "{{n}} fichiers",
+    "fpsLimit": "Limite d'images par seconde : {{limit}} FPS",
+    "fpsLimitNone": "Limite d'images par seconde : aucune",
+    "fpsLimitPack": "Limite d'images par seconde : celle du pack",
+    "gameRestored": "Jeu remis d'origine",
+    "graphicsChanged_one": "{{n}} réglage graphique modifié ({{target}})",
+    "graphicsChanged_other": "{{n}} réglages graphiques modifiés ({{target}})",
+    "graphicsRestored": "Réglages graphiques d’origine restaurés ({{target}})",
+    "linked": "Relié à la Marketplace",
+    "removed": "Retiré",
+    "screenshotsMoved_one": "{{n}} capture d'écran déplacée",
+    "screenshotsMoved_other": "{{n}} captures d'écran déplacées",
+    "screenshotsTrashed_one": "{{n}} capture d'écran mise à la corbeille",
+    "screenshotsTrashed_other": "{{n}} captures d'écran mises à la corbeille",
+    "updated": "Mis à jour depuis la Marketplace"
+  },
+  "insights": {
+    "asi": {
+      "ignoredRange": "Ignoré par FiveM en build {{build}} (prévu pour les builds {{from}} à {{to}}). Le reste du pack n’est pas concerné ; il se charge sur les serveurs qui utilisent une de ces builds.",
+      "ignoredSingle": "Ignoré par FiveM en build {{build}} (prévu pour la build {{from}}). Le reste du pack n’est pas concerné ; il se charge sur les serveurs qui utilisent une de ces builds.",
+      "loadedRange": "Chargé par FiveM : prévu pour les builds {{from}} à {{to}}, dont la {{build}} utilisée en dernier.",
+      "loadedSingle": "Chargé par FiveM : prévu pour la build {{from}}, dont la {{build}} utilisée en dernier."
+    },
+    "checks": {
+      "accepted": "Accepté par FiveM.",
+      "asiOutside": "Hors de plugins, FiveM ne le charge pas.",
+      "blocked": "Version bloquée par FiveM.",
+      "builds": "Builds {{from}} à {{to}}.",
+      "citizenText": "Ignorés par les serveurs en mode pur.",
+      "citizenTitle": "Fichiers citizen",
+      "enbHelper": "Bloqué par FiveM, sans effet.",
+      "noBuild": "Ne déclare aucune build : FiveM ne le chargera pas.",
+      "notReshadeEnb": "Ni ReShade ni ENB : ignorée par FiveM.",
+      "openiv": "Provoque une erreur fatale dans FiveM.",
+      "proxyInGta": "Dans le dossier GTA V, FiveM ne la charge pas.",
+      "rpfCfx": "Signé Cfx, accepté en mode pur.",
+      "rpfEncrypted": "Archive chiffrée, ignorée par FiveM.",
+      "rpfInvalid": "Archive RPF invalide, ignorée par FiveM.",
+      "rpfNoAssembly": "Pas de assembly.xml, ignoré par FiveM.",
+      "rpfSubfolder": "Dans un sous-dossier de mods, ignoré par FiveM.",
+      "rpfValid": "Valide.",
+      "tooOld": "Trop ancien, refusé par FiveM."
+    },
+    "level": {
+      "bad": "Problème",
+      "info": "Info",
+      "ok": "OK",
+      "warn": "Attention"
+    }
+  },
+  "installer": {
+    "errors": {
+      "alreadyClean": "Aucun mod à retirer : le jeu est déjà d'origine.",
+      "enhancedPack": "GTA V Enhanced n'accepte pas les mods graphiques FiveM.",
+      "fivemMissing": "Dossier FiveM introuvable. Indiquez-le dans les réglages.",
+      "fivemNotFound": "Dossier FiveM introuvable.",
+      "fpsFailed": "La limite n'a pas pu être appliquée.",
+      "gameFiles": "Ce pack remplacerait des fichiers du jeu. Installation annulée.",
+      "gameRunning": "Fermez FiveM avant de continuer.",
+      "gtaMissing": "Dossier GTA V introuvable. Indiquez-le dans les réglages.",
+      "installFailed": "L'installation a échoué.",
+      "noSpace": "Pas assez de place sur le disque ({{size}} nécessaires).",
+      "nothingChanged": "{{error}} Rien n'a été modifié.",
+      "packEmpty": "Ce pack ne contient rien à installer.",
+      "removeFailed_one": "{{count}} fichier(s) n'ont pas pu être retirés. Fermez FiveM et réessayez.",
+      "removeFailed_other": "{{count}} fichier(s) n'ont pas pu être retirés. Fermez FiveM et réessayez."
+    },
+    "failed": "Échec",
+    "history": {
+      "cleanedBoth": "Jeu remis d'origine ({{pack}} retiré, mods rangés dans {{captured}})",
+      "cleanedCaptured": "Jeu remis d'origine (mods rangés dans {{captured}})",
+      "cleanedRemoved": "Jeu remis d'origine ({{pack}} retiré)"
+    },
+    "names": {
+      "manualAdditions": "Ajouts manuels",
+      "previousInstall": "Ancienne installation"
+    },
+    "phase": {
+      "preparing": "Préparation"
+    },
+    "plan": {
+      "clean": "Nettoyage du jeu",
+      "clearCache": "Vidage du cache",
+      "fpsLimit": "Limite d'images par seconde",
+      "install": "Installation de {{name}}",
+      "moveScreenshots": "Déplacement des captures",
+      "remove": "Retrait de {{name}}",
+      "removeMods": "Retrait des mods"
+    }
+  },
+  "knowledge": {
+    "foreign": {
+      "asi": "Plugin .asi",
+      "configPreset": "Configuration / preset",
+      "enbCache": "Cache ENB",
+      "enbEffects": "Effets ENB",
+      "enbFile": "Fichier ENB",
+      "licenseText": "Licence / texte",
+      "log": "Journal",
+      "openiv": "OpenIV.asi (provoque une erreur fatale dans FiveM)",
+      "otherFile": "Autre fichier",
+      "pluginConfig": "Configuration de plugin",
+      "pluginDir": "Dossier de plugin",
+      "pluginLibrary": "Bibliothèque de plugin",
+      "proxyDll": "DLL graphique (ReShade / ENB)",
+      "reshadeConfig": "Configuration ReShade",
+      "screenshot": "Capture d'écran",
+      "spLoader": "Chargeur du mode solo (ASI / ScriptHookV)"
+    },
+    "labels": {
+      "enbseries": "Effets ENB (enbseries)",
+      "nveShaders": "Shaders NVE",
+      "reshadeShaders": "Shaders ReShade"
+    },
+    "reasons": {
+      "asi": "Plugin .asi → plugins de FiveM",
+      "asiConfig": "Configuration de {{stem}}.asi → plugins de FiveM",
+      "docs": "Documentation (non installée)",
+      "enbFile": "Fichier de configuration ENB → racine de GTA V",
+      "oiv": "Package OpenIV (.oiv) : à installer avec OpenIV pour le mode solo, non utilisable tel quel par FiveM",
+      "preset": "Preset ReShade → plugins de FiveM",
+      "preview": "Aperçu (non installé)",
+      "proxyDll": "DLL graphique (ReShade / ENB) → plugins de FiveM",
+      "reshadeConfig": "Configuration ReShade → plugins de FiveM",
+      "rpf": "Archive .rpf → dossier mods de FiveM",
+      "spLoader": "Chargeur / script du mode solo (ScriptHookV, ASI Loader) : inutile et bloqué sous FiveM",
+      "unknownIni": "Fichier .ini non reconnu : choisissez sa destination",
+      "unknownType": "Type de fichier non reconnu : choisissez sa destination",
+      "visualSettings": "Réglages visuels → citizen/common/data de FiveM"
+    }
+  },
+  "language": {
+    "help": "Langue de l’application. Elle est aussi enregistrée dans votre compte quand vous êtes connecté.",
+    "invalid": "Langue non prise en charge : {{code}}",
+    "title": "Langue"
+  },
+  "library": {
+    "errors": {
+      "duplicate": "{{name}} est déjà dans la liste.",
+      "empty": "L'archive est vide.",
+      "fileNotFound": "Fichier introuvable.",
+      "firstPart": "Ajoutez la première partie de l'archive (.part1.rar).",
+      "format": "Format non pris en charge. Utilisez une archive .zip, .rar ou .7z.",
+      "keyMissing": "Clé de ce pack protégé introuvable.",
+      "newVersion": "Une nouvelle version de ce pack est sur la Marketplace : mettez-le à jour pour pouvoir l’installer.",
+      "noSpace": "Pas assez de place sur le disque ({{size}} nécessaires).",
+      "notFound": "Pack introuvable.",
+      "protectedUnavailable": "Packs protégés indisponibles.",
+      "unknownImage": "Image inconnue.",
+      "unknownPreset": "Preset inconnu.",
+      "unlockOnline": "Ce pack protégé doit être déverrouillé en ligne : {{error}}"
+    },
+    "phases": {
+      "analyzePack": "Analyse du pack",
+      "checkCompat": "Vérification de la compatibilité FiveM",
+      "copyFolder": "Copie du dossier",
+      "extract": "Extraction",
+      "extractNamed": "Extraction de {{name}}",
+      "readArchive": "Lecture de l'archive",
+      "readPack": "Lecture du pack"
+    },
+    "reinstalledInPlace": "Réinstallé exactement à l'emplacement d'origine",
+    "reshadeFixed": "Chemins du PC de l'auteur corrigés.",
+    "unnamed": "Pack sans nom"
+  },
+  "libraryView": {
+    "addPack": "Ajouter un pack…",
+    "card": {
+      "install": "Installer",
+      "installed": "Installé",
+      "partial": "Retrait incomplet",
+      "problems_one": "{{n}} point à vérifier",
+      "problems_other": "{{n}} points à vérifier",
+      "update": "Nouvelle version"
+    },
+    "chooseFolder": "Choisir le dossier…",
+    "empty": {
+      "text": "Ajoutez un pack graphique depuis une archive, ou glissez-la directement dans cette fenêtre.",
+      "title": "Aucun pack pour le moment"
+    },
+    "foreign": {
+      "meta_one": "{{n}} fichier · {{size}}",
+      "meta_other": "{{n}} fichiers · {{size}}",
+      "removeTitle": "Les ranger dans un pack « Ancienne installation »",
+      "title": "Mods installés à la main"
+    },
+    "moreOptions": "Plus d’options",
+    "packsNote_one": "{{n}} pack · {{size}}",
+    "packsNote_other": "{{n}} packs · {{size}}",
+    "pickFivem": "Dossier FiveM.app",
+    "pickGta": "Dossier de GTA V",
+    "preparing": "Préparation",
+    "problems": {
+      "fivemMissing": "Dossier FiveM introuvable.",
+      "gtaEnhanced": "Le dossier GTA V choisi est l'édition Enhanced, qui n'accepte pas les mods FiveM.",
+      "gtaMissing": "Dossier GTA V introuvable."
+    },
+    "title": "Bibliothèque"
+  },
+  "market": {
+    "authorGone": "Cet auteur n’existe pas ou plus.",
+    "errors": {
+      "badKeyPack": "La Marketplace ne répond pas correctement (clé du pack invalide).",
+      "badStatus": "La Marketplace ne répond pas correctement (erreur {{status}}).",
+      "cancelled": "Annulé.",
+      "changedDuringDownloadPack": "Le pack a été mis à jour pendant le téléchargement : relancez le téléchargement.",
+      "corrupted": "Le fichier téléchargé est endommagé. Relancez le téléchargement.",
+      "downloadFailed": "Téléchargement impossible (erreur {{status}}).",
+      "emptyResponse": "Réponse vide.",
+      "incomplete": "Téléchargement incomplet.",
+      "noArchivePack": "Ce pack n’a pas encore d’archive.",
+      "noSpace": "Pas assez de place sur le disque ({{size}} nécessaires).",
+      "unreachable": "Marketplace injoignable. Vérifiez votre connexion à Internet."
+    },
+    "notes": {
+      "updateNotInstalled": "La nouvelle version de {{name}} est dans la bibliothèque. Installez-la pour remplacer l’ancienne : {{error}}"
+    },
+    "packGone": "Ce pack n’est plus disponible sur la Marketplace.",
+    "phase": {
+      "downloading": "Téléchargement",
+      "images": "Images",
+      "resuming": "Connexion interrompue, reprise…",
+      "unlockPack": "Déverrouillage du pack",
+      "verifying": "Vérification du fichier"
+    }
+  },
+  "marketplace": {
+    "action": {
+      "download": "Télécharger",
+      "inLibrary": "Dans la bibliothèque",
+      "newVersion": "Nouvelle version",
+      "update": "Mettre à jour"
+    },
+    "allPacks": "Tous les packs",
+    "allTags": "Tous",
+    "author": {
+      "memberSince": "membre depuis le {{date}}",
+      "packs": "Packs"
+    },
+    "authorChipPacks_one": "{{name}} : {{n}} pack",
+    "authorChipPacks_other": "{{name}} : {{n}} packs",
+    "authorFilter": {
+      "packs": "Packs de {{name}}",
+      "seePage": "Voir sa page ›"
+    },
+    "authorPage": "Voir la page de {{name}}",
+    "authors": "Auteurs",
+    "back": "‹ Retour",
+    "backToList": "‹ Marketplace",
+    "by": "par <author></author>",
+    "detail": {
+      "description": "Description",
+      "downloads": "Téléchargements",
+      "size": "Taille",
+      "tags": "Étiquettes",
+      "updatePack": "Une nouvelle version est en ligne. Vos réglages et votre preset ReShade sont conservés.",
+      "updatedAt": "Mis à jour le",
+      "version": "Version",
+      "viewOnSite": "Voir sur le site"
+    },
+    "downloads_one": "{{n}} téléchargement",
+    "downloads_other": "{{n}} téléchargements",
+    "empty": {
+      "byAuthorPack": "Aucun pack publié par cet auteur.",
+      "noMatchPack": "Aucun pack ne correspond à cette recherche.",
+      "nonePack": "Aucun pack publié pour le moment."
+    },
+    "featured": {
+      "badgePack": "Pack du moment",
+      "packs_one": "Pack du moment",
+      "packs_other": "Packs du moment"
+    },
+    "packs_one": "{{n}} pack",
+    "packs_other": "{{n}} packs",
+    "page": "Page {{page}} sur {{total}}",
+    "protected": "protégé",
+    "sort": {
+      "label": "Trier",
+      "name": "Nom",
+      "popular": "Populaires",
+      "recent": "Récents"
+    }
+  },
+  "packDetail": {
+    "back": "‹ Bibliothèque",
+    "byAuthor": "par {{author}}",
+    "compat": {
+      "rpfTitle_one": "{{n}} mod .rpf",
+      "rpfTitle_other": "{{n}} mods .rpf",
+      "title": "Compatibilité FiveM",
+      "valid": "Valides.",
+      "validSigned_one": "Valides, dont {{n}} signé Cfx.",
+      "validSigned_other": "Valides, dont {{n}} signés Cfx."
+    },
+    "content": {
+      "dontInstall": "Ne pas installer",
+      "files_one": "{{n}} fichier",
+      "files_other": "{{n}} fichiers",
+      "installPart": "Installer cette partie",
+      "lockedHint": "Retirez le pack du jeu pour modifier son contenu.",
+      "moreFiles_one": "et {{n}} autre",
+      "moreFiles_other": "et {{n}} autres",
+      "notInstalled": "non installé",
+      "optional": "optionnel",
+      "reset": "Rétablir les destinations",
+      "showFiles": "Voir les fichiers",
+      "title": "Contenu",
+      "unknown": "non reconnu",
+      "unsupported": "incompatible avec FiveM"
+    },
+    "description": "Description",
+    "facts": {
+      "added": "Ajouté le",
+      "captured": "Installation existante",
+      "installedFiles": "Fichiers installés",
+      "market": "Marketplace",
+      "marketVersion": "Marketplace, version {{version}}",
+      "preset": "Preset ReShade",
+      "presetAuto": "Chargé automatiquement à l’installation",
+      "presetNextInstall": "Pris en compte à la prochaine installation du pack",
+      "size": "Taille",
+      "source": "Source"
+    },
+    "gone": "Ce pack n’est plus proposé sur la Marketplace. Votre copie reste utilisable.",
+    "install": "Installer",
+    "installed": "Installé",
+    "media": {
+      "choose": "Choisir une image…",
+      "chooseOther": "Choisir une autre image…",
+      "none": "Aucune image",
+      "useAsCover": "Utiliser comme image du pack"
+    },
+    "moreOptions": "Plus d’options",
+    "openFolder": "Ouvrir le dossier",
+    "removeFromGame": "Retirer du jeu",
+    "resetUserConfigs": "Revenir à l’original",
+    "update": "Mettre à jour",
+    "updateAvailable": "Nouvelle version sur la Marketplace.",
+    "userConfigs_one": "{{n}} réglage modifié en jeu, réinstallé avec le pack.",
+    "userConfigs_other": "{{n}} réglages modifiés en jeu, réinstallés avec le pack."
+  },
+  "progress": {
+    "percent": "{{value}} %",
+    "task": {
+      "apply": "Installation",
+      "cache": "Vidage",
+      "clean": "Nettoyage",
+      "delete": "Suppression",
+      "download": "Téléchargement",
+      "remove": "Retrait",
+      "screenshots": "Déplacement",
+      "stash": "Rangement",
+      "trash": "Suppression"
+    }
+  },
+  "protection": {
+    "damaged": "Fichier chiffré endommagé ou clé incorrecte.",
+    "missingFile": "Fichier absent du pack protégé : {{path}}",
+    "notPackage": "Ce fichier n’est pas un paquet chiffré.",
+    "notSealed": "Ce fichier n’est pas chiffré.",
+    "unknownVersion": "Version de paquet chiffré inconnue : mettez l’application à jour."
+  },
+  "service": {
+    "dialogs": {
+      "addPacks": "Ajouter des packs",
+      "archives": "Archives",
+      "avatar": "Photo de profil",
+      "images": "Images",
+      "packImage": "Image du pack"
+    },
+    "errors": {
+      "cannotOpenFolder": "Impossible d’ouvrir ce dossier.",
+      "closeGameForGraphics": "Fermez FiveM avant de modifier les réglages : le jeu les réécrit en quittant.",
+      "fivemFolderNotFound": "Dossier FiveM introuvable.",
+      "folderExists": "Le dossier {{path}} existe déjà.",
+      "graphicsFileMissing": "Fichier de réglages introuvable.",
+      "graphicsFileMissingFirstRun": "Fichier de réglages introuvable. Lancez le jeu une première fois.",
+      "invalidAddress": "Adresse invalide.",
+      "invalidFpsLimit": "Limite invalide : choisissez entre {{min}} et {{max}} images par seconde.",
+      "invalidInvite": "Invitation invalide.",
+      "invalidLink": "Lien invalide.",
+      "libraryAlreadyThere": "Les packs sont déjà dans ce dossier.",
+      "libraryInsideCurrent": "Choisis un dossier en dehors du dossier actuel.",
+      "noActivePack": "Aucun pack installé.",
+      "noFiles": "Aucun fichier.",
+      "notFiveMDir": "Ce dossier n'est pas un dossier FiveM.",
+      "notGtaDir": "Ce dossier n'est pas un dossier GTA V (GTA5.exe introuvable).",
+      "protectedPackFolder": "Pack protégé : ses fichiers restent chiffrés dans la bibliothèque.",
+      "removeInstalledPackFirst": "Retire d'abord le pack installé.",
+      "removePackFirst": "Retire d'abord ce pack du jeu.",
+      "unreadableImage": "Image illisible.",
+      "waitForTask": "Attendez la fin de l’opération en cours."
+    },
+    "packMenu": {
+      "changeImage": "Changer l’image…",
+      "openFolder": "Ouvrir le dossier",
+      "rename": "Renommer"
+    },
+    "phases": {
+      "deleting": "Suppression"
+    },
+    "tasks": {
+      "apply": "Installation de {{name}}",
+      "clean": "Nettoyage du jeu",
+      "clearCache": "Vidage du cache FiveM",
+      "delete": "Suppression de {{name}}",
+      "download": "Téléchargement de {{name}}",
+      "importOne": "Ajout de {{name}}",
+      "importPacks_one": "Ajout de {{count}} pack",
+      "importPacks_other": "Ajout de {{count}} packs",
+      "moveLibrary": "Déplacement des packs",
+      "moveScreenshots": "Déplacement des captures",
+      "remove": "Retrait de {{name}}",
+      "stash": "Rangement des mods",
+      "trashScreenshots": "Suppression des captures",
+      "update": "Mise à jour de {{name}}"
+    }
+  },
+  "settings": {
+    "adminNeeded": "droits administrateur demandés à l’installation",
+    "app": {
+      "checkUpdate": "Rechercher une mise à jour",
+      "dataDir": "Données de l’application",
+      "marketplace": "Marketplace",
+      "openSite": "Ouvrir le site",
+      "title": "Application",
+      "trayHelp": "Fermer la fenêtre garde Reflect FiveM ouvert près de l’horloge. Clic droit sur son icône pour le quitter.",
+      "trayTitle": "Zone de notification",
+      "version": "Version {{version}}"
+    },
+    "autoDetect": "Détection automatique",
+    "build": "build {{build}}",
+    "detectAgain": "Détecter à nouveau",
+    "gameVersion": "version {{version}}",
+    "history": {
+      "action": {
+        "apply": "Installation",
+        "cache": "Cache FiveM",
+        "capture": "Rangement",
+        "clean": "Nettoyage",
+        "delete": "Suppression",
+        "download": "Marketplace",
+        "graphics": "Graphismes",
+        "import": "Ajout",
+        "mod": "Mods",
+        "remove": "Retrait",
+        "restore": "Restauration"
+      },
+      "title": "Dernières opérations"
+    },
+    "libraryDir": "Dossier des packs",
+    "locations": "Emplacements",
+    "mode": {
+      "installer": "Mises à jour automatiques : vérifiées toutes les heures, téléchargées puis installées à la fermeture.",
+      "portable": "Version portable : les mises à jour sont vérifiées toutes les heures et mises en place à la fermeture.",
+      "source": "Lancée depuis ses sources : les nouvelles versions sont signalées, à télécharger sur le site."
+    },
+    "notFound": "Introuvable",
+    "otherInstall": "Autre installation : <path>{{path}}</path>",
+    "pickFivem": "Dossier FiveM.app",
+    "pickGta": "Dossier de GTA V",
+    "removeActiveFirst": "Retirez d’abord le pack installé.",
+    "title": "Réglages",
+    "update": {
+      "available": "Version {{version}} disponible.",
+      "availableSite": "Version {{version}} disponible sur le site.",
+      "checking": "Recherche d’une mise à jour…",
+      "downloading": "Téléchargement de la version {{version}} ({{percent}} %).",
+      "downloadingSize": "Téléchargement de la version {{version}} : {{done}} sur {{total}} ({{percent}} %).",
+      "error": "Mise à jour impossible.",
+      "ready": "Version {{version}} prête : installée à la fermeture de l’application.",
+      "unsupported": "Mises à jour désactivées.",
+      "upToDate": "À jour.",
+      "upToDateAt": "À jour (vérifié à {{time}}).",
+      "verifying": "Vérification de la version {{version}}…"
+    },
+    "use": "Utiliser"
+  },
+  "store": {
+    "captured": "Vos anciens mods sont rangés dans {{name}}. Installez-le pour les retrouver.",
+    "clean": {
+      "restored": "Jeu remis d’origine.",
+      "restoredCaptured": "Jeu remis d’origine. Vos mods installés à la main sont rangés dans {{name}}."
+    },
+    "download": {
+      "added": "{{name}} est dans la bibliothèque.",
+      "linked": "{{name}} était déjà dans la bibliothèque : il est maintenant relié à la Marketplace.",
+      "upToDate": "{{name}} est déjà à jour.",
+      "updated": "{{name}} est à jour."
+    },
+    "thePack": "Le pack"
+  },
+  "system": {
+    "rockstarRegistry": "Registre Rockstar ({{value}})"
+  },
+  "updatePanel": {
+    "availableSite": "Version {{version}} disponible sur le site.",
+    "download": "Télécharger",
+    "downloading": "Téléchargement…",
+    "downloadingLabel": "Téléchargement de la mise à jour",
+    "failed": "Mise à jour impossible.",
+    "progress": "{{done}} sur {{total}}",
+    "ready": "Version {{version}} prête. Elle s’installera à la fermeture de l’application.",
+    "restartNow": "Redémarrer maintenant",
+    "title": "Mise à jour {{version}}",
+    "verifyingLabel": "Vérification de la mise à jour",
+    "verifyingSignature": "Vérification de la signature…"
+  },
+  "updater": {
+    "errors": {
+      "badSignature": "Signature invalide.",
+      "downloadFailed": "téléchargement impossible (erreur {{status}})",
+      "failed": "Mise à jour impossible : {{error}}",
+      "mismatch": "Le fichier téléchargé ne correspond pas à la version publiée.",
+      "network": "Connexion au serveur impossible.",
+      "notReady": "Aucune mise à jour prête.",
+      "rejected": "Mise à jour refusée : {{error}}",
+      "unsigned": "Version non signée.",
+      "versionNotFound": "Version introuvable."
+    }
+  }
+}

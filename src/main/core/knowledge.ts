@@ -8,7 +8,14 @@
 //                         sa configuration dans le dossier du jeu, même sous FiveM.
 //  - FiveM.app/citizen  : fichiers internes de FiveM (rarement modifiés par un pack, ex. visualsettings.dat).
 
+import { t, type ParseKeys } from 'i18next'
+import { msg, type Msg } from '@shared/i18n'
 import type { Destination, ForeignCategory } from '@shared/types'
+
+/** Texte enregistré dans le manifeste d'un pack : gardé sous forme de clé, traduit à l'affichage (voir tm()). */
+export function textMsg(key: ParseKeys, params?: Msg['params']): Msg {
+  return msg(key, params)
+}
 
 /** Normalise un nom de dossier pour la reconnaissance : minuscules, sans accents, séparateurs unifiés. */
 export function normName(name: string): string {
@@ -100,12 +107,12 @@ export function isDocsDirName(dirName: string): boolean {
 // ---------------------------------------------------------------------------
 // Dossiers spéciaux reconnus par leur nom exact.
 
-export function specialDirDestination(dirName: string): { dest: Destination; label: string } | null {
+export function specialDirDestination(dirName: string): { dest: Destination; label: Msg } | null {
   const n = dirName.toLowerCase()
-  if (n === 'enbseries') return { dest: { root: 'gta', path: 'enbseries' }, label: 'Effets ENB (enbseries)' }
+  if (n === 'enbseries') return { dest: { root: 'gta', path: 'enbseries' }, label: textMsg('knowledge.labels.enbseries') }
   if (n === 'reshade-shaders' || n === 'reshade shaders')
-    return { dest: { root: 'fivem', path: 'plugins/reshade-shaders' }, label: 'Shaders ReShade' }
-  if (n === 'nve-shaders') return { dest: { root: 'fivem', path: 'plugins/nve-shaders' }, label: 'Shaders NVE' }
+    return { dest: { root: 'fivem', path: 'plugins/reshade-shaders' }, label: textMsg('knowledge.labels.reshadeShaders') }
+  if (n === 'nve-shaders') return { dest: { root: 'fivem', path: 'plugins/nve-shaders' }, label: textMsg('knowledge.labels.nveShaders') }
   return null
 }
 
@@ -131,11 +138,12 @@ export const SP_ONLY_FILES = new Set([
   'version.dll'
 ])
 
+/** {@link reason} : texte à traduire à l'affichage. */
 export type LooseClass =
-  | { kind: 'install'; dest: Destination; label: string; reason: string }
-  | { kind: 'docs'; label: string; reason: string }
-  | { kind: 'unsupported'; label: string; reason: string }
-  | { kind: 'unknown'; label: string; reason: string }
+  | { kind: 'install'; dest: Destination; label: string; reason: Msg }
+  | { kind: 'docs'; label: string; reason: Msg }
+  | { kind: 'unsupported'; label: string; reason: Msg }
+  | { kind: 'unknown'; label: string; reason: Msg }
 
 export function isEnbFile(name: string): boolean {
   const n = name.toLowerCase()
@@ -160,36 +168,36 @@ export function classifyLooseFile(rel: string, siblings: Set<string>, looksLikeP
   const lower = name.toLowerCase()
   const e = ext(name)
 
-  if (e === '.rpf') return { kind: 'install', dest: { root: 'fivem', path: `mods/${name}` }, label: name, reason: 'Archive .rpf → dossier mods de FiveM' }
+  if (e === '.rpf') return { kind: 'install', dest: { root: 'fivem', path: `mods/${name}` }, label: name, reason: textMsg('knowledge.reasons.rpf') }
   if (e === '.oiv')
-    return { kind: 'unsupported', label: name, reason: 'Package OpenIV (.oiv) : à installer avec OpenIV pour le mode solo, non utilisable tel quel par FiveM' }
+    return { kind: 'unsupported', label: name, reason: textMsg('knowledge.reasons.oiv') }
   if (SP_ONLY_FILES.has(lower))
-    return { kind: 'unsupported', label: name, reason: 'Chargeur / script du mode solo (ScriptHookV, ASI Loader) : inutile et bloqué sous FiveM' }
+    return { kind: 'unsupported', label: name, reason: textMsg('knowledge.reasons.spLoader') }
   if (isEnbFile(name))
-    return { kind: 'install', dest: { root: 'gta', path: name }, label: name, reason: 'Fichier de configuration ENB → racine de GTA V' }
+    return { kind: 'install', dest: { root: 'gta', path: name }, label: name, reason: textMsg('knowledge.reasons.enbFile') }
   if (PROXY_DLLS.has(lower))
-    return { kind: 'install', dest: { root: 'fivem', path: `plugins/${name}` }, label: name, reason: 'DLL graphique (ReShade / ENB) → plugins de FiveM' }
-  if (e === '.asi') return { kind: 'install', dest: { root: 'fivem', path: `plugins/${name}` }, label: name, reason: 'Plugin .asi → plugins de FiveM' }
+    return { kind: 'install', dest: { root: 'fivem', path: `plugins/${name}` }, label: name, reason: textMsg('knowledge.reasons.proxyDll') }
+  if (e === '.asi') return { kind: 'install', dest: { root: 'fivem', path: `plugins/${name}` }, label: name, reason: textMsg('knowledge.reasons.asi') }
   if (isReshadeConfig(name))
-    return { kind: 'install', dest: { root: 'fivem', path: `plugins/${name}` }, label: name, reason: 'Configuration ReShade → plugins de FiveM' }
+    return { kind: 'install', dest: { root: 'fivem', path: `plugins/${name}` }, label: name, reason: textMsg('knowledge.reasons.reshadeConfig') }
   if (e === '.ini') {
     const stem = lower.slice(0, -4)
     if (siblings.has(`${stem}.asi`))
-      return { kind: 'install', dest: { root: 'fivem', path: `plugins/${name}` }, label: name, reason: `Configuration de ${stem}.asi → plugins de FiveM` }
+      return { kind: 'install', dest: { root: 'fivem', path: `plugins/${name}` }, label: name, reason: textMsg('knowledge.reasons.asiConfig', { stem }) }
     if (looksLikePreset)
-      return { kind: 'install', dest: { root: 'fivem', path: `plugins/${name}` }, label: name, reason: 'Preset ReShade → plugins de FiveM' }
-    return { kind: 'unknown', label: name, reason: 'Fichier .ini non reconnu : choisissez sa destination' }
+      return { kind: 'install', dest: { root: 'fivem', path: `plugins/${name}` }, label: name, reason: textMsg('knowledge.reasons.preset') }
+    return { kind: 'unknown', label: name, reason: textMsg('knowledge.reasons.unknownIni') }
   }
   if (lower === 'visualsettings.dat')
     return {
       kind: 'install',
       dest: { root: 'fivem', path: 'citizen/common/data/visualsettings.dat' },
       label: name,
-      reason: 'Réglages visuels → citizen/common/data de FiveM'
+      reason: textMsg('knowledge.reasons.visualSettings')
     }
-  if (DOC_EXT.has(e)) return { kind: 'docs', label: name, reason: 'Documentation (non installée)' }
-  if (IMAGE_EXT.has(e) || VIDEO_EXT.has(e)) return { kind: 'docs', label: name, reason: 'Aperçu (non installé)' }
-  return { kind: 'unknown', label: name, reason: 'Type de fichier non reconnu : choisissez sa destination' }
+  if (DOC_EXT.has(e)) return { kind: 'docs', label: name, reason: textMsg('knowledge.reasons.docs') }
+  if (IMAGE_EXT.has(e) || VIDEO_EXT.has(e)) return { kind: 'docs', label: name, reason: textMsg('knowledge.reasons.preview') }
+  return { kind: 'unknown', label: name, reason: textMsg('knowledge.reasons.unknownType') }
 }
 
 export function isImage(name: string): boolean {
@@ -266,44 +274,44 @@ const RESHADE_SCREENSHOT = /\.(png|jpe?g|bmp|jxr)$/i
 export function classifyPluginsEntry(name: string, isDir: boolean): ForeignRule {
   const lower = name.toLowerCase()
   if (isDir) {
-    if (lower === 'reshade-shaders') return { category: 'reshade', label: 'Shaders ReShade', recommended: true }
-    if (lower === 'nve-shaders') return { category: 'plugin-data', label: 'Shaders NVE', recommended: true }
-    if (lower === 'enbseries') return { category: 'enb', label: 'Effets ENB', recommended: true }
-    return { category: 'plugin-data', label: 'Dossier de plugin', recommended: true }
+    if (lower === 'reshade-shaders') return { category: 'reshade', label: t('knowledge.labels.reshadeShaders'), recommended: true }
+    if (lower === 'nve-shaders') return { category: 'plugin-data', label: t('knowledge.labels.nveShaders'), recommended: true }
+    if (lower === 'enbseries') return { category: 'enb', label: t('knowledge.foreign.enbEffects'), recommended: true }
+    return { category: 'plugin-data', label: t('knowledge.foreign.pluginDir'), recommended: true }
   }
-  if (RESHADE_SCREENSHOT.test(lower)) return { category: 'screenshot', label: "Capture d'écran", recommended: false }
-  if (lower.endsWith('.log')) return { category: 'log', label: 'Journal', recommended: false }
-  if (lower === 'openiv.asi') return { category: 'asi', label: 'OpenIV.asi (provoque une erreur fatale dans FiveM)', recommended: true }
-  if (PROXY_DLLS.has(lower)) return { category: 'proxy-dll', label: 'DLL graphique (ReShade / ENB)', recommended: true }
-  if (lower.endsWith('.asi')) return { category: 'asi', label: 'Plugin .asi', recommended: true }
-  if (isReshadeConfig(lower)) return { category: 'reshade', label: 'Configuration ReShade', recommended: true }
-  if (isEnbFile(lower)) return { category: 'enb', label: 'Fichier ENB', recommended: true }
-  if (lower.endsWith('.ini')) return { category: 'plugin-config', label: 'Configuration / preset', recommended: true }
-  if (lower.endsWith('.dll')) return { category: 'plugin-data', label: 'Bibliothèque de plugin', recommended: true }
+  if (RESHADE_SCREENSHOT.test(lower)) return { category: 'screenshot', label: t('knowledge.foreign.screenshot'), recommended: false }
+  if (lower.endsWith('.log')) return { category: 'log', label: t('knowledge.foreign.log'), recommended: false }
+  if (lower === 'openiv.asi') return { category: 'asi', label: t('knowledge.foreign.openiv'), recommended: true }
+  if (PROXY_DLLS.has(lower)) return { category: 'proxy-dll', label: t('knowledge.foreign.proxyDll'), recommended: true }
+  if (lower.endsWith('.asi')) return { category: 'asi', label: t('knowledge.foreign.asi'), recommended: true }
+  if (isReshadeConfig(lower)) return { category: 'reshade', label: t('knowledge.foreign.reshadeConfig'), recommended: true }
+  if (isEnbFile(lower)) return { category: 'enb', label: t('knowledge.foreign.enbFile'), recommended: true }
+  if (lower.endsWith('.ini')) return { category: 'plugin-config', label: t('knowledge.foreign.configPreset'), recommended: true }
+  if (lower.endsWith('.dll')) return { category: 'plugin-data', label: t('knowledge.foreign.pluginLibrary'), recommended: true }
   if (/^license(\.md|\.txt)?$/i.test(lower) || lower.endsWith('.txt') || lower.endsWith('.md'))
-    return { category: 'other', label: 'Licence / texte', recommended: true }
-  return { category: 'other', label: 'Autre fichier', recommended: true }
+    return { category: 'other', label: t('knowledge.foreign.licenseText'), recommended: true }
+  return { category: 'other', label: t('knowledge.foreign.otherFile'), recommended: true }
 }
 
 /** Retourne une règle si l'entrée de la racine GTA V est un fichier de mod graphique connu, sinon null. */
 export function classifyGtaRootEntry(name: string, isDir: boolean): ForeignRule | null {
   const lower = name.toLowerCase()
   if (isDir) {
-    if (lower === 'enbseries') return { category: 'enb', label: 'Effets ENB', recommended: true }
-    if (lower === 'enbcache') return { category: 'enb', label: 'Cache ENB', recommended: true }
-    if (lower === 'reshade-shaders') return { category: 'reshade', label: 'Shaders ReShade', recommended: true }
-    if (lower === 'nve-shaders') return { category: 'plugin-data', label: 'Shaders NVE', recommended: true }
+    if (lower === 'enbseries') return { category: 'enb', label: t('knowledge.foreign.enbEffects'), recommended: true }
+    if (lower === 'enbcache') return { category: 'enb', label: t('knowledge.foreign.enbCache'), recommended: true }
+    if (lower === 'reshade-shaders') return { category: 'reshade', label: t('knowledge.labels.reshadeShaders'), recommended: true }
+    if (lower === 'nve-shaders') return { category: 'plugin-data', label: t('knowledge.labels.nveShaders'), recommended: true }
     return null
   }
   if (isProtectedGtaPath(name)) return null
-  if (isEnbFile(lower)) return { category: 'enb', label: 'Fichier ENB', recommended: true }
-  if (PROXY_DLLS.has(lower)) return { category: 'proxy-dll', label: 'DLL graphique (ReShade / ENB)', recommended: true }
+  if (isEnbFile(lower)) return { category: 'enb', label: t('knowledge.foreign.enbFile'), recommended: true }
+  if (PROXY_DLLS.has(lower)) return { category: 'proxy-dll', label: t('knowledge.foreign.proxyDll'), recommended: true }
   if (lower === 'dinput8.dll' || lower === 'scripthookv.dll' || lower === 'openiv.asi' || lower.startsWith('scripthookvdotnet'))
-    return { category: 'sp-loader', label: 'Chargeur du mode solo (ASI / ScriptHookV)', recommended: false }
-  if (lower.endsWith('.asi')) return { category: 'asi', label: 'Plugin .asi', recommended: true }
-  if (lower.endsWith('.log')) return { category: 'log', label: 'Journal', recommended: false }
+    return { category: 'sp-loader', label: t('knowledge.foreign.spLoader'), recommended: false }
+  if (lower.endsWith('.asi')) return { category: 'asi', label: t('knowledge.foreign.asi'), recommended: true }
+  if (lower.endsWith('.log')) return { category: 'log', label: t('knowledge.foreign.log'), recommended: false }
   if (isReshadeConfig(lower)) return { category: 'reshade', label: 'ReShade', recommended: true }
   if (lower === 'nve.ini' || lower === 'quantv.ini' || lower === 'quantv.preset.ini' || lower === 'enbfeeder.ini')
-    return { category: 'plugin-config', label: 'Configuration de plugin', recommended: true }
+    return { category: 'plugin-config', label: t('knowledge.foreign.pluginConfig'), recommended: true }
   return null
 }

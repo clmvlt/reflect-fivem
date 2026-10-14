@@ -1,27 +1,31 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { t as tr } from 'i18next'
 import type { Destination, Insight, PackComponent, PackManifest } from '@shared/types'
 import type { ComponentFile } from '@shared/api'
 import { useStore } from '../store'
-import { bytes, mediaUrl, packImages } from '../lib/format'
+import { bytes, longDate, mediaUrl, num, packImages } from '../lib/format'
 import { asiBuildText, LEVEL_LABEL, levelOf, type Level } from '@shared/insights'
-import { Cover, packMenuAction, Progress, PROTECTED_HINT, RenameInput } from './common'
+import { Cover, packMenuAction, Progress, RenameInput } from './common'
 import { Gallery } from './Gallery'
 import { Markdown } from './Markdown'
 
-const DESTINATIONS: { key: string; label: string; dest: Destination | null }[] = [
+/** Destinations proposées (évaluées à l'affichage : libellé « Ne pas installer » traduit). */
+const destinations = (): { key: string; label: string; dest: Destination | null }[] => [
   { key: 'fivem:mods', label: 'FiveM › mods', dest: { root: 'fivem', path: 'mods' } },
   { key: 'fivem:plugins', label: 'FiveM › plugins', dest: { root: 'fivem', path: 'plugins' } },
   { key: 'fivem:citizen', label: 'FiveM › citizen', dest: { root: 'fivem', path: 'citizen' } },
   { key: 'fivem:addons', label: 'FiveM › addons', dest: { root: 'fivem', path: 'addons' } },
   { key: 'fivem:', label: 'FiveM.app', dest: { root: 'fivem', path: '' } },
   { key: 'gta:', label: 'GTA V', dest: { root: 'gta', path: '' } },
-  { key: 'none', label: 'Ne pas installer', dest: null }
+  { key: 'none', label: tr('packDetail.content.dontInstall'), dest: null }
 ]
 
 const keyOf = (d: Destination | null): string => (d ? `${d.root}:${d.path}` : 'none')
 const labelOf = (d: Destination): string => `${d.root === 'fivem' ? 'FiveM' : 'GTA V'}${d.path ? ` › ${d.path.split('/').join(' › ')}` : ''}`
 
 export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () => void }) {
+  const { t } = useTranslation()
   const { overview, task, run } = useStore()
   const [renaming, setRenaming] = useState(false)
   const [fetched, setFetched] = useState<{ marketId: string; youtubeId: string | null } | null>(null)
@@ -48,7 +52,7 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
   const installable = pack.components.filter((c) => c.enabled && c.destination)
   const modified = pack.components.some((c) => keyOf(c.destination) !== keyOf(c.suggested) || c.enabled !== (c.suggested !== null && !c.optional))
   const images = packImages(pack)
-  const imported = new Date(pack.importedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+  const imported = longDate(pack.importedAt)
   const market = pack.marketplace
   const updateAvailable = overview.market.updates.includes(pack.id)
   const gone = overview.market.gone.includes(pack.id)
@@ -58,7 +62,7 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
     <div className="page">
       <div className="back-row">
         <button className="link" onClick={onBack}>
-          ‹ Bibliothèque
+          {t('packDetail.back')}
         </button>
       </div>
 
@@ -69,16 +73,16 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
           youtubeId={video}
           image={(rel) => <Cover pack={pack} rel={rel} />}
           thumb={(rel) => mediaUrl(pack.id, rel)}
-          empty={<div className="cover-empty">Aucune image</div>}
+          empty={<div className="cover-empty">{t('packDetail.media.none')}</div>}
           actions={(current) => (
             <div className="media-actions">
               {current && current !== images[0] && (
                 <button className="link" onClick={() => void run(() => window.api.setCover(pack.id, current))}>
-                  Utiliser comme image du pack
+                  {t('packDetail.media.useAsCover')}
                 </button>
               )}
               <button className="link" onClick={() => void run(() => window.api.setCoverFromFile(pack.id))}>
-                {images.length ? 'Choisir une autre image…' : 'Choisir une image…'}
+                {images.length ? t('packDetail.media.chooseOther') : t('packDetail.media.choose')}
               </button>
             </div>
           )}
@@ -86,7 +90,7 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
 
         <aside className="side">
           {renaming ? <RenameInput pack={pack} onDone={() => setRenaming(false)} className="rename big" /> : <h1 className="pack-title">{pack.name}</h1>}
-          {pack.author && <div className="tags">par {pack.author}</div>}
+          {pack.author && <div className="tags">{t('packDetail.byAuthor', { author: pack.author })}</div>}
           {pack.features.length > 0 && <div className="tags">{pack.features.join(' · ')}</div>}
 
           {market && updateAvailable && (
@@ -95,9 +99,9 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
                 <Progress task={downloading} />
               ) : (
                 <>
-                  <span>Nouvelle version sur la Marketplace.</span>
+                  <span>{t('packDetail.updateAvailable')}</span>
                   <button onClick={() => void run(() => window.api.marketInstall(market.id))} disabled={!!task}>
-                    Mettre à jour
+                    {t('packDetail.update')}
                   </button>
                 </>
               )}
@@ -109,39 +113,39 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
               <Progress task={mine} />
             ) : active ? (
               <>
-                <div className="state big">Installé</div>
+                <div className="state big">{t('packDetail.installed')}</div>
                 <button className="wide" onClick={() => void run(() => window.api.removeActive())} disabled={!!task}>
-                  Retirer du jeu
+                  {t('packDetail.removeFromGame')}
                 </button>
               </>
             ) : (
               <button className="primary wide" onClick={() => void run(() => window.api.applyPack(pack.id))} disabled={!!task || !installable.length}>
-                Installer
+                {t('packDetail.install')}
               </button>
             )}
           </div>
 
           <dl className="facts">
-            <dt>Taille</dt>
+            <dt>{t('packDetail.facts.size')}</dt>
             <dd>{bytes(pack.contentSize)}</dd>
-            <dt>Fichiers installés</dt>
-            <dd>{installable.reduce((s, c) => s + c.fileCount, 0)}</dd>
-            <dt>Ajouté le</dt>
+            <dt>{t('packDetail.facts.installedFiles')}</dt>
+            <dd>{num(installable.reduce((s, c) => s + c.fileCount, 0))}</dd>
+            <dt>{t('packDetail.facts.added')}</dt>
             <dd>{imported}</dd>
-            <dt>Source</dt>
+            <dt>{t('packDetail.facts.source')}</dt>
             <dd className="ellipsis" title={pack.sourceArchive}>
-              {pack.captured ? 'Installation existante' : market ? `Marketplace${market.version ? `, version ${market.version}` : ''}` : pack.sourceArchive}
+              {pack.captured ? t('packDetail.facts.captured') : market ? (market.version ? t('packDetail.facts.marketVersion', { version: market.version }) : t('packDetail.facts.market')) : pack.sourceArchive}
             </dd>
             {(pack.reshadePresets?.length ?? 0) > 0 && (
               <>
-                <dt>Preset ReShade</dt>
+                <dt>{t('packDetail.facts.preset')}</dt>
                 <dd>
                   {pack.reshadePresets!.length > 1 ? (
                     <select
                       className="preset-select"
                       value={pack.reshadePreset ?? ''}
                       disabled={!!task}
-                      title={active ? 'Pris en compte à la prochaine installation du pack' : 'Chargé automatiquement à l’installation'}
+                      title={active ? t('packDetail.facts.presetNextInstall') : t('packDetail.facts.presetAuto')}
                       onChange={(e) => void run(() => window.api.setReshadePreset(pack.id, e.target.value))}
                     >
                       {pack.reshadePresets!.map((p) => (
@@ -151,7 +155,7 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
                       ))}
                     </select>
                   ) : (
-                    <span className="ellipsis" title="Chargé automatiquement à l’installation">
+                    <span className="ellipsis" title={t('packDetail.facts.presetAuto')}>
                       {pack.reshadePresets![0].split('/').pop()!.replace(/\.ini$/i, '')}
                     </span>
                   )}
@@ -160,15 +164,15 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
             )}
           </dl>
 
-          {gone && <p className="hint">Ce pack n’est plus proposé sur la Marketplace. Votre copie reste utilisable.</p>}
-          {pack.protected && <p className="hint">{PROTECTED_HINT}</p>}
+          {gone && <p className="hint">{t('packDetail.gone')}</p>}
+          {pack.protected && <p className="hint">{t('common.protectedPack')}</p>}
 
           <div className="side-links">
-            {!pack.protected && <button onClick={() => void run(() => window.api.openPackFolder(pack.id))}>Ouvrir le dossier</button>}
+            {!pack.protected && <button onClick={() => void run(() => window.api.openPackFolder(pack.id))}>{t('packDetail.openFolder')}</button>}
             <button
               className="more"
-              aria-label="Plus d’options"
-              title="Plus d’options"
+              aria-label={t('packDetail.moreOptions')}
+              title={t('packDetail.moreOptions')}
               onClick={async () => {
                 if (await packMenuAction(pack, run)) setRenaming(true)
               }}
@@ -182,7 +186,7 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
       {pack.description?.trim() && (
         <>
           <div className="section-head">
-            <h2>Description</h2>
+            <h2>{t('packDetail.description')}</h2>
           </div>
           <Markdown text={pack.description} />
         </>
@@ -191,10 +195,10 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
       <Compatibility insights={pack.insights ?? []} build={build} />
 
       <div className="section-head">
-        <h2>Contenu</h2>
+        <h2>{t('packDetail.content.title')}</h2>
         {modified && (
           <button onClick={() => void run(() => window.api.updatePack(pack.id, { resetComponents: true }))} disabled={active}>
-            Rétablir les destinations
+            {t('packDetail.content.reset')}
           </button>
         )}
       </div>
@@ -203,15 +207,12 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
           <ComponentRow key={c.id} packId={pack.id} c={c} locked={active || !!task} />
         ))}
       </ul>
-      {active && <p className="hint">Retirez le pack du jeu pour modifier son contenu.</p>}
+      {active && <p className="hint">{t('packDetail.content.lockedHint')}</p>}
 
       {pack.userConfigCount > 0 && (
         <div className="section-note">
-          <span>
-            {pack.userConfigCount} réglage{pack.userConfigCount > 1 ? 's' : ''} modifié{pack.userConfigCount > 1 ? 's' : ''} en jeu, réinstallé
-            {pack.userConfigCount > 1 ? 's' : ''} avec le pack.
-          </span>
-          <button onClick={() => void run(() => window.api.resetUserConfigs(pack.id))}>Revenir à l’original</button>
+          <span>{t('packDetail.userConfigs', { count: pack.userConfigCount, n: num(pack.userConfigCount) })}</span>
+          <button onClick={() => void run(() => window.api.resetUserConfigs(pack.id))}>{t('packDetail.resetUserConfigs')}</button>
         </div>
       )}
     </div>
@@ -219,13 +220,18 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
 }
 
 function Compatibility({ insights, build }: { insights: Insight[]; build: number | null }) {
+  const { t } = useTranslation()
   if (!insights.length) return null
   const isRpf = (i: Insight): boolean => /\.rpf$/i.test(i.rel)
   const rpfOk = insights.filter((i) => isRpf(i) && levelOf(i, build) === 'ok')
-  const signed = rpfOk.filter((i) => /Cfx/.test(i.text)).length
+  const signed = rpfOk.filter((i) => (i.textMsg ? i.textMsg.key === 'insights.checks.rpfCfx' : /Cfx/.test(i.text))).length
   const rows: { title: string; level: Level; text: string }[] = []
   if (rpfOk.length)
-    rows.push({ title: `${rpfOk.length} mod${rpfOk.length > 1 ? 's' : ''} .rpf`, level: 'ok', text: signed ? `Valides, dont ${signed} signé${signed > 1 ? 's' : ''} Cfx.` : 'Valides.' })
+    rows.push({
+      title: t('packDetail.compat.rpfTitle', { count: rpfOk.length, n: num(rpfOk.length) }),
+      level: 'ok',
+      text: signed ? t('packDetail.compat.validSigned', { count: signed, n: num(signed) }) : t('packDetail.compat.valid')
+    })
   for (const i of insights) {
     if (isRpf(i) && levelOf(i, build) === 'ok') continue
     const level = levelOf(i, build)
@@ -238,7 +244,7 @@ function Compatibility({ insights, build }: { insights: Insight[]; build: number
   return (
     <>
       <div className="section-head">
-        <h2>Compatibilité FiveM</h2>
+        <h2>{t('packDetail.compat.title')}</h2>
       </div>
       <ul className="list compact">
         {rows.map((r, k) => (
@@ -254,11 +260,12 @@ function Compatibility({ insights, build }: { insights: Insight[]; build: number
 }
 
 function ComponentRow({ packId, c, locked }: { packId: string; c: PackComponent; locked: boolean }) {
+  const { t } = useTranslation()
   const { run } = useStore()
   const [files, setFiles] = useState<ComponentFile[] | null>(null)
   const [open, setOpen] = useState(false)
 
-  const options = [...DESTINATIONS]
+  const options = destinations()
   for (const extra of [c.suggested, c.destination]) {
     if (extra && !options.some((o) => o.key === keyOf(extra))) options.splice(options.length - 1, 0, { key: keyOf(extra), label: labelOf(extra), dest: extra })
   }
@@ -283,15 +290,21 @@ function ComponentRow({ packId, c, locked }: { packId: string; c: PackComponent;
           checked={c.enabled && !!c.destination}
           disabled={locked || !c.destination}
           onChange={(e) => void run(() => window.api.updatePack(packId, { components: [{ id: c.id, enabled: e.target.checked }] }))}
-          aria-label="Installer cette partie"
+          aria-label={t('packDetail.content.installPart')}
         />
-        <button className="comp-label" onClick={() => void toggle()} title="Voir les fichiers">
+        <button className="comp-label" onClick={() => void toggle()} title={t('packDetail.content.showFiles')}>
           <span className="chevron">{open ? '▾' : '▸'}</span>
           <span className="row-main">
             <span className="name">{c.label}</span>
             <span className="meta">
-              {c.fileCount} fichier{c.fileCount > 1 ? 's' : ''} · {bytes(c.size)}
-              {c.kind === 'unknown' ? ' · non reconnu' : c.kind === 'unsupported' ? ' · incompatible avec FiveM' : c.optional ? ' · optionnel' : ''}
+              {t('packDetail.content.files', { count: c.fileCount, n: num(c.fileCount) })} · {bytes(c.size)}
+              {c.kind === 'unknown'
+                ? ` · ${t('packDetail.content.unknown')}`
+                : c.kind === 'unsupported'
+                  ? ` · ${t('packDetail.content.unsupported')}`
+                  : c.optional
+                    ? ` · ${t('packDetail.content.optional')}`
+                    : ''}
             </span>
           </span>
         </button>
@@ -308,10 +321,10 @@ function ComponentRow({ packId, c, locked }: { packId: string; c: PackComponent;
           {files.slice(0, 300).map((f) => (
             <div key={f.rel} className="file">
               <span className="file-src">{f.rel}</span>
-              <span className="file-dst">{f.dest ?? 'non installé'}</span>
+              <span className="file-dst">{f.dest ?? t('packDetail.content.notInstalled')}</span>
             </div>
           ))}
-          {files.length > 300 && <div className="file">et {files.length - 300} autres</div>}
+          {files.length > 300 && <div className="file">{t('packDetail.content.moreFiles', { count: files.length - 300, n: num(files.length - 300) })}</div>}
         </div>
       )}
     </li>

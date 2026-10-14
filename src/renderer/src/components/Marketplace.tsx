@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import type { AuthorProfile, AuthorSummary, MarketPack, MarketPackDetail, MarketPage, MarketTag, PackManifest, TaskProgress } from '@shared/types'
 import { PACK_GONE, type MarketQuery } from '@shared/api'
-import { cleanError, useStore } from '../store'
-import { bytes, marketImageUrl } from '../lib/format'
+import { apiError, cleanError, useStore } from '../store'
+import { bytes, longDate as date, marketImageUrl, num } from '../lib/format'
 import { Gallery } from './Gallery'
 import { Markdown } from './Markdown'
-import { Avatar, Progress, PROTECTED_HINT } from './common'
+import { Avatar, Progress } from './common'
 
 /** Vue ouverte dans la Marketplace : fiche d'un pack ou page d'un auteur. */
 export type MarketView = { kind: 'pack'; id: string } | { kind: 'author'; slug: string }
@@ -32,11 +33,12 @@ export function Marketplace({
   author,
   onAuthor
 }: Nav & { view: MarketView | null; depth: number; onBack: () => void; author: string | null; onAuthor: (slug: string | null) => void }) {
+  const { t } = useTranslation()
   // Retour : à la liste depuis la première vue ouverte, sinon à la vue précédente (fiche ou auteur).
   const back = (
     <div className="back-row">
       <button className="link" onClick={onBack}>
-        {depth > 1 ? '‹ Retour' : '‹ Marketplace'}
+        {depth > 1 ? t('marketplace.back') : t('marketplace.backToList')}
       </button>
     </div>
   )
@@ -50,9 +52,10 @@ export function Marketplace({
  * Absente tant qu'aucun pack n'est rattaché à un compte.
  */
 function AuthorStrip({ authors, author, onAuthor }: { authors: AuthorSummary[]; author: string | null; onAuthor: (slug: string | null) => void }) {
+  const { t } = useTranslation()
   if (!authors.length) return null
   return (
-    <div className="author-strip" role="tablist" aria-label="Auteurs">
+    <div className="author-strip" role="tablist" aria-label={t('marketplace.authors')}>
       <button role="tab" aria-selected={!author} className={`author-chip ${author ? '' : 'is-selected'}`} onClick={() => onAuthor(null)}>
         <span className="avatar author-all" aria-hidden>
           <svg width="26" height="26" viewBox="0 0 16 16" fill="currentColor">
@@ -62,7 +65,7 @@ function AuthorStrip({ authors, author, onAuthor }: { authors: AuthorSummary[]; 
             <rect x="9" y="9" width="5.5" height="5.5" rx="1.2" />
           </svg>
         </span>
-        <span className="author-chip-name">Tous les packs</span>
+        <span className="author-chip-name">{t('marketplace.allPacks')}</span>
       </button>
       {authors.map((a) => (
         <button
@@ -70,7 +73,7 @@ function AuthorStrip({ authors, author, onAuthor }: { authors: AuthorSummary[]; 
           role="tab"
           aria-selected={author === a.slug}
           className={`author-chip ${author === a.slug ? 'is-selected' : ''}`}
-          title={`${a.displayName} : ${plural(a.packCount, 'pack', 'packs')}`}
+          title={t('marketplace.authorChipPacks', { name: a.displayName, count: a.packCount, n: num(a.packCount) })}
           onClick={() => onAuthor(author === a.slug ? null : a.slug)}
         >
           <Avatar url={a.avatarUrl} name={a.displayName} size={64} />
@@ -97,6 +100,7 @@ function useMarketPage(query: MarketQuery): { page: MarketPage | null; error: st
   const [page, setPage] = useState<MarketPage | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const { i18n } = useTranslation()
   const key = JSON.stringify(query)
 
   const load = useCallback(async () => {
@@ -111,15 +115,17 @@ function useMarketPage(query: MarketQuery): { page: MarketPage | null; error: st
     }
   }, [key])
 
+  // Langue changée : page relue (textes et messages d'erreur de l'API).
   useEffect(() => {
     void load()
-  }, [load])
+  }, [load, i18n.language])
 
   return { page, error, loading, reload: () => void load() }
 }
 
 function MarketList({ author, onAuthor, onOpen, onOpenLocal }: Nav & { author: string | null; onAuthor: (slug: string | null) => void }) {
   const { overview } = useStore()
+  const { t } = useTranslation()
   const [query, setQuery] = useState<MarketQuery>({ sort: 'recent', page: 0 })
   const [tags, setTags] = useState<MarketTag[]>([])
   const [authors, setAuthors] = useState<AuthorSummary[]>([])
@@ -145,18 +151,19 @@ function MarketList({ author, onAuthor, onOpen, onOpenLocal }: Nav & { author: s
     setQuery((q) => ({ ...q, page: 0 }))
     onAuthor(slug)
   }
+  const total = page ? t('marketplace.packs', { count: page.total, n: num(page.total) }) : ''
 
   return (
     <div className="page">
       <header className="page-head">
         <h1>Marketplace</h1>
-        <span className="page-note">{page ? `${page.total} pack${page.total > 1 ? 's' : ''}` : ''}</span>
+        <span className="page-note">{total}</span>
         <div className="spacer" />
-        <input className="search" type="search" placeholder="Rechercher" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <select value={query.sort} onChange={(e) => setQuery({ ...query, sort: e.target.value as MarketQuery['sort'], page: 0 })} aria-label="Trier">
-          <option value="recent">Plus récents</option>
-          <option value="popular">Plus téléchargés</option>
-          <option value="name">Nom</option>
+        <input className="search" type="search" placeholder={t('common.search')} value={search} onChange={(e) => setSearch(e.target.value)} />
+        <select value={query.sort} onChange={(e) => setQuery({ ...query, sort: e.target.value as MarketQuery['sort'], page: 0 })} aria-label={t('marketplace.sort.label')}>
+          <option value="recent">{t('marketplace.sort.recent')}</option>
+          <option value="popular">{t('marketplace.sort.popular')}</option>
+          <option value="name">{t('marketplace.sort.name')}</option>
         </select>
       </header>
       {/* Pack du moment : seulement sur la liste complète, sans recherche ni filtre. */}
@@ -166,9 +173,9 @@ function MarketList({ author, onAuthor, onOpen, onOpenLocal }: Nav & { author: s
       <AuthorStrip authors={authors} author={author} onAuthor={chooseAuthor} />
       {selected && (
         <div className="author-filter">
-          <span className="muted">Packs de {selected.displayName}</span>
+          <span className="muted">{t('marketplace.authorFilter.packs', { name: selected.displayName })}</span>
           <button className="link" onClick={() => onOpen({ kind: 'author', slug: selected.slug })}>
-            Voir sa page ›
+            {t('marketplace.authorFilter.seePage')}
           </button>
         </div>
       )}
@@ -176,11 +183,11 @@ function MarketList({ author, onAuthor, onOpen, onOpenLocal }: Nav & { author: s
       {tags.length > 1 && (
         <div className="chips">
           <button className={`chip ${query.tag ? '' : 'is-selected'}`} onClick={() => setQuery({ ...query, tag: undefined, page: 0 })}>
-            Tous
+            {t('marketplace.allTags')}
           </button>
-          {tags.map((t) => (
-            <button key={t.tag} className={`chip ${query.tag === t.tag ? 'is-selected' : ''}`} onClick={() => setQuery({ ...query, tag: query.tag === t.tag ? undefined : t.tag, page: 0 })}>
-              {t.tag}
+          {tags.map((tag) => (
+            <button key={tag.tag} className={`chip ${query.tag === tag.tag ? 'is-selected' : ''}`} onClick={() => setQuery({ ...query, tag: query.tag === tag.tag ? undefined : tag.tag, page: 0 })}>
+              {tag.tag}
             </button>
           ))}
         </div>
@@ -193,7 +200,7 @@ function MarketList({ author, onAuthor, onOpen, onOpenLocal }: Nav & { author: s
         reload={reload}
         current={query.page ?? 0}
         onPage={(p) => setQuery({ ...query, page: p })}
-        empty={query.q || query.tag ? 'Aucun pack ne correspond à cette recherche.' : author ? 'Aucun pack publié par cet auteur.' : 'Aucun pack publié pour le moment.'}
+        empty={query.q || query.tag ? t('marketplace.empty.noMatchPack') : author ? t('marketplace.empty.byAuthorPack') : t('marketplace.empty.nonePack')}
         onOpen={onOpen}
         onOpenLocal={onOpenLocal}
       />
@@ -222,17 +229,18 @@ function PackGrid({
   empty: string
 }) {
   const { overview, task } = useStore()
+  const { t } = useTranslation()
   if (!overview) return null
   if (error)
     return (
       <div className="empty-state">
         <p>{error}</p>
         <p>
-          <button onClick={reload}>Réessayer</button>
+          <button onClick={reload}>{t('common.retry')}</button>
         </p>
       </div>
     )
-  if (!page) return loading ? <p className="muted">Chargement…</p> : null
+  if (!page) return loading ? <p className="muted">{t('common.loading')}</p> : null
   if (page.items.length === 0)
     return (
       <div className="empty-state">
@@ -249,13 +257,11 @@ function PackGrid({
       {page.totalPages > 1 && (
         <div className="pager">
           <button disabled={current === 0} onClick={() => onPage(current - 1)}>
-            Précédent
+            {t('common.previous')}
           </button>
-          <span className="muted">
-            Page {current + 1} sur {page.totalPages}
-          </span>
+          <span className="muted">{t('marketplace.page', { page: num(current + 1), total: num(page.totalPages) })}</span>
           <button disabled={current + 1 >= page.totalPages} onClick={() => onPage(current + 1)}>
-            Suivant
+            {t('common.next')}
           </button>
         </div>
       )}
@@ -264,12 +270,13 @@ function PackGrid({
 }
 
 function FeaturedBadge({ className = '' }: { className?: string }) {
+  const { t } = useTranslation()
   return (
     <span className={`featured-badge ${className}`}>
       <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
         <path d="M8 1.2l2.1 4.3 4.7.7-3.4 3.3.8 4.7L8 12l-4.2 2.2.8-4.7L1.2 6.2l4.7-.7z" />
       </svg>
-      Pack du moment
+      {t('marketplace.featured.badgePack')}
     </span>
   )
 }
@@ -277,8 +284,9 @@ function FeaturedBadge({ className = '' }: { className?: string }) {
 /** Bandeau « Pack du moment » en haut de la Marketplace : grande couverture, nom, auteur, résumé et actions. */
 function FeaturedBanner({ items, library, onOpen, onOpenLocal }: Nav & { items: MarketPack[]; library: PackManifest[] }) {
   const { task } = useStore()
+  const { t } = useTranslation()
   return (
-    <section className="featured" aria-label="Pack du moment">
+    <section className="featured" aria-label={t('marketplace.featured.packs', { count: items.length })}>
       {items.map((item) => {
         const mine = task?.kind === 'download' && task.detail === item.id ? task : null
         const open = (): void => onOpen({ kind: 'pack', id: item.id })
@@ -296,20 +304,13 @@ function FeaturedBanner({ items, library, onOpen, onOpenLocal }: Nav & { items: 
               <h2 className="featured-name">{item.name}</h2>
               {item.author && (
                 <div className="tags by">
-                  par <AuthorLink item={item} onOpen={onOpen} avatar />
+                  <Trans i18nKey="marketplace.by" components={{ author: <AuthorLink item={item} onOpen={onOpen} avatar /> }} />
                 </div>
               )}
               {item.summary && <p className="featured-summary">{item.summary}</p>}
               <div className="spacer" />
               <div className="featured-actions" onClick={(e) => e.stopPropagation()}>
-                {mine ? (
-                  <Progress task={mine} />
-                ) : (
-                  <>
-                    <button onClick={open}>Voir la fiche</button>
-                    <MarketAction item={item} library={library} task={task} onOpenLocal={onOpenLocal} />
-                  </>
-                )}
+                {mine ? <Progress task={mine} /> : <MarketAction item={item} library={library} task={task} onOpenLocal={onOpenLocal} />}
               </div>
             </div>
           </article>
@@ -321,12 +322,13 @@ function FeaturedBanner({ items, library, onOpen, onOpenLocal }: Nav & { items: 
 
 /** « par Auteur » : ouvre la page de l'auteur quand le pack est rattaché à son compte. */
 function AuthorLink({ item, onOpen, avatar = false }: { item: MarketPack; onOpen: (view: MarketView) => void; avatar?: boolean }) {
+  const { t } = useTranslation()
   const profile = item.authorProfile
   if (!profile) return <>{item.author}</>
   return (
     <button
       className="link author-link"
-      title={`Voir la page de ${profile.displayName}`}
+      title={t('marketplace.authorPage', { name: profile.displayName })}
       onClick={(e) => {
         e.stopPropagation()
         onOpen({ kind: 'author', slug: profile.slug })
@@ -350,8 +352,9 @@ function MarketCard({
   task: TaskProgress | null
 }) {
   const [failed, setFailed] = useState(false)
+  const { t } = useTranslation()
   const mine = task?.kind === 'download' && task.detail === item.id ? task : null
-  const others = [item.tags.slice(0, 3).join(', '), bytes(item.archiveSize), item.protected && 'protégé'].filter(Boolean).join(' · ')
+  const others = [item.tags.slice(0, 3).join(', '), bytes(item.archiveSize), item.protected && t('marketplace.protected')].filter(Boolean).join(' · ')
   return (
     <article className={`card clickable ${item.featured ? 'is-featured' : ''}`} onClick={() => onOpen({ kind: 'pack', id: item.id })}>
       <div className="cover">
@@ -376,12 +379,12 @@ function MarketCard({
             <Progress task={mine} />
           ) : (
             <>
-              <span className="dl-count" title={plural(item.downloadCount, 'téléchargement', 'téléchargements')}>
+              <span className="dl-count" title={t('marketplace.downloads', { count: item.downloadCount, n: num(item.downloadCount) })}>
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
                   <path d="M7.25 1.5h1.5v7.19l2.47-2.47 1.06 1.06L8 11.56 3.72 7.28l1.06-1.06 2.47 2.47z" />
                   <path d="M2 13h12v1.5H2z" />
                 </svg>
-                {item.downloadCount.toLocaleString('fr-FR')}
+                {num(item.downloadCount)}
               </span>
               <MarketAction item={item} library={library} task={task} onOpenLocal={onOpenLocal} />
             </>
@@ -407,24 +410,25 @@ function MarketAction({
   wide?: boolean
 }) {
   const { run } = useStore()
+  const { t } = useTranslation()
   const { local, update } = localState(item, library)
   const install = (): void => void run(() => window.api.marketInstall(item.id))
   if (local && !update)
     return (
       <>
-        <span className="state">Dans la bibliothèque</span>
+        <span className="state">{t('marketplace.action.inLibrary')}</span>
         <div className="spacer" />
         <button className={wide ? 'wide' : ''} onClick={() => onOpenLocal(local.id)}>
-          Ouvrir
+          {t('common.open')}
         </button>
       </>
     )
   return (
     <>
-      {update && !wide && <span className="accent-text small">Nouvelle version</span>}
+      {update && !wide && <span className="accent-text small">{t('marketplace.action.newVersion')}</span>}
       <div className="spacer" />
       <button className={`primary ${wide ? 'wide' : ''}`} onClick={install} disabled={!!task}>
-        {update ? 'Mettre à jour' : 'Télécharger'}
+        {update ? t('marketplace.action.update') : t('marketplace.action.download')}
       </button>
     </>
   )
@@ -432,21 +436,25 @@ function MarketAction({
 
 function MarketDetail({ id, back, onOpen, onOpenLocal }: Nav & { id: string; back: ReactNode }) {
   const { overview, task, run } = useStore()
+  const { t, i18n } = useTranslation()
   const [pack, setPack] = useState<MarketPackDetail | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  // Message à afficher et code de l'API (PACK_GONE : fiche introuvable).
+  const [error, setError] = useState<{ message: string; code: string | null } | null>(null)
 
   const load = useCallback(async () => {
     try {
       setPack(await window.api.marketDetail(id))
       setError(null)
     } catch (e) {
-      setError(cleanError(e))
+      const err = apiError(e)
+      setError({ message: err.message, code: err.code })
     }
   }, [id])
 
+  // Langue changée : fiche relue (textes et messages d'erreur de l'API).
   useEffect(() => {
     void load()
-  }, [load])
+  }, [load, i18n.language])
 
   if (!overview) return null
   if (error)
@@ -454,11 +462,11 @@ function MarketDetail({ id, back, onOpen, onOpenLocal }: Nav & { id: string; bac
       <div className="page">
         {back}
         <div className="empty-state">
-          <p>{error}</p>
+          <p>{error.message}</p>
           {/* Pack retiré ou inconnu de l'API (lien du site périmé) : réessayer ne servirait à rien. */}
-          {error !== PACK_GONE && (
+          {error.code !== PACK_GONE && (
             <p>
-              <button onClick={() => void load()}>Réessayer</button>
+              <button onClick={() => void load()}>{t('common.retry')}</button>
             </p>
           )}
         </div>
@@ -468,7 +476,7 @@ function MarketDetail({ id, back, onOpen, onOpenLocal }: Nav & { id: string; bac
     return (
       <div className="page">
         {back}
-        <p className="muted">Chargement…</p>
+        <p className="muted">{t('common.loading')}</p>
       </div>
     )
 
@@ -493,37 +501,37 @@ function MarketDetail({ id, back, onOpen, onOpenLocal }: Nav & { id: string; bac
           <h1 className="pack-title">{pack.name}</h1>
           {pack.author && (
             <div className="tags by">
-              par <AuthorLink item={pack} onOpen={onOpen} avatar />
+              <Trans i18nKey="marketplace.by" components={{ author: <AuthorLink item={pack} onOpen={onOpen} avatar /> }} />
             </div>
           )}
           {pack.summary && <p className="summary">{pack.summary}</p>}
           <div className="side-actions row-actions">
             {mine ? <Progress task={mine} /> : <MarketAction item={pack} library={overview.library} task={task} onOpenLocal={onOpenLocal} wide />}
           </div>
-          {update && !mine && <p className="hint">Une nouvelle version est en ligne. Vos réglages et votre preset ReShade sont conservés.</p>}
-          {pack.protected && <p className="hint">{PROTECTED_HINT}</p>}
+          {update && !mine && <p className="hint">{t('marketplace.detail.updatePack')}</p>}
+          {pack.protected && <p className="hint">{t('common.protectedPack')}</p>}
           <dl className="facts">
-            <dt>Taille</dt>
+            <dt>{t('marketplace.detail.size')}</dt>
             <dd>{bytes(pack.archiveSize)}</dd>
             {pack.version && (
               <>
-                <dt>Version</dt>
+                <dt>{t('marketplace.detail.version')}</dt>
                 <dd>{pack.version}</dd>
               </>
             )}
-            <dt>Mis à jour le</dt>
+            <dt>{t('marketplace.detail.updatedAt')}</dt>
             <dd>{date(pack.archiveUpdatedAt ?? pack.updatedAt)}</dd>
-            <dt>Téléchargements</dt>
-            <dd>{pack.downloadCount.toLocaleString('fr-FR')}</dd>
+            <dt>{t('marketplace.detail.downloads')}</dt>
+            <dd>{num(pack.downloadCount)}</dd>
             {pack.tags.length > 0 && (
               <>
-                <dt>Étiquettes</dt>
+                <dt>{t('marketplace.detail.tags')}</dt>
                 <dd>{pack.tags.join(', ')}</dd>
               </>
             )}
           </dl>
           <div className="side-links">
-            <button onClick={() => void run(() => window.api.openSite(`/packs/${pack.slug}/`))}>Voir sur le site</button>
+            <button onClick={() => void run(() => window.api.openSite(`/packs/${pack.slug}/`))}>{t('marketplace.detail.viewOnSite')}</button>
           </div>
         </aside>
       </div>
@@ -531,7 +539,7 @@ function MarketDetail({ id, back, onOpen, onOpenLocal }: Nav & { id: string; bac
       {pack.description.trim() && (
         <>
           <div className="section-head">
-            <h2>Description</h2>
+            <h2>{t('marketplace.detail.description')}</h2>
           </div>
           <Markdown text={pack.description} />
         </>
@@ -540,13 +548,10 @@ function MarketDetail({ id, back, onOpen, onOpenLocal }: Nav & { id: string; bac
   )
 }
 
-const date = (iso: string | null): string => (iso ? new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '')
-
-const plural = (n: number, one: string, many: string): string => `${n.toLocaleString('fr-FR')} ${n > 1 ? many : one}`
-
 /** Page d'un auteur : photo, nom, description, liens, et ses packs. */
 function AuthorView({ slug, back, onOpen, onOpenLocal }: Nav & { slug: string; back: ReactNode }) {
   const { run } = useStore()
+  const { t, i18n } = useTranslation()
   const [author, setAuthor] = useState<AuthorProfile | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [current, setCurrent] = useState(0)
@@ -561,9 +566,10 @@ function AuthorView({ slug, back, onOpen, onOpenLocal }: Nav & { slug: string; b
     }
   }, [slug])
 
+  // Langue changée : page relue (textes et messages d'erreur de l'API).
   useEffect(() => {
     void load()
-  }, [load])
+  }, [load, i18n.language])
 
   if (error)
     return (
@@ -572,7 +578,7 @@ function AuthorView({ slug, back, onOpen, onOpenLocal }: Nav & { slug: string; b
         <div className="empty-state">
           <p>{error}</p>
           <p>
-            <button onClick={() => void load()}>Réessayer</button>
+            <button onClick={() => void load()}>{t('common.retry')}</button>
           </p>
         </div>
       </div>
@@ -581,14 +587,14 @@ function AuthorView({ slug, back, onOpen, onOpenLocal }: Nav & { slug: string; b
     return (
       <div className="page">
         {back}
-        <p className="muted">Chargement…</p>
+        <p className="muted">{t('common.loading')}</p>
       </div>
     )
 
   const stats = [
-    plural(author.packCount, 'pack', 'packs'),
-    plural(author.downloads, 'téléchargement', 'téléchargements'),
-    author.createdAt && `membre depuis le ${date(author.createdAt)}`
+    t('marketplace.packs', { count: author.packCount, n: num(author.packCount) }),
+    t('marketplace.downloads', { count: author.downloads, n: num(author.downloads) }),
+    author.createdAt && t('marketplace.author.memberSince', { date: date(author.createdAt) })
   ]
   return (
     <div className="page">
@@ -612,9 +618,9 @@ function AuthorView({ slug, back, onOpen, onOpenLocal }: Nav & { slug: string; b
       {author.bio.trim() && <p className="author-bio">{author.bio}</p>}
 
       <div className="section-head">
-        <h2>Packs</h2>
+        <h2>{t('marketplace.author.packs')}</h2>
       </div>
-      <PackGrid {...packs} current={current} onPage={setCurrent} empty="Aucun pack publié pour le moment." onOpen={onOpen} onOpenLocal={onOpenLocal} />
+      <PackGrid {...packs} current={current} onPage={setCurrent} empty={t('marketplace.empty.nonePack')} onOpen={onOpen} onOpenLocal={onOpenLocal} />
     </div>
   )
 }

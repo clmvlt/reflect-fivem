@@ -7,6 +7,9 @@ import type { AppState, GamesInfo, Overview, PackPatch, RootId, Settings, TaskPr
 import type { AccountMe, ProfileInput } from '@shared/types'
 import type { AuthorQuery, ComponentFile, ForeignSelection, MarketQuery, PackManagerApi } from '@shared/api'
 import { IPC } from '@shared/api'
+import i18next, { t } from 'i18next'
+import { currentLocale, initI18n, msg, supportedLocale } from '@shared/i18n'
+import { formatNumber } from '@shared/intl'
 import { detectGames, inspectFiveM, inspectGta, normalizeFiveMPath } from './core/games'
 import { Installer, type Report } from './core/installer'
 import { FPS_LIMIT_MAX, FPS_LIMIT_MIN } from './core/enb'
@@ -14,6 +17,8 @@ import { Account, AVATAR_EXTENSIONS, TokenFile } from './core/account'
 import { KeyRing, type SystemProtection } from './core/keys'
 import { Library, toPublic } from './core/library'
 import { GraphicsManager } from './core/graphics'
+import { languageFetch } from './core/http'
+import { accountLanguageAction, fetchLanguages, startupLocale } from './core/language'
 import { Marketplace } from './core/marketplace'
 import { AppUpdater } from './core/updater'
 import { runningGameProcesses } from './util/win'
@@ -23,9 +28,11 @@ import { defaultSettings, emptyState, JsonStore, pushHistory } from './core/stor
 import { exists, isInside, moveDir, readJson, writeJsonAtomic } from './util/fsx'
 import { log } from './util/log'
 
-type ServerApi = Omit<PackManagerApi, 'onTask' | 'onChanged' | 'onUpdate' | 'onAccount' | 'onOpenMarketPack' | 'getPathForFile'>
+type ServerApi = Omit<PackManagerApi, 'onTask' | 'onChanged' | 'onUpdate' | 'onAccount' | 'onLanguage' | 'onOpenMarketPack' | 'getPathForFile'>
 
 const MARKET_REFRESH = 6 * 60 * 60 * 1000
+/** Requêtes vers l'API, avec la langue affichée (Accept-Language). */
+const apiFetch = languageFetch((url, init) => net.fetch(url, init))
 
 /** Dernière détection des jeux, enregistrée pour le démarrage suivant. */
 interface SavedGames {
@@ -60,6 +67,8 @@ export class Service {
   private keys: KeyRing
   /** Compte reflect-fivem.com (facultatif) : jeton gardé chiffré par Windows. */
   account: Account
+  /** Compte connecté au dernier changement (une connexion se reconnaît à un compte différent). */
+  private accountId: number | null = null
 
   constructor(
     public dataDir: string,
@@ -70,9 +79,12 @@ export class Service {
     this.account = new Account({
       apiUrl,
       store: new TokenFile(path.join(dataDir, 'account.dat'), systemProtection),
-      fetch: (url, init) => net.fetch(url, init),
+      fetch: apiFetch,
       openExternal: (url) => shell.openExternal(url),
-      onChange: (me) => this.emit(IPC.account, me)
+      onChange: (me) => {
+        this.emit(IPC.account, me)
+        this.accountLanguage(me)
+      }
     })
     this.settings = new JsonStore(path.join(dataDir, 'settings.json'), defaultSettings(dataDir))
     this.state = new JsonStore(path.join(dataDir, 'state.json'), emptyState())
@@ -88,6 +100,16 @@ export class Service {
 
   async init(): Promise<void> {
     await this.settings.load(defaultSettings(this.dataDir))
+    // Langue : avant tout texte affiché (menus, erreurs, tâches). Celle du compte enregistré peut servir.
+    await this.account.init()
+    this.accountId = this.account.current()?.id ?? null
+    const locale = startupLocale({
+      chosen: this.settings.get().locale,
+      account: this.account.current()?.locale,
+      system: [...app.getPreferredSystemLanguages(), app.getLocale()]
+    })
+    initI18n(locale)
+    log.info(`Langue : ${locale}`)
     await this.state.load(emptyState())
     // Détection des jeux (registre lu par PowerShell : une demi-seconde, plus sur un PC lent) lancée tout de suite,
     // pendant l'ouverture de la fenêtre. L'interface s'affiche sans l'attendre avec celle du lancement précédent,
@@ -116,7 +138,31 @@ export class Service {
     })
     await fs.rm(path.join(this.dataDir, 'jobs'), { recursive: true, force: true }).catch(() => undefined)
     this.marketplace = new Marketplace(this.apiUrl, path.join(this.dataDir, 'Marketplace', 'images'), () => this.library)
-    await this.account.init()
+  }
+
+  /** Langue changée : processus principal (menus, textes produits ici) et toutes les fenêtres. */
+  private async applyLanguage(code: string): Promise<void> {
+    if (code === currentLocale()) return
+    await i18next.changeLanguage(code)
+    log.info(`Langue : ${code}`)
+    for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.language, code)
+    // Vérifications des dossiers du jeu : libellés produits par la détection.
+    void this.refreshGames().then(
+      () => this.changed(),
+      () => undefined
+    )
+    this.changed()
+  }
+
+  /** Connexion ou compte relu : langue du compte appliquée, ou langue affichée enregistrée dans le compte. */
+  private accountLanguage(me: AccountMe | null): void {
+    const signedIn = !!me && me.id !== this.accountId
+    this.accountId = me?.id ?? null
+    if (!me || !i18next.isInitialized) return
+    const action = accountLanguageAction({ signedIn, accountLocale: me.locale, chosen: this.settings.get().locale, current: currentLocale() })
+    if (!action) return
+    if ('apply' in action) void this.applyLanguage(action.apply)
+    else this.account.setLocale(action.push).catch((err: unknown) => log.info(`Langue non enregistrée dans le compte : ${(err as Error).message}`))
   }
 
   /** Tâches de fond : catalogue de la Marketplace (mises à jour des packs), caches, mises à jour de l'app. */
@@ -182,7 +228,7 @@ export class Service {
 
   /** Lance une tâche longue (une seule à la fois) et relaie sa progression à l'interface. */
   private startTask(kind: TaskProgress['kind'], title: string, target: string | null, fn: (report: Report, signal: AbortSignal) => Promise<unknown>): string {
-    if (this.running) throw this.toError('Une opération est déjà en cours.')
+    if (this.running) throw this.toError(t('errors.busy'))
     const id = `${kind}-${Date.now().toString(36)}`
     const abort = new AbortController()
     this.running = { id, abort }
@@ -248,12 +294,12 @@ export class Service {
       if (p) {
         // Vérifié avant d'être enregistré : on refuse un dossier qui n'est manifestement pas le bon.
         if (which === 'fivem') {
-          const info = await inspectFiveM(await normalizeFiveMPath(p), 'manuel')
-          if (!info.valid) throw this.toError("Ce dossier n'est pas un dossier FiveM.")
+          const info = await inspectFiveM(await normalizeFiveMPath(p), t('games.source.manual'))
+          if (!info.valid) throw this.toError(t('service.errors.notFiveMDir'))
           p = info.path
         } else {
-          const info = await inspectGta(p, 'manuel')
-          if (!info.valid) throw this.toError("Ce dossier n'est pas un dossier GTA V (GTA5.exe introuvable).")
+          const info = await inspectGta(p, t('games.source.manual'))
+          if (!info.valid) throw this.toError(t('service.errors.notGtaDir'))
         }
       }
       await this.settings.patch(which === 'fivem' ? { fivemPath: p } : { gtaPath: p })
@@ -272,25 +318,28 @@ export class Service {
     pickArchives: async () => {
       const w = this.getWindow()
       const opts = {
-        title: 'Ajouter des packs',
+        title: t('service.dialogs.addPacks'),
         properties: ['openFile' as const, 'multiSelections' as const],
-        filters: [{ name: 'Archives', extensions: ['zip', 'rar', '7z'] }]
+        filters: [{ name: t('service.dialogs.archives'), extensions: ['zip', 'rar', '7z'] }]
       }
       const r = w ? await dialog.showOpenDialog(w, opts) : await dialog.showOpenDialog(opts)
       return r.canceled ? [] : r.filePaths
     },
 
     importPacks: async (paths: string[]) => {
-      if (!paths.length) throw this.toError('Aucun fichier.')
-      const label = paths.length > 1 ? `${paths.length} packs` : path.basename(paths[0]).replace(/\.(zip|rar|7z)$/i, '')
-      return this.startTask('import', `Ajout de ${label}`, null, async (report, signal) => {
+      if (!paths.length) throw this.toError(t('service.errors.noFiles'))
+      const title =
+        paths.length > 1
+          ? t('service.tasks.importPacks', { count: paths.length })
+          : t('service.tasks.importOne', { name: path.basename(paths[0]).replace(/\.(zip|rar|7z)$/i, '') })
+      return this.startTask('import', title, null, async (report, signal) => {
         const imported: string[] = []
         const errors: string[] = []
         for (let i = 0; i < paths.length; i++) {
           try {
             const m = await this.library.import(paths[i], (pr) => report(pr.phase, pr.current, pr.total), signal)
             imported.push(m.name)
-            await this.state.set(pushHistory(this.state.get(), { action: 'import', packName: m.name, ok: true, summary: `${m.fileCount} fichiers` }))
+            await this.state.set(pushHistory(this.state.get(), { action: 'import', packName: m.name, ok: true, msg: msg('history.files', { count: m.fileCount, n: formatNumber(m.fileCount) }) }))
             this.changed()
           } catch (err) {
             if (signal.aborted) throw err
@@ -351,54 +400,54 @@ export class Service {
       const w = this.getWindow()
       const plugins = this.gamesCache?.fivem.path ? path.join(this.gamesCache.fivem.path, 'plugins') : undefined
       const opts = {
-        title: 'Image du pack',
+        title: t('service.dialogs.packImage'),
         defaultPath: plugins,
         properties: ['openFile' as const],
-        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }]
+        filters: [{ name: t('service.dialogs.images'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp'] }]
       }
       const r = w ? await dialog.showOpenDialog(w, opts) : await dialog.showOpenDialog(opts)
       if (r.canceled || !r.filePaths[0]) return null
       const name = await saveCover(r.filePaths[0], this.library.packDir(id))
-      if (!name) throw this.toError('Image illisible.')
+      if (!name) throw this.toError(t('service.errors.unreadableImage'))
       const m = await this.library.setCover(id, name)
       this.changed()
       return toPublic(m)
     },
 
     deletePack: async (id: string) => {
-      if (this.state.get().active?.packId === id) throw this.toError("Retire d'abord ce pack du jeu.")
-      if (this.running) throw this.toError('Une opération est déjà en cours.')
+      if (this.state.get().active?.packId === id) throw this.toError(t('service.errors.removePackFirst'))
+      if (this.running) throw this.toError(t('errors.busy'))
       const m = await this.library.get(id)
-      return this.startTask('delete', `Suppression de ${m.name}`, id, async (report) => {
-        await this.library.remove(id, (done, total) => report('Suppression', done, total))
-        await this.state.set(pushHistory(this.state.get(), { action: 'delete', packName: m.name, ok: true, summary: 'Supprimé' }))
+      return this.startTask('delete', t('service.tasks.delete', { name: m.name }), id, async (report) => {
+        await this.library.remove(id, (done, total) => report(t('service.phases.deleting'), done, total))
+        await this.state.set(pushHistory(this.state.get(), { action: 'delete', packName: m.name, ok: true, msg: msg('history.deleted') }))
       })
     },
 
     openPackFolder: async (id: string) => {
-      if ((await this.library.get(id)).protection) throw this.toError('Pack protégé : ses fichiers restent chiffrés dans la bibliothèque.')
-      if (await shell.openPath(this.library.contentDir(id))) throw this.toError('Impossible d’ouvrir ce dossier.')
+      if ((await this.library.get(id)).protection) throw this.toError(t('service.errors.protectedPackFolder'))
+      if (await shell.openPath(this.library.contentDir(id))) throw this.toError(t('service.errors.cannotOpenFolder'))
     },
 
     applyPack: async (id: string) => {
       const m = await this.library.get(id)
-      return this.startTask('apply', `Installation de ${m.name}`, id, (report) => this.installer.apply(id, report))
+      return this.startTask('apply', t('service.tasks.apply', { name: m.name }), id, (report) => this.installer.apply(id, report))
     },
 
     removeActive: async () => {
       const a = this.state.get().active
-      if (!a) throw this.toError('Aucun pack installé.')
-      return this.startTask('remove', `Retrait de ${a.packName}`, a.packId, (report) => this.installer.removeActive(report))
+      if (!a) throw this.toError(t('service.errors.noActivePack'))
+      return this.startTask('remove', t('service.tasks.remove', { name: a.packName }), a.packId, (report) => this.installer.removeActive(report))
     },
 
     stashForeign: async (selection?: ForeignSelection[]) =>
-      this.startTask('stash', 'Rangement des mods', 'foreign', (report) => this.installer.stashForeign(report, selection)),
+      this.startTask('stash', t('service.tasks.stash'), 'foreign', (report) => this.installer.stashForeign(report, selection)),
 
     scanForeign: () => this.installer.scanForeign(),
 
     cacheInfo: () => this.installer.cacheInfo(),
 
-    clearCache: async () => this.startTask('cache', 'Vidage du cache FiveM', 'cache', (report) => this.installer.clearCache(report)),
+    clearCache: async () => this.startTask('cache', t('service.tasks.clearCache'), 'cache', (report) => this.installer.clearCache(report)),
 
     openScreenshots: async (where: 'plugins' | 'pictures') => {
       let dir: string
@@ -407,56 +456,58 @@ export class Service {
         await fs.mkdir(dir, { recursive: true })
       } else {
         const fivem = (this.gamesCache ?? (await this.refreshGames())).fivem.path
-        if (!fivem) throw this.toError('Dossier FiveM introuvable.')
+        if (!fivem) throw this.toError(t('service.errors.fivemFolderNotFound'))
         dir = path.join(fivem, 'plugins')
       }
-      if (await shell.openPath(dir)) throw this.toError('Impossible d’ouvrir ce dossier.')
+      if (await shell.openPath(dir)) throw this.toError(t('service.errors.cannotOpenFolder'))
     },
 
     trashScreenshots: async () =>
-      this.startTask('trash', 'Suppression des captures', 'screenshots', async (report) => {
+      this.startTask('trash', t('service.tasks.trashScreenshots'), 'screenshots', async (report) => {
         const fivem = (this.gamesCache ?? (await this.refreshGames())).fivem.path
-        if (!fivem) throw this.toError('Dossier FiveM introuvable.')
+        if (!fivem) throw this.toError(t('service.errors.fivemFolderNotFound'))
         const shots = (await this.installer.scanForeign()).filter((i) => i.category === 'screenshot' && !i.isDir)
         let done = 0
         for (const s of shots) {
           // Corbeille de Windows : récupérable en cas d'erreur.
           await shell.trashItem(path.join(fivem, ...s.path.split('/')))
-          report('Suppression', ++done, shots.length)
+          report(t('service.phases.deleting'), ++done, shots.length)
         }
-        await this.state.set(pushHistory(this.state.get(), { action: 'clean', ok: true, summary: `${done} captures d'écran mises à la corbeille` }))
+        await this.state.set(pushHistory(this.state.get(), { action: 'clean', ok: true, msg: msg('history.screenshotsTrashed', { count: done, n: formatNumber(done) }) }))
         return { trashed: done }
       }),
 
-    cleanGame: async () => this.startTask('clean', 'Nettoyage du jeu', 'game', (report) => this.installer.cleanGame(report)),
+    cleanGame: async () => this.startTask('clean', t('service.tasks.clean'), 'game', (report) => this.installer.cleanGame(report)),
 
     moveScreenshots: async () => {
       const dir = this.screenshotsDir()
       await fs.mkdir(dir, { recursive: true })
-      return this.startTask('screenshots', 'Déplacement des captures', 'screenshots', (report) => this.installer.moveScreenshots(dir, report))
+      return this.startTask('screenshots', t('service.tasks.moveScreenshots'), 'screenshots', (report) => this.installer.moveScreenshots(dir, report))
     },
 
     getGraphics: async (id?: GraphicsTarget['id']) => {
-      const t = await this.graphicsTarget(id)
-      return t ? this.graphics.read(t.target, t.targets) : null
+      const gt = await this.graphicsTarget(id)
+      return gt ? this.graphics.read(gt.target, gt.targets) : null
     },
 
     saveGraphics: async (id: GraphicsTarget['id'], changes: Record<string, string>) => {
-      const t = await this.graphicsTarget(id)
-      if (!t) throw this.toError('Fichier de réglages introuvable. Lancez le jeu une première fois.')
+      const gt = await this.graphicsTarget(id)
+      if (!gt) throw this.toError(t('service.errors.graphicsFileMissingFirstRun'))
       // Le jeu réécrit ce fichier en quittant : une modification faite pendant qu'il tourne serait perdue.
-      if ((await runningGameProcesses()).length) throw this.toError('Fermez FiveM avant de modifier les réglages : le jeu les réécrit en quittant.')
-      await this.graphics.write(t.target, changes)
+      if ((await runningGameProcesses()).length) throw this.toError(t('service.errors.closeGameForGraphics'))
+      await this.graphics.write(gt.target, changes)
       const n = Object.keys(changes).length
-      await this.state.set(pushHistory(this.state.get(), { action: 'graphics', ok: true, summary: `${n} réglage${n > 1 ? 's' : ''} graphique${n > 1 ? 's' : ''} modifié${n > 1 ? 's' : ''} (${t.target.label})` }))
+      await this.state.set(
+        pushHistory(this.state.get(), { action: 'graphics', ok: true, msg: msg('history.graphicsChanged', { count: n, n: formatNumber(n), target: gt.target.label }) })
+      )
       this.changed()
-      return this.graphics.read(t.target, t.targets)
+      return this.graphics.read(gt.target, gt.targets)
     },
 
     setFpsLimit: async (limit: number | null) => {
       if (limit !== null && !(Number.isInteger(limit) && (limit === 0 || (limit >= FPS_LIMIT_MIN && limit <= FPS_LIMIT_MAX))))
-        throw this.toError(`Limite invalide : choisissez entre ${FPS_LIMIT_MIN} et ${FPS_LIMIT_MAX} images par seconde.`)
-      if (this.running) throw this.toError('Une opération est déjà en cours.')
+        throw this.toError(t('service.errors.invalidFpsLimit', { min: FPS_LIMIT_MIN, max: FPS_LIMIT_MAX }))
+      if (this.running) throw this.toError(t('errors.busy'))
       const previous = this.settings.get().fpsLimit ?? null
       await this.settings.patch({ fpsLimit: limit })
       let updated: number
@@ -466,35 +517,35 @@ export class Service {
         await this.settings.patch({ fpsLimit: previous })
         throw e
       }
-      const label = limit === null ? 'celle du pack' : limit === 0 ? 'aucune' : `${limit} FPS`
-      await this.state.set(pushHistory(this.state.get(), { action: 'graphics', ok: true, summary: `Limite d'images par seconde : ${label}` }))
+      const summary = limit === null ? msg('history.fpsLimitPack') : limit === 0 ? msg('history.fpsLimitNone') : msg('history.fpsLimit', { limit })
+      await this.state.set(pushHistory(this.state.get(), { action: 'graphics', ok: true, msg: summary }))
       this.changed()
       return updated
     },
 
     restoreGraphics: async (id: GraphicsTarget['id']) => {
-      const t = await this.graphicsTarget(id)
-      if (!t) throw this.toError('Fichier de réglages introuvable.')
-      if ((await runningGameProcesses()).length) throw this.toError('Fermez FiveM avant de modifier les réglages : le jeu les réécrit en quittant.')
-      await this.graphics.restore(t.target)
-      await this.state.set(pushHistory(this.state.get(), { action: 'graphics', ok: true, summary: `Réglages graphiques d’origine restaurés (${t.target.label})` }))
+      const gt = await this.graphicsTarget(id)
+      if (!gt) throw this.toError(t('service.errors.graphicsFileMissing'))
+      if ((await runningGameProcesses()).length) throw this.toError(t('service.errors.closeGameForGraphics'))
+      await this.graphics.restore(gt.target)
+      await this.state.set(pushHistory(this.state.get(), { action: 'graphics', ok: true, msg: msg('history.graphicsRestored', { target: gt.target.label }) }))
       this.changed()
-      return this.graphics.read(t.target, t.targets)
+      return this.graphics.read(gt.target, gt.targets)
     },
 
     moveLibrary: async (newDir: string) => {
       const oldDir = this.settings.get().libraryDir
       const target = path.resolve(newDir)
-      if (path.resolve(oldDir).toLowerCase() === target.toLowerCase()) throw this.toError('Les packs sont déjà dans ce dossier.')
-      if (isInside(oldDir, target)) throw this.toError('Choisis un dossier en dehors du dossier actuel.')
-      if (this.state.get().active) throw this.toError("Retire d'abord le pack installé.")
-      return this.startTask('move-library', 'Déplacement des packs', null, async (report) => {
+      if (path.resolve(oldDir).toLowerCase() === target.toLowerCase()) throw this.toError(t('service.errors.libraryAlreadyThere'))
+      if (isInside(oldDir, target)) throw this.toError(t('service.errors.libraryInsideCurrent'))
+      if (this.state.get().active) throw this.toError(t('service.errors.removeInstalledPackFirst'))
+      return this.startTask('move-library', t('service.tasks.moveLibrary'), null, async (report) => {
         await fs.mkdir(target, { recursive: true })
         const packs = await this.library.list()
         for (let i = 0; i < packs.length; i++) {
           report('', i, packs.length)
           const dest = path.join(target, packs[i].id)
-          if (await exists(dest)) throw this.toError(`Le dossier ${dest} existe déjà.`)
+          if (await exists(dest)) throw this.toError(t('service.errors.folderExists', { path: dest }))
           await moveDir(this.library.packDir(packs[i].id), dest)
         }
         await this.settings.patch({ libraryDir: target })
@@ -505,7 +556,7 @@ export class Service {
     },
 
     openPath: async (p: string) => {
-      if (await shell.openPath(p)) throw this.toError('Impossible d’ouvrir ce dossier.')
+      if (await shell.openPath(p)) throw this.toError(t('service.errors.cannotOpenFolder'))
     },
 
     packMenu: async (id: string) => {
@@ -515,11 +566,11 @@ export class Service {
       return new Promise<'rename' | 'image' | 'open' | 'delete' | null>((resolve) => {
         let choice: 'rename' | 'image' | 'open' | 'delete' | null = null
         const menu = Menu.buildFromTemplate([
-          { label: 'Renommer', click: () => (choice = 'rename') },
-          { label: 'Changer l’image…', click: () => (choice = 'image') },
-          { label: 'Ouvrir le dossier', enabled: !isProtected, click: () => (choice = 'open') },
+          { label: t('service.packMenu.rename'), click: () => (choice = 'rename') },
+          { label: t('service.packMenu.changeImage'), click: () => (choice = 'image') },
+          { label: t('service.packMenu.openFolder'), enabled: !isProtected, click: () => (choice = 'open') },
           { type: 'separator' },
-          { label: 'Supprimer', enabled: !isActive, click: () => (choice = 'delete') }
+          { label: t('common.delete'), enabled: !isActive, click: () => (choice = 'delete') }
         ])
         menu.popup({ window: w ?? undefined, callback: () => setTimeout(() => resolve(choice), 0) })
       })
@@ -527,7 +578,7 @@ export class Service {
 
     confirm: async (message: string, detail: string, okLabel: string) => {
       const w = this.getWindow()
-      const opts = { type: 'question' as const, message, detail, buttons: [okLabel, 'Annuler'], defaultId: 0, cancelId: 1, noLink: true }
+      const opts = { type: 'question' as const, message, detail, buttons: [okLabel, t('common.cancel')], defaultId: 0, cancelId: 1, noLink: true }
       const r = w ? await dialog.showMessageBox(w, opts) : await dialog.showMessageBox(opts)
       return r.response === 0
     },
@@ -542,15 +593,15 @@ export class Service {
 
     marketInstall: async (id: string) => {
       const remote = await this.marketplace.detail(id)
-      const verb = remote.updateAvailable ? 'Mise à jour' : 'Téléchargement'
-      return this.startTask('download', `${verb} de ${remote.name}`, remote.id, async (report, signal) => {
+      const title = t(remote.updateAvailable ? 'service.tasks.update' : 'service.tasks.download', { name: remote.name })
+      return this.startTask('download', title, remote.id, async (report, signal) => {
         const result = await this.marketplace.install(remote.id, report, signal, {
           activeId: () => this.state.get().active?.packId ?? null,
           apply: (packId, r) => this.installer.apply(packId, r)
         })
         if (result.status !== 'up-to-date') {
-          const summary = { added: 'Téléchargé depuis la Marketplace', updated: 'Mis à jour depuis la Marketplace', linked: 'Relié à la Marketplace' }[result.status]
-          await this.state.set(pushHistory(this.state.get(), { action: 'download', packName: result.name, ok: true, summary }))
+          const summary = msg({ added: 'history.downloaded', updated: 'history.updated', linked: 'history.linked' }[result.status])
+          await this.state.set(pushHistory(this.state.get(), { action: 'download', packName: result.name, ok: true, msg: summary }))
         }
         return result
       })
@@ -561,7 +612,7 @@ export class Service {
     marketAuthor: (slugOrId: string) => this.marketplace.author(slugOrId),
 
     openSite: async (sitePath: string) => {
-      if (!/^\/[a-z0-9/_-]*$/i.test(sitePath)) throw this.toError('Adresse invalide.')
+      if (!/^\/[a-z0-9/_-]*$/i.test(sitePath)) throw this.toError(t('service.errors.invalidAddress'))
       // « depuis=app » : le site retient que l'application est installée sur ce PC (« Installer via l'app »).
       await shell.openExternal(`${this.marketplace.siteUrl(sitePath)}?depuis=app`)
     },
@@ -573,12 +624,12 @@ export class Service {
       } catch {
         /* adresse invalide */
       }
-      if (!parsed || (parsed.protocol !== 'https:' && parsed.protocol !== 'http:')) throw this.toError('Lien invalide.')
+      if (!parsed || (parsed.protocol !== 'https:' && parsed.protocol !== 'http:')) throw this.toError(t('service.errors.invalidLink'))
       await shell.openExternal(parsed.toString())
     },
 
     openDiscordInvite: async (code: string) => {
-      if (!/^[a-z0-9-]+$/i.test(code)) throw this.toError('Invitation invalide.')
+      if (!/^[a-z0-9-]+$/i.test(code)) throw this.toError(t('service.errors.invalidInvite'))
       // Application Discord installée : l'invitation s'ouvre directement dedans, sinon dans le navigateur.
       const url = app.getApplicationNameForProtocol('discord://') ? `discord://-/invite/${code}` : `https://discord.gg/${code}`
       await shell.openExternal(url)
@@ -612,10 +663,10 @@ export class Service {
     accountPickAvatar: async () => {
       const w = this.getWindow()
       const opts = {
-        title: 'Photo de profil',
+        title: t('service.dialogs.avatar'),
         defaultPath: app.getPath('pictures'),
         properties: ['openFile' as const],
-        filters: [{ name: 'Images', extensions: AVATAR_EXTENSIONS }]
+        filters: [{ name: t('service.dialogs.images'), extensions: AVATAR_EXTENSIONS }]
       }
       const r = w ? await dialog.showOpenDialog(w, opts) : await dialog.showOpenDialog(opts)
       if (r.canceled || !r.filePaths[0]) return null
@@ -626,10 +677,23 @@ export class Service {
 
     accountChangePassword: (currentPassword: string | null, newPassword: string) => this.account.changePassword(currentPassword, newPassword),
 
+    getLanguage: async () => currentLocale(),
+
+    setLanguage: async (code: string) => {
+      const locale = supportedLocale(code)
+      if (!locale) throw this.toError(t('language.invalid', { code }))
+      await this.settings.patch({ locale })
+      await this.applyLanguage(locale)
+      if (this.account.current() && this.account.current()?.locale !== locale)
+        this.account.setLocale(locale).catch((err: unknown) => log.info(`Langue non enregistrée dans le compte : ${(err as Error).message}`))
+    },
+
+    listLanguages: () => fetchLanguages(this.apiUrl, apiFetch),
+
     checkForUpdates: () => this.updater.check(),
 
     installUpdate: async () => {
-      if (this.running) throw this.toError('Attendez la fin de l’opération en cours.')
+      if (this.running) throw this.toError(t('service.errors.waitForTask'))
       this.updater.install()
     }
   }

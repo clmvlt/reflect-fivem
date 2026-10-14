@@ -7,6 +7,8 @@ import { spawn } from 'node:child_process'
 import { pipeline } from 'node:stream/promises'
 import { Transform } from 'node:stream'
 import yauzl from 'yauzl'
+import i18next from 'i18next'
+import type { Msg } from '@shared/i18n'
 import { decodeZipName, detectFormat, sanitizeEntryPath, type ArchiveFormat } from './sanitize'
 
 export interface ExtractProgress {
@@ -18,14 +20,26 @@ export interface ExtractProgress {
   current?: string
 }
 
-const PASSWORD_MSG = "Archive protégée par mot de passe. Extrayez-la avec WinRAR ou 7-Zip, puis déposez le dossier."
+// Pas de @shared/i18n ici : il embarquerait les traductions dans le worker.
+const msg = (key: string, params?: Msg['params']): Msg => (params ? { key, params } : { key })
 
+const PASSWORD_MSG = msg('archive.errors.password')
+const CORRUPT_MSG = msg('archive.errors.corrupt')
+const SEVEN_ZIP_MSG = msg('archive.errors.sevenZipUnavailable')
+const SPACE_MSG = msg('archive.errors.space')
+
+/**
+ * Erreur d'extraction. {@link text} : message à traduire. L'extraction tourne dans un worker où les traductions ne sont
+ * pas chargées : le message y vaut la clé, et le processus principal le traduit à la réception (voir extractInWorker).
+ */
 export class ArchiveError extends Error {
+  public text: Msg | null
   constructor(
     public code: 'password' | 'corrupt' | 'unsupported' | 'space' | 'volume' | 'unknown',
-    message: string
+    text: Msg | string
   ) {
-    super(message)
+    super(typeof text === 'string' ? text : i18next.isInitialized ? (i18next.t as unknown as (key: string, params?: object) => string)(text.key, text.params) : text.key)
+    this.text = typeof text === 'string' ? null : text
   }
 }
 
@@ -47,7 +61,7 @@ export async function extractArchive(
   sevenZipPath: string | null
 ): Promise<{ format: ArchiveFormat; files: number; bytes: number }> {
   const format = await detectArchiveFormat(file)
-  if (!format) throw new ArchiveError('unsupported', 'Format non pris en charge. Utilisez une archive .zip, .rar ou .7z.')
+  if (!format) throw new ArchiveError('unsupported', msg('archive.errors.format'))
   await fs.mkdir(target, { recursive: true })
   if (format === 'zip') {
     try {
@@ -63,7 +77,7 @@ export async function extractArchive(
     }
   }
   if (format === 'rar') return { format, ...(await extractRar(file, target, onProgress)) }
-  if (!sevenZipPath) throw new ArchiveError('unsupported', 'Extraction .7z indisponible.')
+  if (!sevenZipPath) throw new ArchiveError('unsupported', SEVEN_ZIP_MSG)
   return { format, ...(await extract7z(file, target, onProgress, sevenZipPath)) }
 }
 
@@ -77,7 +91,7 @@ function openZip(file: string): Promise<yauzl.ZipFile> {
     yauzl.open(
       file,
       { lazyEntries: true, autoClose: false, decodeStrings: false, validateEntrySizes: true, strictFileNames: false } as yauzl.Options,
-      (err, zip) => (err || !zip ? reject(new ArchiveError('corrupt', 'Archive endommagée ou incomplète.')) : resolve(zip))
+      (err, zip) => (err || !zip ? reject(new ArchiveError('corrupt', CORRUPT_MSG)) : resolve(zip))
     )
   })
 }
@@ -90,14 +104,14 @@ function listZip(zip: yauzl.ZipFile): Promise<yauzl.Entry[]> {
       zip.readEntry()
     })
     zip.on('end', () => resolve(out))
-    zip.on('error', () => reject(new ArchiveError('corrupt', 'Archive endommagée ou incomplète.')))
+    zip.on('error', () => reject(new ArchiveError('corrupt', CORRUPT_MSG)))
     zip.readEntry()
   })
 }
 
 function openEntryStream(zip: yauzl.ZipFile, entry: yauzl.Entry): Promise<NodeJS.ReadableStream> {
   return new Promise((resolve, reject) => {
-    zip.openReadStream(entry, (err, stream) => (err || !stream ? reject(err ?? new Error('flux indisponible')) : resolve(stream)))
+    zip.openReadStream(entry, (err, stream) => (err || !stream ? reject(err ?? new ArchiveError('unknown', msg('archive.errors.stream'))) : resolve(stream)))
   })
 }
 
@@ -115,7 +129,7 @@ async function extractZip(file: string, target: string, onProgress: (p: ExtractP
     if (fileEntries.some(({ e }) => (e.generalPurposeBitFlag & 0x1) !== 0))
       throw new ArchiveError('password', PASSWORD_MSG)
     const bad = fileEntries.find(({ e }) => !ZIP_METHODS.has(e.compressionMethod))
-    if (bad) throw new ArchiveError('unsupported', `Méthode de compression ZIP ${bad.e.compressionMethod} non gérée nativement`)
+    if (bad) throw new ArchiveError('unsupported', msg('archive.errors.zipMethod', { method: bad.e.compressionMethod }))
 
     const totalBytes = fileEntries.reduce((s, { e }) => s + e.uncompressedSize, 0)
     const totalFiles = fileEntries.length
@@ -206,12 +220,12 @@ async function extractRar(file: string, target: string, onProgress: (p: ExtractP
 function mapRarError(err: unknown): Error {
   if (err instanceof ArchiveError) return err
   const reason = (err as { reason?: string }).reason ?? ''
-  const msg = (err as Error)?.message ?? String(err)
+  const message = (err as Error)?.message ?? String(err)
   if (/PASSWORD/.test(reason)) return new ArchiveError('password', PASSWORD_MSG)
-  if (/EOPEN/.test(reason) && /volume/i.test(msg)) return new ArchiveError('volume', 'Il manque une partie de l’archive (.part2.rar, .part3.rar…). Placez-les toutes dans le même dossier.')
-  if (/BAD_DATA|BAD_ARCHIVE|UNKNOWN_FORMAT|EREAD/.test(reason)) return new ArchiveError('corrupt', 'Archive endommagée ou incomplète.')
-  if (/EWRITE|ECREATE/.test(reason)) return new ArchiveError('space', 'Pas assez de place sur le disque.')
-  return new ArchiveError('unknown', `Extraction impossible (${reason || msg}).`)
+  if (/EOPEN/.test(reason) && /volume/i.test(message)) return new ArchiveError('volume', msg('archive.errors.volume'))
+  if (/BAD_DATA|BAD_ARCHIVE|UNKNOWN_FORMAT|EREAD/.test(reason)) return new ArchiveError('corrupt', CORRUPT_MSG)
+  if (/EWRITE|ECREATE/.test(reason)) return new ArchiveError('space', SPACE_MSG)
+  return new ArchiveError('unknown', msg('archive.errors.failed', { reason: reason || message }))
 }
 
 // ---------------------------------------------------------------------------
@@ -235,7 +249,7 @@ function extract7z(
       if (m) onProgress({ phase: 'extract', files: 0, totalFiles: 0, bytes: Number(m[1]), totalBytes: 100 })
     })
     child.stderr.on('data', (d: Buffer) => (errText += d.toString()))
-    child.on('error', () => reject(new ArchiveError('unknown', 'Extraction .7z indisponible.')))
+    child.on('error', () => reject(new ArchiveError('unknown', SEVEN_ZIP_MSG)))
     child.on('close', async (code) => {
       if (code === 0 || code === 1) {
         const { count, size } = await countDir(target)
@@ -243,9 +257,9 @@ function extract7z(
       } else if (/Wrong password|password/i.test(errText)) {
         reject(new ArchiveError('password', PASSWORD_MSG))
       } else if (/not enough space|disk full/i.test(errText)) {
-        reject(new ArchiveError('space', 'Pas assez de place sur le disque.'))
+        reject(new ArchiveError('space', SPACE_MSG))
       } else {
-        reject(new ArchiveError('corrupt', 'Archive endommagée ou incomplète.'))
+        reject(new ArchiveError('corrupt', CORRUPT_MSG))
       }
     })
   })

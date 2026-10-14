@@ -15,9 +15,12 @@ import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { pathToFileURL } from 'node:url'
 import { net } from 'electron'
+import { t } from 'i18next'
 import type { AuthorPage, AuthorProfile, MarketPack, MarketPackDetail, MarketPage, MarketTag, ProfileLink } from '@shared/types'
 import { PACK_GONE, type AuthorQuery, type MarketQuery } from '@shared/api'
-import { toAuthorRef } from './account'
+import { formatBytes as displayBytes } from '@shared/intl'
+import { ApiError, toAuthorRef } from './account'
+import { languageFetch } from './http'
 import type { Report } from './installer'
 import type { ImportProgress, Library, StoredManifest } from './library'
 import { KEY_SIZE, packageId } from './sealed'
@@ -112,6 +115,11 @@ const AVATAR_VERSION = /^[A-Za-z0-9_-]{1,64}$/
 const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/
 const IMAGE_CACHE_MAX = 300 * 1024 * 1024
 
+/** Pack inconnu (ou retiré) de l'API : code PACK_GONE, message dans la langue affichée. */
+const goneError = (): ApiError => new ApiError(t('market.packGone'), 404, PACK_GONE)
+/** Requêtes vers l'API, avec la langue affichée (Accept-Language). */
+const apiFetch = languageFetch((url, init) => net.fetch(url, init))
+
 /** Vidéo YouTube de la fiche (null si aucune, ou si l'identifiant reçu n'en est pas un). */
 function youtubeId(r: RemoteDetail): string | null {
   return r.youtubeId && YOUTUBE_ID.test(r.youtubeId) ? r.youtubeId : null
@@ -120,6 +128,12 @@ function youtubeId(r: RemoteDetail): string | null {
 /** Nom de l'auteur gardé en texte (fiche et bibliothèque) : celui de la fiche, sinon celui de son compte. */
 function authorName(r: RemoteSummary): string {
   return r.author || r.authorProfile?.displayName || ''
+}
+
+/** Corps d'une erreur de l'API (application/problem+json), lu sur une copie de la réponse. */
+async function problemOf(response: Response): Promise<{ detail: string | null; code: string | null }> {
+  const p = (await response.clone().json().catch(() => null)) as { detail?: unknown; code?: unknown } | null
+  return { detail: typeof p?.detail === 'string' && p.detail.trim() ? p.detail : null, code: typeof p?.code === 'string' ? p.code : null }
 }
 
 /** Pack de l'API tel que l'interface le reçoit ; `local` : sa version la plus récente dans la bibliothèque. */
@@ -177,15 +191,15 @@ export class Marketplace {
 
   // ------------------------------------------------------------------ lecture
 
-  private async get<T>(pathAndQuery: string, notFound = PACK_GONE): Promise<T> {
+  private async get<T>(pathAndQuery: string, notFound: () => Error = goneError): Promise<T> {
     let response: Response
     try {
-      response = await net.fetch(`${this.apiUrl}${pathAndQuery}`, { signal: AbortSignal.timeout(20_000) })
+      response = await apiFetch(`${this.apiUrl}${pathAndQuery}`, { signal: AbortSignal.timeout(20_000) })
     } catch {
-      throw new Error('Marketplace injoignable. Vérifiez votre connexion à Internet.')
+      throw new Error(t('market.errors.unreachable'))
     }
-    if (response.status === 404) throw new Error(notFound)
-    if (!response.ok) throw new Error(`La Marketplace ne répond pas correctement (erreur ${response.status}).`)
+    if (response.status === 404) throw notFound()
+    if (!response.ok) throw new Error((await problemOf(response)).detail ?? t('market.errors.badStatus', { status: response.status }))
     return (await response.json()) as T
   }
 
@@ -257,7 +271,7 @@ export class Marketplace {
 
   /** Page publique d'un auteur. */
   async author(slugOrId: string): Promise<AuthorProfile> {
-    const r = await this.get<RemoteAuthor>(`/authors/${encodeURIComponent(slugOrId)}`, 'Cet auteur n’existe pas ou plus.')
+    const r = await this.get<RemoteAuthor>(`/authors/${encodeURIComponent(slugOrId)}`, () => new Error(t('market.authorGone')))
     return {
       ...toAuthorRef(r),
       bio: r.bio ?? '',
@@ -328,7 +342,7 @@ export class Marketplace {
     const file = path.join(this.cacheDir, `avatar-${userId}-${version}.jpg`)
     if (await exists(file)) return net.fetch(pathToFileURL(file).toString())
     try {
-      const response = await net.fetch(`${this.apiUrl}/users/${userId}/avatar?v=${version}`, { signal: AbortSignal.timeout(30_000) })
+      const response = await apiFetch(`${this.apiUrl}/users/${userId}/avatar?v=${version}`, { signal: AbortSignal.timeout(30_000) })
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
       const data = Buffer.from(await response.arrayBuffer())
       if (data[0] !== 0xff || data[1] !== 0xd8) throw new Error('Image invalide')
@@ -343,7 +357,7 @@ export class Marketplace {
   }
 
   private async fetchImage(packId: string, imageId: string, thumb: boolean): Promise<Buffer> {
-    const response = await net.fetch(`${this.apiUrl}/packs/${packId}/images/${imageId}${thumb ? '?size=thumb' : ''}`, {
+    const response = await apiFetch(`${this.apiUrl}/packs/${packId}/images/${imageId}${thumb ? '?size=thumb' : ''}`, {
       signal: AbortSignal.timeout(30_000)
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
@@ -385,7 +399,7 @@ export class Marketplace {
   async install(id: string, report: Report, signal: AbortSignal, hooks: InstallHooks): Promise<InstallResult> {
     const remote = await this.remoteDetail(id)
     const download = downloadOf(remote, this.apiUrl)
-    if (!download || !remote.sha256 || !remote.archiveName) throw new Error('Ce pack n’a pas encore d’archive.')
+    if (!download || !remote.sha256 || !remote.archiveName) throw new Error(t('market.errors.noArchivePack'))
     const lib = this.library()
     const index = await this.localIndex()
     const linked = index.get(remote.id) ?? null
@@ -407,11 +421,11 @@ export class Marketplace {
     const onProgress = (p: ImportProgress): void => report(p.phase, p.current, p.total)
     let imported: StoredManifest
     if (remote.encrypted) {
-      report('Déverrouillage du pack', 0, 0)
+      report(t('market.phase.unlockPack'), 0, 0)
       const { packageId: expected, key } = await this.packageKey(remote.id)
       if ((await packageId(file)) !== expected) {
         await fs.rm(path.dirname(file), { recursive: true, force: true }).catch(() => undefined)
-        throw new Error('Le pack a été mis à jour pendant le téléchargement : relancez le téléchargement.')
+        throw new Error(t('market.errors.changedDuringDownloadPack'))
       }
       imported = await lib.importPackage(file, key, { name: remote.archiveName, size: remote.archiveSize ?? 0 }, onProgress)
     } else imported = await lib.import(file, onProgress, signal, { skipDuplicateCheck: true })
@@ -438,7 +452,7 @@ export class Marketplace {
           packId: next.id,
           name: next.name,
           status: 'updated',
-          note: `La nouvelle version de ${linked.name} est dans la bibliothèque. Installez-la pour remplacer l’ancienne : ${(err as Error).message}`
+          note: t('market.notes.updateNotInstalled', { name: linked.name, error: (err as Error).message })
         }
       }
     }
@@ -451,7 +465,7 @@ export class Marketplace {
     const body = await this.get<{ packageId?: unknown; key?: unknown }>(`/packs/${encodeURIComponent(id)}/package/key`)
     const key = typeof body.key === 'string' ? Buffer.from(body.key, 'base64') : null
     if (typeof body.packageId !== 'string' || !/^[0-9a-f]{32}$/.test(body.packageId) || key?.length !== KEY_SIZE)
-      throw new Error('La Marketplace ne répond pas correctement (clé du pack invalide).')
+      throw new Error(t('market.errors.badKeyPack'))
     return { packageId: body.packageId, key }
   }
 
@@ -465,7 +479,7 @@ export class Marketplace {
     const sha = d.sha256
 
     // Téléchargement d'une autre version du pack laissé en plan : on repart de zéro.
-    const meta = await fs.readFile(metaFile, 'utf8').then((t) => JSON.parse(t) as { sha256?: string }).catch(() => null)
+    const meta = await fs.readFile(metaFile, 'utf8').then((text) => JSON.parse(text) as { sha256?: string }).catch(() => null)
     if (meta?.sha256 !== sha) await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
     await fs.mkdir(dir, { recursive: true })
     await fs.writeFile(metaFile, JSON.stringify({ sha256: sha, name: remote.name }))
@@ -477,7 +491,7 @@ export class Marketplace {
     // L'archive, puis son contenu extrait (environ deux fois sa taille) pendant l'ajout à la bibliothèque ; un paquet
     // chiffré n'est jamais extrait.
     const needed = size - already + (remote.encrypted ? 0 : size * 2.2)
-    if (free !== null && free < needed) throw new Error(`Pas assez de place sur le disque (${formatBytes(needed)} nécessaires).`)
+    if (free !== null && free < needed) throw new Error(t('market.errors.noSpace', { size: displayBytes(needed) }))
 
     const url = d.url
     for (let attempt = 1; ; attempt++) {
@@ -487,15 +501,15 @@ export class Marketplace {
       } catch (err) {
         if (signal.aborted || attempt >= 5 || (err as Error & { fatal?: boolean }).fatal) throw err
         log.warn(`Téléchargement interrompu (${(err as Error).message}), reprise dans ${attempt * 2} s`)
-        report(`Connexion interrompue, reprise…`, 0, 0)
+        report(t('market.phase.resuming'), 0, 0)
         await new Promise((r) => setTimeout(r, attempt * 2000))
       }
     }
 
-    report('Vérification du fichier', 0, 0)
+    report(t('market.phase.verifying'), 0, 0)
     if ((await sha256File(part, signal)) !== sha) {
       await fs.rm(part, { force: true })
-      throw new Error('Le fichier téléchargé est endommagé. Relancez le téléchargement.')
+      throw new Error(t('market.errors.corrupted'))
     }
     await fs.rename(part, final)
     return final
@@ -509,19 +523,21 @@ export class Marketplace {
     }
     if (start === size) return
     const headers: Record<string, string> = start > 0 ? { Range: `bytes=${start}-`, 'If-Range': `"${sha}"` } : {}
-    const response = await net.fetch(url, { headers, signal })
+    const response = await apiFetch(url, { headers, signal })
     if (response.status === 200) start = 0
     else if (response.status !== 206) {
-      const error = new Error(response.status === 404 ? 'Ce pack n’est plus disponible.' : `Téléchargement impossible (erreur ${response.status}).`)
+      const detail = (await problemOf(response)).detail
+      const error = response.status === 404 ? goneError() : new Error(detail ?? t('market.errors.downloadFailed', { status: response.status }))
       if (response.status < 500) Object.assign(error, { fatal: true })
       throw error
     }
-    if (!response.body) throw new Error('Réponse vide.')
+    if (!response.body) throw new Error(t('market.errors.emptyResponse'))
     let received = start
+    const phase = t('market.phase.downloading')
     const progress = new Transform({
       transform(chunk: Buffer, _encoding, callback) {
         received += chunk.length
-        report('Téléchargement', received, size)
+        report(phase, received, size)
         callback(null, chunk)
       }
     })
@@ -531,7 +547,7 @@ export class Marketplace {
       createWriteStream(part, { flags: start > 0 ? 'a' : 'w' }),
       { signal }
     )
-    if (received !== size) throw new Error('Téléchargement incomplet.')
+    if (received !== size) throw new Error(t('market.errors.incomplete'))
   }
 
   /** Nom, description, auteur, images et vidéo de la fiche, copiés dans le pack de la bibliothèque. */
@@ -539,7 +555,8 @@ export class Marketplace {
     const lib = this.library()
     const m = await lib.get(pack.id)
     const packDir = lib.packDir(m.id)
-    report('Images', 0, remote.images.length)
+    const phase = t('market.phase.images')
+    report(phase, 0, remote.images.length)
     const rels: string[] = []
     for (const [i, image] of remote.images.entries()) {
       const rel = `market-${image.id}.jpg`
@@ -555,7 +572,7 @@ export class Marketplace {
         }
       }
       rels.push(rel)
-      report('Images', i + 1, remote.images.length)
+      report(phase, i + 1, remote.images.length)
     }
     // Anciennes images de la fiche qui n'en font plus partie.
     for (const old of m.gallery.filter((g) => /^market-/.test(g) && !rels.includes(g)))
@@ -576,7 +593,7 @@ export class Marketplace {
 async function sha256File(file: string, signal?: AbortSignal): Promise<string> {
   const hash = createHash('sha256')
   for await (const chunk of createReadStream(file, { highWaterMark: 1024 * 1024 })) {
-    if (signal?.aborted) throw new Error('Annulé.')
+    if (signal?.aborted) throw new Error(t('market.errors.cancelled'))
     hash.update(chunk as Buffer)
   }
   return hash.digest('hex')

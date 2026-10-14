@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { t } from 'i18next'
 
 /** Exécute un script PowerShell (sortie forcée en UTF-8 pour les chemins accentués). */
 export function runPowerShell(script: string, timeoutMs = 20_000): Promise<string> {
@@ -53,7 +54,7 @@ foreach ($entry in $keys) {
     $val = [string]$k.GetValue($v)
     if ($val) {
       if ($v -eq 'InstallFolderSteam') { $val = $val -replace '\\GTAV$','' }
-      $paths += @{ path = $val; source = "Registre Rockstar ($v)"; enhanced = $entry.e }
+      $paths += @{ path = $val; source = $v; enhanced = $entry.e }
     }
   }
   $k.Close()
@@ -87,7 +88,8 @@ $r | ConvertTo-Json -Depth 4 -Compress
     const out = await runPowerShell(script)
     const json = JSON.parse(out.trim() || '{}')
     return {
-      rockstarPaths: arr(json.rockstarPaths),
+      // Source : nom de la valeur lue (InstallFolder...), présentée dans la langue affichée.
+      rockstarPaths: arr<RegistrySnapshot['rockstarPaths'][number]>(json.rockstarPaths).map((p) => ({ ...p, source: t('system.rockstarRegistry', { value: p.source }) })),
       steamPath: json.steamPath || null,
       fivemLastRun: json.fivemLastRun || null,
       fivemProtocol: json.fivemProtocol || null,

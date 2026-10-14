@@ -2,6 +2,7 @@
 
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { t } from 'i18next'
 import type { ActiveInstall, ForeignItem, GamesInfo, RootId } from '@shared/types'
 import { classifyGtaRootEntry, classifyPluginsEntry } from './knowledge'
 import { walkFiles } from '../util/fsx'
@@ -85,7 +86,7 @@ export async function scanForeign(games: GamesInfo, active: ActiveInstall | null
       const isRpf = !e.isDirectory() && e.name.toLowerCase().endsWith('.rpf')
       await addEntry('fivem', fivem, `mods/${e.name}`, e.isDirectory(), {
         category: isRpf ? 'rpf' : 'other',
-        label: isRpf ? 'Mod .rpf' : e.isDirectory() ? 'Dossier dans mods' : 'Fichier dans mods',
+        label: isRpf ? t('foreign.rpfMod') : e.isDirectory() ? t('foreign.modsFolder') : t('foreign.modsFile'),
         recommended: true
       })
     }
@@ -93,7 +94,7 @@ export async function scanForeign(games: GamesInfo, active: ActiveInstall | null
 
   if (fivem) {
     for (const e of await listDir(path.join(fivem, 'addons'))) {
-      await addEntry('fivem', fivem, `addons/${e.name}`, e.isDirectory(), { category: 'rpf', label: 'Archive du dossier addons', recommended: true })
+      await addEntry('fivem', fivem, `addons/${e.name}`, e.isDirectory(), { category: 'rpf', label: t('foreign.addonsArchive'), recommended: true })
     }
     // Fichiers ajoutés dans citizen/common et citizen/platform* : absents du manifeste de FiveM (content_index.xml).
     const known = await fivemContentIndex(fivem)
@@ -103,7 +104,7 @@ export async function scanForeign(games: GamesInfo, active: ActiveInstall | null
         for (const f of await walkFiles(path.join(fivem, 'citizen', top.name))) {
           const rel = `citizen/${top.name}/${f.rel}`
           if (known.has(rel.toLowerCase())) continue
-          await addEntry('fivem', fivem, rel, false, { category: 'other', label: 'Fichier ajouté dans citizen (mod timecycle / visualsettings…)', recommended: true })
+          await addEntry('fivem', fivem, rel, false, { category: 'other', label: t('foreign.citizenFile'), recommended: true })
         }
       }
     }

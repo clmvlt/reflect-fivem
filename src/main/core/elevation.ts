@@ -6,11 +6,15 @@ import { createHash } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { app } from 'electron'
+import { t } from 'i18next'
+import { currentLocale } from '@shared/i18n'
 import { executePlan, type ExecProgress, type Plan, type PlanResult } from './executor'
 import { runPowerShell } from '../util/win'
 
 export const EXEC_FLAG = '--pm-exec-plan='
 export const HASH_FLAG = '--pm-plan-sha256='
+/** Langue affichée, pour les messages du processus élevé. */
+export const LOCALE_FLAG = '--pm-locale='
 
 function psQuote(s: string): string {
   return `'${s.replace(/'/g, "''")}'`
@@ -29,7 +33,7 @@ export async function executePlanElevated(plan: Plan, jobsDir: string, onProgres
 
   const exe = process.execPath
   const args = app.isPackaged ? [] : [app.getAppPath()]
-  args.push(`${EXEC_FLAG}${planFile}`, `${HASH_FLAG}${sha}`)
+  args.push(`${EXEC_FLAG}${planFile}`, `${HASH_FLAG}${sha}`, `${LOCALE_FLAG}${currentLocale()}`)
   const argList = args.map((a) => psQuote(`"${a}"`)).join(',')
 
   let stop = false
@@ -54,12 +58,12 @@ export async function executePlanElevated(plan: Plan, jobsDir: string, onProgres
       6 * 60 * 60 * 1000
     )
     if (/DENIED:/.test(out)) {
-      return { ok: false, results: [], error: "Autorisation administrateur refusée. Rien n'a été modifié.", rolledBack: true }
+      return { ok: false, results: [], error: t('executor.errors.elevationDenied'), rolledBack: true }
     }
     try {
       return JSON.parse(await fs.readFile(resultFile, 'utf8')) as PlanResult
     } catch {
-      return { ok: false, results: [], error: "Le processus administrateur n'a pas renvoyé de résultat.", rolledBack: false }
+      return { ok: false, results: [], error: t('executor.errors.noResult'), rolledBack: false }
     }
   } finally {
     stop = true
@@ -82,7 +86,7 @@ export async function runElevatedWorker(argv: string[]): Promise<number> {
   try {
     const body = await fs.readFile(planFile, 'utf8')
     if (createHash('sha256').update(body).digest('hex') !== expected) {
-      await fs.writeFile(resultFile, JSON.stringify({ ok: false, results: [], error: 'Plan modifié : exécution refusée.', rolledBack: true }))
+      await fs.writeFile(resultFile, JSON.stringify({ ok: false, results: [], error: t('executor.errors.planTampered'), rolledBack: true }))
       return 3
     }
     const plan = JSON.parse(body) as Plan

@@ -2,6 +2,7 @@
 // Module pur (aucun accès disque) pour être testable.
 
 import { createHash } from 'node:crypto'
+import { tm, type Msg } from '@shared/i18n'
 import type { ComponentKind, Destination, PackComponent, PackFileEntry } from '@shared/types'
 import {
   anchorDestination,
@@ -17,7 +18,8 @@ import {
   parent,
   PROXY_DLLS,
   SP_ONLY_FILES,
-  specialDirDestination
+  specialDirDestination,
+  textMsg
 } from './knowledge'
 
 export interface AnalyzedComponent extends PackComponent {
@@ -30,6 +32,8 @@ export interface AnalysisResult {
   components: AnalyzedComponent[]
   features: string[]
   warnings: string[]
+  /** {@link warnings} à traduire à l'affichage (même ordre) : voir {@link tmNested}. */
+  warningMsgs: Msg[]
   /** Images d'aperçu trouvées dans le pack (chemins relatifs au contenu), la plus pertinente en premier. */
   gallery: string[]
 }
@@ -97,18 +101,32 @@ export function analyzePack(entries: PackFileEntry[], opts: AnalyzeOptions = {})
   const tree = buildTree(entries)
   const components: AnalyzedComponent[] = []
   const warnings: string[] = []
+  const warningMsgs: Msg[] = []
+  const warn = (m: Msg): void => {
+    warningMsgs.push(m)
+    warnings.push(tmNested(m))
+  }
   const sizeOf = new Map(entries.map((e) => [e.rel, e.size]))
 
+  /** Libellé : nom de dossier ou de fichier (non traduit) ou texte à traduire ; raison : texte à traduire. */
   const push = (
-    c: Omit<AnalyzedComponent, 'id' | 'fileCount' | 'size' | 'suggested' | 'enabled'> & { enabled?: boolean },
+    c: Omit<AnalyzedComponent, 'id' | 'fileCount' | 'size' | 'suggested' | 'enabled' | 'label' | 'labelMsg' | 'reason' | 'reasonMsg'> & {
+      enabled?: boolean
+      label: string | Msg
+      reason: Msg
+    },
     idExtra = ''
   ): void => {
     if (!c.files.length) return
     const counted = c.destination ? c.files.filter((f) => !/\.log\d*$/i.test(f)) : c.files
     const size = counted.reduce((s, f) => s + (sizeOf.get(f) ?? 0), 0)
     const enabled = c.enabled ?? (c.destination !== null && !c.optional)
+    const { label, reason, ...rest } = c
     components.push({
-      ...c,
+      ...rest,
+      ...(typeof label === 'string' ? { label } : { label: tm(label), labelMsg: label }),
+      reason: tm(reason),
+      reasonMsg: reason,
       id: componentId(c.source, c.kind, idExtra),
       suggested: c.destination,
       enabled,
@@ -134,9 +152,7 @@ export function analyzePack(entries: PackFileEntry[], opts: AnalyzeOptions = {})
             kind: 'plugins',
             destination: { root: 'fivem', path: 'plugins' },
             optional,
-            reason: iniOfAsi
-              ? `Configuration de ${lower.slice(0, -4)}.asi : suit son plugin dans plugins`
-              : 'Sous FiveM, les DLL graphiques et les .asi doivent être dans plugins : FiveM ne les charge pas depuis le dossier GTA V',
+            reason: iniOfAsi ? textMsg('analyzer.reasons.asiConfig', { stem: lower.slice(0, -4) }) : textMsg('analyzer.reasons.proxyNotInGta'),
             stripPrefix: `${node.path ? node.path + '/' : ''}`,
             files: [f.rel]
           },
@@ -152,7 +168,7 @@ export function analyzePack(entries: PackFileEntry[], opts: AnalyzeOptions = {})
             kind: 'unsupported',
             destination: null,
             optional,
-            reason: 'Chargeur du mode solo (ASI Loader / ScriptHookV) : inutile sous FiveM',
+            reason: textMsg('analyzer.reasons.spLoader'),
             stripPrefix: `${node.path ? node.path + '/' : ''}`,
             files: [f.rel]
           },
@@ -193,7 +209,7 @@ export function analyzePack(entries: PackFileEntry[], opts: AnalyzeOptions = {})
         kind: 'docs',
         destination: null,
         optional,
-        reason: 'Documentation / aperçus : non installés',
+        reason: textMsg('analyzer.reasons.docs'),
         stripPrefix: prefix,
         files: files.map((f) => f.rel)
       })
@@ -213,9 +229,9 @@ export function analyzePack(entries: PackFileEntry[], opts: AnalyzeOptions = {})
         if (spLayout) {
           kind = 'unsupported'
           destination = null
-          reason = "Dossier mods du mode solo (structure OpenIV : update/, x64/...) : non compatible avec le dossier mods de FiveM"
+          reason = textMsg('analyzer.reasons.spMods')
         } else if (!files.some((f) => ext(f.rel) === '.rpf')) {
-          reason += ' (aucun fichier .rpf trouvé)'
+          reason = textMsg('analyzer.reasons.modsDirNoRpf')
         }
       }
       if (anchor === 'gta-root') exclude = splitGtaRootExceptions(node, optional)
@@ -255,7 +271,7 @@ export function analyzePack(entries: PackFileEntry[], opts: AnalyzeOptions = {})
         kind: special.dest.root === 'gta' ? 'gta-root' : 'plugins',
         destination: special.dest,
         optional,
-        reason: `Dossier ${node.name} reconnu`,
+        reason: textMsg('analyzer.reasons.specialDir', { name: node.name }),
         stripPrefix: prefix,
         files: files.map((f) => f.rel)
       })
@@ -272,7 +288,7 @@ export function analyzePack(entries: PackFileEntry[], opts: AnalyzeOptions = {})
         kind: 'gta-root',
         destination: { root: 'gta', path: '' },
         optional,
-        reason: 'Contient enbseries.ini / enblocal.ini : fichiers ENB à placer à la racine de GTA V',
+        reason: textMsg('analyzer.reasons.enbConfigDir'),
         stripPrefix: prefix,
         files: files.map((f) => f.rel).filter((r) => !exclude.has(r))
       })
@@ -292,7 +308,7 @@ export function analyzePack(entries: PackFileEntry[], opts: AnalyzeOptions = {})
         kind: 'plugins',
         destination: { root: 'fivem', path: 'plugins' },
         optional,
-        reason: 'Contient ReShade / DLL graphiques / .asi : contenu du dossier plugins de FiveM',
+        reason: textMsg('analyzer.reasons.pluginsContent'),
         stripPrefix: prefix,
         files: files.map((f) => f.rel)
       })
@@ -305,7 +321,7 @@ export function analyzePack(entries: PackFileEntry[], opts: AnalyzeOptions = {})
   const classifyLooseGroup = (node: DirNode, optional: boolean): void => {
     if (!node.files.length) return
     const siblings = new Set(node.files.map((f) => base(f.rel).toLowerCase()))
-    const groups = new Map<string, { kind: ComponentKind; dest: Destination | null; reason: string; files: string[]; labels: string[] }>()
+    const groups = new Map<string, { kind: ComponentKind; dest: Destination | null; reason: Msg; files: string[]; labels: string[] }>()
     for (const f of node.files) {
       const cls = classifyLooseFile(f.rel, siblings, isPreset(f.rel))
       let key: string
@@ -364,9 +380,9 @@ export function analyzePack(entries: PackFileEntry[], opts: AnalyzeOptions = {})
       const other = components.find((o) => o.id === seen.get(destKey(fileDestination(c, dup[0])!)))
       if (dup.length === c.files.length) {
         c.enabled = false
-        warnings.push(`« ${c.label} » installe les mêmes fichiers que « ${other?.label ?? '?'} » (variante probable) : désactivé par défaut.`)
+        warn(textMsg('analyzer.warnings.variant', { ...nestLabel('label', c), ...nestLabel('other', other) }))
       } else {
-        warnings.push(`${dup.length} fichier(s) de « ${c.label} » existent aussi dans « ${other?.label ?? '?'} » : seul le premier sera installé.`)
+        warn(textMsg('analyzer.warnings.partialDuplicate', { count: dup.length, ...nestLabel('label', c), ...nestLabel('other', other) }))
       }
       if (dup.length === c.files.length) continue
     }
@@ -378,11 +394,11 @@ export function analyzePack(entries: PackFileEntry[], opts: AnalyzeOptions = {})
 
   // Avertissements utiles
   const unknown = components.filter((c) => c.kind === 'unknown')
-  if (unknown.length) warnings.push(`${unknown.length} élément(s) non reconnu(s) : vérifiez leur destination avant d'appliquer.`)
+  if (unknown.length) warn(textMsg('analyzer.warnings.unknown', { count: unknown.length }))
   const unsupported = components.filter((c) => c.kind === 'unsupported')
-  for (const u of unsupported) warnings.push(`« ${u.label} » : ${u.reason}.`)
+  for (const u of unsupported) warn(textMsg('analyzer.warnings.unsupported', { ...nestLabel('label', u), ...nest('reason', u.reasonMsg ?? u.reason) }))
   const installable = components.filter((c) => c.enabled && c.destination)
-  if (!installable.length) warnings.push("Aucun fichier installable n'a été reconnu dans ce pack.")
+  if (!installable.length) warn(textMsg(NOTHING_INSTALLABLE))
 
   const rels = entries.map((e) => e.rel)
   const gallery = galleryOf(entries, components)
@@ -397,58 +413,96 @@ export function analyzePack(entries: PackFileEntry[], opts: AnalyzeOptions = {})
   }
   components.sort((a, b) => rank(a) - rank(b) || a.source.localeCompare(b.source))
 
-  return { components, features: detectFeatures(rels), warnings, gallery }
+  return { components, features: detectFeatures(rels), warnings, warningMsgs, gallery }
+}
+
+const NOTHING_INSTALLABLE = 'analyzer.warnings.nothingInstallable'
+
+/**
+ * Paramètre d'un texte à traduire qui est lui-même un texte à traduire (libellé d'un composant...) : gardé sous la
+ * forme `<nom>$key` + `<nom>$<paramètre>`, traduit par {@link tmNested}. Un texte simple (nom de fichier, texte d'une
+ * version précédente) est gardé tel quel.
+ */
+function nest(name: string, m: Msg | string): Record<string, string | number> {
+  if (typeof m === 'string') return { [name]: m }
+  const out: Record<string, string | number> = { [`${name}$key`]: m.key }
+  for (const [k, v] of Object.entries(m.params ?? {})) out[`${name}$${k}`] = v
+  return out
+}
+
+const nestLabel = (name: string, c: Pick<PackComponent, 'label' | 'labelMsg'> | undefined): Record<string, string | number> =>
+  c ? nest(name, c.labelMsg ?? c.label) : { [name]: '?' }
+
+/** Traduit un texte dont des paramètres sont eux-mêmes des textes à traduire (voir {@link nest}). */
+export function tmNested(m: Msg | string): string {
+  if (typeof m === 'string' || !m.params) return tm(m)
+  const params: Record<string, string | number> = {}
+  const nested = new Map<string, Msg>()
+  for (const [k, v] of Object.entries(m.params)) {
+    const i = k.indexOf('$')
+    if (i < 0) {
+      params[k] = v
+      continue
+    }
+    const name = k.slice(0, i)
+    const n = nested.get(name) ?? { key: '', params: {} }
+    if (k.slice(i + 1) === 'key') n.key = String(v)
+    else n.params![k.slice(i + 1)] = v
+    nested.set(name, n)
+  }
+  for (const [name, n] of nested) params[name] = tm(n)
+  return tm({ key: m.key, params })
 }
 
 function destKey(d: Destination): string {
   return `${d.root}:${d.path.toLowerCase()}`
 }
 
-function anchorReason(a: string): string {
+function anchorReason(a: string): Msg {
   switch (a) {
     case 'mods':
-      return 'Dossier « mods » : archives .rpf chargées par FiveM'
+      return textMsg('analyzer.reasons.modsDir')
     case 'plugins':
-      return 'Dossier « plugins » : ReShade, ENB (d3d11.dll), .asi graphiques'
+      return textMsg('analyzer.reasons.pluginsDir')
     case 'citizen':
-      return 'Dossier « citizen » : fichiers internes de FiveM remplacés'
+      return textMsg('analyzer.reasons.citizenDir')
     case 'addons':
-      return 'Dossier « addons » : .rpf chargés par FiveM (serveurs sans mode pur uniquement)'
+      return textMsg('analyzer.reasons.addonsDir')
     case 'fivem-root':
-      return 'Dossier « FiveM Application Data »'
+      return textMsg('analyzer.reasons.fivemRootDir')
     default:
-      return 'Dossier à copier à la racine de GTA V (configuration ENB)'
+      return textMsg('analyzer.reasons.gtaRootDir')
   }
 }
 
-function looseGroupLabel(kind: ComponentKind, n: number, dir: string): string {
-  const where = dir ? ` (${base(dir)})` : ''
+function looseGroupLabel(kind: ComponentKind, n: number, dir: string): Msg {
+  const p: Msg['params'] = dir ? { count: n, dir: base(dir) } : { count: n }
   switch (kind) {
     case 'mods':
-      return `${n} archives .rpf${where}`
+      return textMsg(dir ? 'analyzer.groups.modsIn' : 'analyzer.groups.mods', p)
     case 'plugins':
-      return `${n} fichiers de plugins${where}`
+      return textMsg(dir ? 'analyzer.groups.pluginsIn' : 'analyzer.groups.plugins', p)
     case 'gta-root':
-      return `${n} fichiers ENB${where}`
+      return textMsg(dir ? 'analyzer.groups.enbIn' : 'analyzer.groups.enb', p)
     case 'docs':
-      return `Documentation et aperçus${where}`
+      return textMsg(dir ? 'analyzer.groups.docsIn' : 'analyzer.groups.docs', p)
     case 'unsupported':
-      return `${n} fichiers non compatibles${where}`
+      return textMsg(dir ? 'analyzer.groups.unsupportedIn' : 'analyzer.groups.unsupported', p)
     default:
-      return `${n} fichiers${where}`
+      return textMsg(dir ? 'analyzer.groups.filesIn' : 'analyzer.groups.files', p)
   }
 }
 
-function groupReason(kind: ComponentKind, fallback: string): string {
+function groupReason(kind: ComponentKind, fallback: Msg): Msg {
   switch (kind) {
     case 'mods':
-      return 'Archives .rpf → dossier mods de FiveM'
+      return textMsg('analyzer.reasons.groupMods')
     case 'plugins':
-      return 'DLL graphiques, .asi et configurations → plugins de FiveM'
+      return textMsg('analyzer.reasons.groupPlugins')
     case 'gta-root':
-      return 'Fichiers de configuration ENB → racine de GTA V'
+      return textMsg('analyzer.reasons.groupEnb')
     case 'docs':
-      return 'Documentation / aperçus : non installés'
+      return textMsg('analyzer.reasons.docs')
     default:
       return fallback
   }

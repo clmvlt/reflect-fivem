@@ -3,6 +3,7 @@
 
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { t } from 'i18next'
 import { sanitizeEntryPath } from '../archive/sanitize'
 import { unsealToBuffer, type PackageIndex, type SealedRef } from './sealed'
 
@@ -80,7 +81,7 @@ export function packageContent(file: string, index: PackageIndex, prefix: string
     },
     source: (rel) => {
       const s = find(rel)
-      if (!s) throw new Error(`Fichier absent du pack protégé : ${rel}`)
+      if (!s) throw new Error(t('protection.missingFile', { path: rel }))
       return s
     }
   }

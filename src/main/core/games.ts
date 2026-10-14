@@ -4,6 +4,7 @@ import { createDecipheriv } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import { t } from 'i18next'
 import type { Check, FiveMInfo, GameCandidate, GamesInfo, GtaEdition, GtaInfo, GtaStore, Settings } from '@shared/types'
 import { canWrite, exists, isDir, isFile } from '../util/fsx'
 import { readRegistry, runningGameProcesses, type RegistrySnapshot } from '../util/win'
@@ -42,27 +43,33 @@ export async function readCitizenIni(fivemApp: string): Promise<Record<string, s
 export async function inspectFiveM(p: string | null, source: string): Promise<FiveMInfo> {
   const info: FiveMInfo = { path: p, source, valid: false, writable: false, checks: [], gtaPathFromIni: null, buildNumber: null }
   if (!p) {
-    info.checks.push({ label: 'Dossier FiveM.app trouvé', ok: false, detail: 'FiveM ne semble pas installé. Indiquez son dossier manuellement.' })
+    info.checks.push({ id: 'found', label: t('games.checks.fivemFound'), ok: false, detail: t('games.checks.fivemNotFound') })
     return info
   }
   const dirOk = await isDir(p)
-  info.checks.push({ label: 'Dossier existant', ok: dirOk, detail: p })
+  info.checks.push({ id: 'exists', label: t('games.checks.exists'), ok: dirOk, detail: p })
   if (!dirOk) return info
   const citizen = await isDir(path.join(p, 'citizen'))
   const core =
     (await isFile(path.join(p, 'CoreRT.dll'))) || (await isFile(path.join(p, 'components.json'))) || (await isFile(path.join(p, 'FiveM.installroot')))
-  info.checks.push({ label: 'Fichiers de FiveM (citizen, CoreRT.dll)', ok: citizen && core, detail: citizen && core ? undefined : "Ce dossier n'est pas un dossier FiveM.app valide." })
+  info.checks.push({
+    id: 'files',
+    label: t('games.checks.fivemFiles'),
+    ok: citizen && core,
+    detail: citizen && core ? undefined : t('games.checks.fivemFilesInvalid')
+  })
   const ini = await readCitizenIni(p)
   const hasIni = Object.keys(ini).length > 0
   info.checks.push({
-    label: 'CitizenFX.ini (FiveM déjà lancé)',
+    id: 'config',
+    label: t('games.checks.citizenIni'),
     ok: hasIni,
-    detail: hasIni ? undefined : 'Lancez FiveM une première fois pour qu\'il enregistre le dossier de GTA V.'
+    detail: hasIni ? undefined : t('games.checks.citizenIniMissing')
   })
   info.gtaPathFromIni = ini.IVPath || null
   info.buildNumber = ini.SavedBuildNumber || null
   info.writable = await canWrite(p)
-  info.checks.push({ label: 'Accès en écriture', ok: info.writable, detail: info.writable ? undefined : 'Droits administrateur nécessaires.' })
+  info.checks.push({ id: 'writable', label: t('games.checks.writable'), ok: info.writable, detail: info.writable ? undefined : t('games.checks.fivemNotWritable') })
   info.valid = citizen && core
   return info
 }
@@ -77,11 +84,11 @@ async function fivemCandidates(reg: RegistrySnapshot): Promise<GameCandidate[]> 
   }
   // Le protocole fivem:// est réécrit à chaque lancement : il pointe vers le FiveM.exe réellement utilisé (y compris portable).
   const proto = /"([^"]+?FiveM\.exe)"/i.exec(reg.fivemProtocol ?? '')?.[1]
-  if (proto) await add(path.dirname(proto), 'Registre (protocole fivem://)')
-  await add(reg.fivemLastRun, 'Registre (dernier lancement de FiveM)')
+  if (proto) await add(path.dirname(proto), t('games.source.protocol'))
+  await add(reg.fivemLastRun, t('games.source.lastRun'))
   const local = process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local')
-  await add(path.join(local, 'FiveM', 'FiveM.app'), 'Emplacement par défaut')
-  for (const u of reg.uninstall) if (/fivem/i.test(u.name) || /citizenfx/i.test(u.key)) await add(u.location, 'Registre (programme installé)')
+  await add(path.join(local, 'FiveM', 'FiveM.app'), t('games.source.default'))
+  for (const u of reg.uninstall) if (/fivem/i.test(u.name) || /citizenfx/i.test(u.key)) await add(u.location, t('games.source.installed'))
   return out
 }
 
@@ -91,44 +98,47 @@ async function fivemCandidates(reg: RegistrySnapshot): Promise<GameCandidate[]> 
 export async function inspectGta(p: string | null, source: string): Promise<GtaInfo> {
   const info: GtaInfo = { path: p, source, valid: false, writable: false, checks: [], edition: 'unknown', store: 'unknown', version: null }
   if (!p) {
-    info.checks.push({ label: 'Dossier GTA V trouvé', ok: false, detail: 'Indiquez le dossier de GTA V manuellement.' })
+    info.checks.push({ id: 'found', label: t('games.checks.gtaFound'), ok: false, detail: t('games.checks.gtaNotFound') })
     return info
   }
   const dirOk = await isDir(p)
-  info.checks.push({ label: 'Dossier existant', ok: dirOk, detail: p })
+  info.checks.push({ id: 'exists', label: t('games.checks.exists'), ok: dirOk, detail: p })
   if (!dirOk) return info
 
   const legacyExe = await isFile(path.join(p, 'GTA5.exe'))
   const enhancedExe = await isFile(path.join(p, 'GTA5_Enhanced.exe'))
   info.edition = legacyExe ? 'legacy' : enhancedExe ? 'enhanced' : 'unknown'
   info.checks.push({
-    label: 'Exécutable du jeu',
+    id: 'executable',
+    label: t('games.checks.executable'),
     ok: legacyExe || enhancedExe,
-    detail: legacyExe ? 'GTA5.exe (édition Legacy)' : enhancedExe ? 'GTA5_Enhanced.exe (édition Enhanced)' : 'GTA5.exe introuvable'
+    detail: t(legacyExe ? 'games.checks.executableLegacy' : enhancedExe ? 'games.checks.executableEnhanced' : 'games.checks.executableMissing')
   })
   const rpfs = ['common.rpf', 'x64a.rpf', 'x64b.rpf', path.join('update', 'update.rpf'), path.join('x64', 'audio', 'audio_rel.rpf')]
   const missing: string[] = []
   for (const r of rpfs) if (!(await isFile(path.join(p, r)))) missing.push(r.replace(/\\/g, '/'))
   info.checks.push({
-    label: 'Fichiers du jeu (common.rpf, x64*.rpf, update.rpf, audio)',
+    id: 'files',
+    label: t('games.checks.gtaFiles'),
     ok: missing.length === 0,
-    detail: missing.length ? `Manquant : ${missing.join(', ')}` : undefined
+    detail: missing.length ? t('games.checks.gtaFilesMissing', { files: missing.join(', ') }) : undefined
   })
   if (info.edition === 'enhanced' || /v ?enhanced/i.test(path.basename(p)))
     info.checks.push({
-      label: 'Compatible avec les mods graphiques FiveM',
+      id: 'graphicsMods',
+      label: t('games.checks.graphicsMods'),
       ok: false,
-      detail:
-        "Édition Enhanced : FiveM classique utilise GTA V Legacy, et « FiveM pour GTA V Enhanced » (accès anticipé) force le mode pur et n'accepte pas les mods graphiques."
+      detail: t('games.checks.graphicsModsEnhanced')
     })
 
   info.store = await detectStore(p)
   info.version = await readGtaVersion(p)
   info.writable = await canWrite(p)
   info.checks.push({
-    label: 'Accès en écriture',
+    id: 'writable',
+    label: t('games.checks.writable'),
     ok: info.writable,
-    detail: info.writable ? undefined : "Dossier protégé (Program Files) : Windows demandera l'autorisation administrateur à l'application du pack."
+    detail: info.writable ? undefined : t('games.checks.gtaNotWritable')
   })
   info.valid = (legacyExe || enhancedExe) && missing.length === 0
   return info
@@ -207,10 +217,19 @@ async function rockstarTitles(): Promise<{ ti: string; il: string }[]> {
     d.setAutoPadding(false)
     const plain = Buffer.concat([d.update(raw), d.final()]).subarray(16).toString('utf8')
     const json = JSON.parse(plain.slice(0, plain.lastIndexOf('}') + 1)) as { tl?: { ti: string; il: string }[] }
-    return (json.tl ?? []).filter((t) => t.il)
+    return (json.tl ?? []).filter((title) => title.il)
   } catch {
     return []
   }
+}
+
+/**
+ * Origine d'un dossier lu dans le registre de Rockstar : win.ts la donne sous la forme « Registre Rockstar (<valeur>) » ;
+ * le nom de la valeur (InstallFolder...) est repris dans la langue affichée.
+ */
+function rockstarRegistrySource(source: string): string {
+  const value = /^Registre Rockstar \((.+)\)$/.exec(source)?.[1]
+  return value ? t('games.source.rockstarRegistry', { value }) : source
 }
 
 async function gtaCandidates(reg: RegistrySnapshot, iniPath: string | null): Promise<GameCandidate[]> {
@@ -221,22 +240,25 @@ async function gtaCandidates(reg: RegistrySnapshot, iniPath: string | null): Pro
     if (out.some((c) => samePath(c.path, clean))) return
     if ((await isFile(path.join(clean, 'GTA5.exe'))) || (await isFile(path.join(clean, 'GTA5_Enhanced.exe')))) out.push({ path: clean, source })
   }
-  await add(iniPath, 'Configuration de FiveM (CitizenFX.ini)')
-  for (const t of await rockstarTitles()) {
-    if (t.ti === 'gta5') await add(t.il, 'Rockstar Games Launcher')
-    else if (t.ti === 'gta5_gen9') await add(t.il, 'Rockstar Games Launcher (Enhanced)')
+  await add(iniPath, t('games.source.citizenIni'))
+  for (const title of await rockstarTitles()) {
+    if (title.ti === 'gta5') await add(title.il, 'Rockstar Games Launcher')
+    else if (title.ti === 'gta5_gen9') await add(title.il, 'Rockstar Games Launcher (Enhanced)')
   }
-  for (const r of reg.rockstarPaths) await add(r.path, r.enhanced ? `${r.source} (Enhanced)` : r.source)
+  for (const r of reg.rockstarPaths) {
+    const source = rockstarRegistrySource(r.source)
+    await add(r.path, r.enhanced ? t('games.source.enhanced', { source }) : source)
+  }
   for (const lib of await steamLibraries(reg.steamPath)) {
     await add(await steamGameDir(lib, '271590'), 'Steam')
     await add(await steamGameDir(lib, '3240220'), 'Steam (Enhanced)')
   }
   for (const d of await epicGtaDirs()) await add(d, 'Epic Games')
-  for (const u of reg.uninstall) if (/grand theft auto|gta v/i.test(u.name) || /271590|3240220/.test(u.key)) await add(u.location, 'Registre (programme installé)')
+  for (const u of reg.uninstall) if (/grand theft auto|gta v/i.test(u.name) || /271590|3240220/.test(u.key)) await add(u.location, t('games.source.installed'))
   const pf = process.env.ProgramFiles ?? 'C:\\Program Files'
   for (const d of ['Grand Theft Auto V', 'Grand Theft Auto V Legacy', 'Grand Theft Auto V Enhanced'])
-    await add(path.join(pf, 'Rockstar Games', d), 'Emplacement par défaut')
-  await add(path.join(pf, 'Epic Games', 'GTAV'), 'Emplacement par défaut (Epic)')
+    await add(path.join(pf, 'Rockstar Games', d), t('games.source.default'))
+  await add(path.join(pf, 'Epic Games', 'GTAV'), t('games.source.defaultEpic'))
   return out
 }
 
@@ -250,7 +272,7 @@ export async function detectGames(settings: Settings): Promise<GamesInfo> {
   let fivemSource = ''
   if (settings.fivemPath) {
     fivemPath = await normalizeFiveMPath(settings.fivemPath)
-    fivemSource = 'Choisi manuellement'
+    fivemSource = t('games.source.manual')
   } else if (fivemCands.length) {
     // Premier candidat valide
     for (const c of fivemCands) {
@@ -261,14 +283,14 @@ export async function detectGames(settings: Settings): Promise<GamesInfo> {
       }
     }
   }
-  const fivem = await inspectFiveM(fivemPath, fivemSource || 'Non trouvé')
+  const fivem = await inspectFiveM(fivemPath, fivemSource || t('games.source.notFound'))
 
   const gtaCands = await gtaCandidates(reg, fivem.gtaPathFromIni)
   let gtaPath: string | null = null
   let gtaSource = ''
   if (settings.gtaPath) {
     gtaPath = settings.gtaPath
-    gtaSource = 'Choisi manuellement'
+    gtaSource = t('games.source.manual')
   } else {
     // On privilégie le dossier réellement utilisé par FiveM, puis une édition Legacy.
     const legacy = []
@@ -279,18 +301,19 @@ export async function detectGames(settings: Settings): Promise<GamesInfo> {
       gtaSource = pick.source
     }
   }
-  const gta = await inspectGta(gtaPath, gtaSource || 'Non trouvé')
+  const gta = await inspectGta(gtaPath, gtaSource || t('games.source.notFound'))
   const mismatch = !!fivem.gtaPathFromIni && !!gta.path && !samePath(fivem.gtaPathFromIni, gta.path)
   if (mismatch)
     gta.checks.push({
-      label: 'Même dossier que FiveM',
+      id: 'sameFolder',
+      label: t('games.checks.sameFolder'),
       ok: false,
-      detail: `FiveM utilise « ${fivem.gtaPathFromIni} » : les fichiers ENB doivent aller dans ce dossier-là.`
+      detail: t('games.checks.sameFolderMismatch', { path: fivem.gtaPathFromIni })
     } satisfies Check)
 
   return { fivem, gta, fivemCandidates: fivemCands, gtaCandidates: gtaCands, mismatch, runningProcesses: running }
 }
 
 export function gameEditionLabel(e: GtaEdition): string {
-  return e === 'legacy' ? 'Legacy' : e === 'enhanced' ? 'Enhanced' : 'Inconnue'
+  return e === 'legacy' ? 'Legacy' : e === 'enhanced' ? 'Enhanced' : t('games.edition.unknown')
 }

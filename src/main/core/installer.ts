@@ -14,7 +14,10 @@
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { t } from 'i18next'
 import type { ActiveInstall, AppState, Destination, ForeignItem, GamesInfo, InstalledFile, RootId } from '@shared/types'
+import { msg, type Msg } from '@shared/i18n'
+import { formatBytes, formatNumber } from '@shared/intl'
 import { resolveInstallMap } from './analyzer'
 import { parseVersion, reshadeAckLine, versionAtLeast } from './binary'
 import { executePlan, type ExecProgress, type Op, type Plan, type PlanResult } from './executor'
@@ -37,7 +40,7 @@ import { readSource, type PackContent } from './content'
 import type { Library, StoredManifest } from './library'
 import type { SealedRef } from './sealed'
 import { JsonStore, pushHistory } from './stores'
-import { canWrite, dirSize, exists, formatBytes, freeSpace, newId, sameVolume } from '../util/fsx'
+import { canWrite, dirSize, exists, freeSpace, newId, sameVolume } from '../util/fsx'
 import { runningGameProcesses } from '../util/win'
 import { log } from '../util/log'
 
@@ -68,6 +71,7 @@ const abs = (rootPath: string, rel: string): string => path.join(rootPath, ...re
 const destKey = (d: Destination): string => `${d.root}:${d.path.toLowerCase()}`
 const TRASH_PREFIX = '.fpm-trash-'
 
+/** Nom français du pack des mods rangés : sert à son identifiant (dossier) ; le nom donné au pack suit la langue. */
 export const PREVIOUS_INSTALL_NAME = 'Ancienne installation'
 
 export interface SwitchResult {
@@ -77,6 +81,19 @@ export interface SwitchResult {
   /** Pack retiré au passage. */
   removed: string | null
 }
+
+/** Erreur d'un plan qui a échoué ; {@link fallback} : message quand le plan n'en donne pas. */
+function planError(res: PlanResult, fallback: string): string {
+  return res.rolledBack ? t('installer.errors.nothingChanged', { error: res.error ?? t('installer.failed') }) : (res.error ?? fallback)
+}
+
+/** Résumé d'un échec pour l'historique : l'erreur du plan telle quelle, sinon « Échec » (traduit à l'affichage). */
+function failureSummary(error: string | undefined): { summary: string } | { msg: Msg } {
+  return error ? { summary: error } : { msg: msg('history.failed') }
+}
+
+/** Résumé de l'historique avec un nombre (count pour le pluriel, n formaté). */
+const countMsg = (key: string, count: number): Msg => msg(key, { count, n: formatNumber(count) })
 
 export class Installer {
   constructor(private ctx: InstallerCtx) {}
@@ -102,7 +119,7 @@ export class Installer {
   }
 
   private async assertGameClosed(): Promise<void> {
-    if ((await runningGameProcesses()).length) throw new Error('Fermez FiveM avant de continuer.')
+    if ((await runningGameProcesses()).length) throw new Error(t('installer.errors.gameRunning'))
   }
 
   /** Fichiers à installer ; un réglage modifié en jeu (dossier user/) remplace l'original. */
@@ -143,13 +160,13 @@ export class Installer {
   private async blockers(items: InstallItem[], games: GamesInfo): Promise<string[]> {
     const out: string[] = []
     const needs = new Set(items.map((i) => i.dest.root))
-    if (!items.length) out.push('Ce pack ne contient rien à installer.')
-    if (games.runningProcesses.length) out.push('Fermez FiveM avant de continuer.')
-    if (needs.has('fivem') && !games.fivem.valid) out.push('Dossier FiveM introuvable. Indiquez-le dans les réglages.')
-    if (needs.has('gta') && !games.gta.valid) out.push('Dossier GTA V introuvable. Indiquez-le dans les réglages.')
-    if (needs.has('gta') && games.gta.edition === 'enhanced') out.push("GTA V Enhanced n'accepte pas les mods graphiques FiveM.")
+    if (!items.length) out.push(t('installer.errors.packEmpty'))
+    if (games.runningProcesses.length) out.push(t('installer.errors.gameRunning'))
+    if (needs.has('fivem') && !games.fivem.valid) out.push(t('installer.errors.fivemMissing'))
+    if (needs.has('gta') && !games.gta.valid) out.push(t('installer.errors.gtaMissing'))
+    if (needs.has('gta') && games.gta.edition === 'enhanced') out.push(t('installer.errors.enhancedPack'))
     if (items.some((i) => (i.dest.root === 'gta' && isProtectedGtaPath(i.dest.path)) || (i.dest.root === 'fivem' && !isAllowedFiveMPath(i.dest.path))))
-      out.push('Ce pack remplacerait des fichiers du jeu. Installation annulée.')
+      out.push(t('installer.errors.gameFiles'))
     if (out.length) return out
     const need = new Map<string, number>()
     for (const it of items) {
@@ -158,7 +175,7 @@ export class Installer {
     }
     for (const [rp, bytes] of need) {
       const free = await freeSpace(rp)
-      if (free !== null && free < bytes + 200 * 1024 * 1024) out.push(`Pas assez de place sur le disque (${formatBytes(bytes)} nécessaires).`)
+      if (free !== null && free < bytes + 200 * 1024 * 1024) out.push(t('installer.errors.noSpace', { size: formatBytes(bytes) }))
     }
     return out
   }
@@ -211,14 +228,14 @@ export class Installer {
 
   /** Bascule vers un pack, ou vers le jeu d'origine (packId null), en une seule opération atomique. */
   private async switchTo(packId: string | null, report: Report): Promise<SwitchResult> {
-    report('Préparation', 0, 1)
+    report(t('installer.phase.preparing'), 0, 1)
     const lib = this.ctx.library()
     const games = await this.ctx.detectGames()
     const manifest = packId ? await lib.get(packId) : null
     const active = this.state.active
     const content = manifest ? await lib.content(manifest) : null
     let items = manifest && content ? await this.installItems(manifest, content) : []
-    const blockers = manifest ? await this.blockers(items, games) : games.runningProcesses.length ? ['Fermez FiveM avant de continuer.'] : []
+    const blockers = manifest ? await this.blockers(items, games) : games.runningProcesses.length ? [t('installer.errors.gameRunning')] : []
     if (blockers.length) throw new Error(blockers[0])
 
     const roots: Record<RootId, string> = { fivem: games.fivem.path ?? '', gta: games.gta.path ?? '' }
@@ -278,7 +295,7 @@ export class Installer {
       const st = await fs.lstat(abs(roots[it.dest.root], it.dest.path)).catch(() => null)
       if (st && !st.isDirectory()) overwritten.push({ root: it.dest.root, rel: it.dest.path, size: st.size })
     }
-    if (!manifest && !active && !collection.files.length) throw new Error("Aucun mod à retirer : le jeu est déjà d'origine.")
+    if (!manifest && !active && !collection.files.length) throw new Error(t('installer.errors.alreadyClean'))
     const capId = lib.newCapturedId(PREVIOUS_INSTALL_NAME)
     const capture = this.captureOps(capId, roots, collection, overwritten)
     ops.push(...capture.ops)
@@ -311,18 +328,18 @@ export class Installer {
       for (const e of await fs.readdir(rp).catch(() => [] as string[])) if (e.startsWith(TRASH_PREFIX)) trashDirs.add(path.join(rp, e))
     for (const t of trashDirs) ops.push({ t: 'rmTree', path: t, quiet: true })
 
-    const plan: Plan = { id, title: manifest ? `Installation de ${manifest.name}` : 'Nettoyage du jeu', mode: 'atomic', ops }
+    const plan: Plan = { id, title: manifest ? t('installer.plan.install', { name: manifest.name }) : t('installer.plan.clean'), mode: 'atomic', ops }
     const res = await this.runPlan(plan, [...Object.values(roots), ...Object.values(active?.roots ?? {})], report)
     if (!res.ok) {
       await fs.rm(lib.packDir(capId), { recursive: true, force: true }).catch(() => undefined)
-      await this.setState(pushHistory(this.state, { action: manifest ? 'apply' : 'clean', packName: manifest?.name, ok: false, summary: res.error ?? 'Échec' }))
-      throw new Error(res.rolledBack ? `${res.error ?? 'Échec'} Rien n'a été modifié.` : (res.error ?? "L'installation a échoué."))
+      await this.setState(pushHistory(this.state, { action: manifest ? 'apply' : 'clean', packName: manifest?.name, ok: false, ...failureSummary(res.error) }))
+      throw new Error(planError(res, t('installer.errors.installFailed')))
     }
 
     // Pack « Ancienne installation » : seulement s'il a reçu des fichiers.
     let captured: string | null = null
     if (capture.files.length) {
-      const name = await lib.uniqueName(active ? 'Ajouts manuels' : PREVIOUS_INSTALL_NAME)
+      const name = await lib.uniqueName(active ? t('installer.names.manualAdditions') : t('installer.names.previousInstall'))
       captured = (await lib.finalizeCaptured(capId, name, capture.files)).name
     } else await fs.rm(lib.packDir(capId), { recursive: true, force: true }).catch(() => undefined)
 
@@ -346,12 +363,19 @@ export class Installer {
     const inherited = (active?.createdDirs ?? []).filter((d) => dirKeys.has(destKey(d)))
     const createdDirs = [...mkdirIdx.filter((m) => res.results[m.idx]?.created).map((m) => m.dest), ...inherited]
     if (!manifest) {
-      const summary = [active && `${active.packName} retiré`, captured && `mods rangés dans ${captured}`].filter(Boolean).join(', ')
-      await this.setState(pushHistory({ ...this.state, active: null }, { action: 'clean', ok: true, summary: `Jeu remis d'origine${summary ? ` (${summary})` : ''}` }))
+      const summary =
+        active && captured
+          ? msg('installer.history.cleanedBoth', { pack: active.packName, captured })
+          : active
+            ? msg('installer.history.cleanedRemoved', { pack: active.packName })
+            : captured
+              ? msg('installer.history.cleanedCaptured', { captured })
+              : msg('history.gameRestored')
+      await this.setState(pushHistory({ ...this.state, active: null }, { action: 'clean', ok: true, msg: summary }))
       return { installed: 0, captured, removed: active?.packName ?? null }
     }
     const next: ActiveInstall = { id, packId: manifest.id, packName: manifest.name, appliedAt: new Date().toISOString(), roots, files, createdDirs, partial: false }
-    await this.setState(pushHistory({ ...this.state, active: next }, { action: 'apply', packName: manifest.name, ok: true, summary: `${files.length} fichiers` }))
+    await this.setState(pushHistory({ ...this.state, active: next }, { action: 'apply', packName: manifest.name, ok: true, msg: countMsg('history.files', files.length) }))
 
     if (manifest.reshadeVersion && versionAtLeast(parseVersion(manifest.reshadeVersion), [5]) && games.fivem.path) {
       await ensureReshadeAck(games.fivem.path).catch((e) => log.warn(`CitizenFX.ini non modifié : ${(e as Error).message}`))
@@ -384,7 +408,7 @@ export class Installer {
     for (const d of [...active.createdDirs].sort((a, b) => b.path.split('/').length - a.path.split('/').length || b.path.localeCompare(a.path)))
       ops.push({ t: 'rmdirIfEmpty', path: abs(active.roots[d.root], d.path) })
 
-    const plan: Plan = { id: newId('rm-'), title: `Retrait de ${active.packName}`, mode: 'best-effort', ops }
+    const plan: Plan = { id: newId('rm-'), title: t('installer.plan.remove', { name: active.packName }), mode: 'best-effort', ops }
     const res = ops.length ? await this.runPlan(plan, Object.values(active.roots), report) : { ok: true, results: [], rolledBack: false }
     const failed = fileOps.filter((fo) => !res.results[fo.idx]?.ok).map((fo) => fo.file)
     if (pack) {
@@ -395,9 +419,9 @@ export class Installer {
     }
     const nextActive: ActiveInstall | null = failed.length ? { ...active, files: failed, partial: true } : null
     await this.setState(
-      pushHistory({ ...this.state, active: nextActive }, { action: 'remove', packName: active.packName, ok: !failed.length, summary: failed.length ? (res.error ?? '') : 'Retiré' })
+      pushHistory({ ...this.state, active: nextActive }, { action: 'remove', packName: active.packName, ok: !failed.length, ...(failed.length ? { summary: res.error ?? '' } : { msg: msg('history.removed') }) })
     )
-    if (failed.length) throw new Error(`${failed.length} fichier(s) n'ont pas pu être retirés. Fermez FiveM et réessayez.`)
+    if (failed.length) throw new Error(t('installer.errors.removeFailed', { count: failed.length }))
     return { removed: fileOps.length }
   }
 
@@ -419,15 +443,15 @@ export class Installer {
     if (!collection.files.length) return { captured: null }
     const capId = lib.newCapturedId(PREVIOUS_INSTALL_NAME)
     const { ops, files } = this.captureOps(capId, roots, collection, [])
-    const res = await this.runPlan({ id: capId, title: 'Retrait des mods', mode: 'atomic', ops }, Object.values(roots), report)
+    const res = await this.runPlan({ id: capId, title: t('installer.plan.removeMods'), mode: 'atomic', ops }, Object.values(roots), report)
     if (!res.ok) {
       await fs.rm(lib.packDir(capId), { recursive: true, force: true }).catch(() => undefined)
-      throw new Error(res.error ?? 'Échec')
+      throw new Error(res.error ?? t('installer.failed'))
     }
-    const name = await lib.uniqueName(this.state.active ? 'Ajouts manuels' : PREVIOUS_INSTALL_NAME)
+    const name = await lib.uniqueName(this.state.active ? t('installer.names.manualAdditions') : t('installer.names.previousInstall'))
     await lib.finalizeCaptured(capId, name, files)
     await this.autoCover(capId, null, games)
-    await this.setState(pushHistory(this.state, { action: 'capture', packName: name, ok: true, summary: `${files.length} fichiers rangés` }))
+    await this.setState(pushHistory(this.state, { action: 'capture', packName: name, ok: true, msg: countMsg('history.captured', files.length) }))
     return { captured: name }
   }
 
@@ -586,8 +610,8 @@ export class Installer {
       placeIdx.push({ idx: ops.length - 1, item: it })
     }
     for (const t of trashDirs) ops.push({ t: 'rmTree', path: t, quiet: true })
-    const res = await this.runPlan({ id, title: "Limite d'images par seconde", mode: 'atomic', ops }, Object.values(active.roots), report)
-    if (!res.ok) throw new Error(res.rolledBack ? `${res.error ?? 'Échec'} Rien n'a été modifié.` : (res.error ?? "La limite n'a pas pu être appliquée."))
+    const res = await this.runPlan({ id, title: t('installer.plan.fpsLimit'), mode: 'atomic', ops }, Object.values(active.roots), report)
+    if (!res.ok) throw new Error(planError(res, t('installer.errors.fpsFailed')))
 
     // Fichiers installés mis à jour : ils ne passent pas pour des réglages modifiés en jeu.
     const placed = new Map(
@@ -665,19 +689,20 @@ export class Installer {
   async clearCache(report: Report): Promise<{ freed: number }> {
     await this.assertGameClosed()
     const games = await this.ctx.detectGames()
-    if (!games.fivem.valid || !games.fivem.path) throw new Error('Dossier FiveM introuvable.')
+    if (!games.fivem.valid || !games.fivem.path) throw new Error(t('installer.errors.fivemNotFound'))
     const before = (await this.cacheInfo())?.size ?? 0
     const ops: Op[] = this.cacheDirs(games.fivem.path).map((d) => ({ t: 'rmTree', path: d }))
-    const res = await this.runPlan({ id: newId('cc-'), title: 'Vidage du cache', mode: 'best-effort', ops }, [games.fivem.path], report)
-    await this.setState(pushHistory(this.state, { action: 'cache', ok: res.ok, summary: res.ok ? `${formatBytes(before)} libérés` : (res.error ?? 'Échec') }))
-    if (!res.ok) throw new Error(res.error ?? 'Échec')
+    const res = await this.runPlan({ id: newId('cc-'), title: t('installer.plan.clearCache'), mode: 'best-effort', ops }, [games.fivem.path], report)
+    const summary = res.ok ? { msg: msg('history.cacheFreed', { size: formatBytes(before) }) } : failureSummary(res.error)
+    await this.setState(pushHistory(this.state, { action: 'cache', ok: res.ok, ...summary }))
+    if (!res.ok) throw new Error(res.error ?? t('installer.failed'))
     return { freed: before }
   }
 
   /** Déplace les captures d'écran ReShade du dossier plugins vers un dossier d'images. */
   async moveScreenshots(targetDir: string, report: Report): Promise<{ moved: number }> {
     const games = await this.ctx.detectGames()
-    if (!games.fivem.valid || !games.fivem.path) throw new Error('Dossier FiveM introuvable.')
+    if (!games.fivem.valid || !games.fivem.path) throw new Error(t('installer.errors.fivemNotFound'))
     const shots = (await scanForeign(games, this.state.active)).filter((i) => i.category === 'screenshot' && !i.isDir)
     if (!shots.length) return { moved: 0 }
     const taken = new Set((await fs.readdir(targetDir).catch(() => [] as string[])).map((n) => n.toLowerCase()))
@@ -691,10 +716,10 @@ export class Installer {
       taken.add(name.toLowerCase())
       ops.push({ t: 'stash', path: abs(games.fivem.path, s.path), to: path.join(targetDir, name), size: 0 })
     }
-    const res = await this.runPlan({ id: newId('ss-'), title: 'Déplacement des captures', mode: 'best-effort', ops }, [games.fivem.path], report)
+    const res = await this.runPlan({ id: newId('ss-'), title: t('installer.plan.moveScreenshots'), mode: 'best-effort', ops }, [games.fivem.path], report)
     const moved = res.results.filter((r) => r.ok && !r.skipped).length
-    await this.setState(pushHistory(this.state, { action: 'clean', ok: res.ok, summary: `${moved} captures d'écran déplacées` }))
-    if (!moved && !res.ok) throw new Error(res.error ?? 'Échec')
+    await this.setState(pushHistory(this.state, { action: 'clean', ok: res.ok, msg: countMsg('history.screenshotsMoved', moved) }))
+    if (!moved && !res.ok) throw new Error(res.error ?? t('installer.failed'))
     return { moved }
   }
 }

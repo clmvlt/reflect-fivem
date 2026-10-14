@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useStore } from './store'
 import { Library } from './components/Library'
 import { PackDetail } from './components/PackDetail'
@@ -16,15 +17,10 @@ const SUPPORT_INVITE = 'rtBZAxqtsu'
 
 type Page = 'library' | 'market' | 'graphics' | 'cleanup' | 'account' | 'settings'
 
-const NAV: { id: Page; label: string }[] = [
-  { id: 'library', label: 'Bibliothèque' },
-  { id: 'market', label: 'Marketplace' },
-  { id: 'graphics', label: 'Graphismes' },
-  { id: 'cleanup', label: 'Nettoyage' },
-  { id: 'settings', label: 'Réglages' }
-]
+const NAV: Page[] = ['library', 'market', 'graphics', 'cleanup', 'settings']
 
 export function App() {
+  const { t } = useTranslation()
   const { overview, account, message, setMessage, run } = useStore()
   const [page, setPage] = useState<Page>('library')
   const [openPack, setOpenPack] = useState<string | null>(null)
@@ -93,7 +89,13 @@ export function App() {
   // Barre latérale affichée dès le premier rendu ; les pages attendent l'état de l'application.
   const detail = openPack ? overview?.library.find((p) => p.id === openPack) : null
   const games = overview?.games
-  const gameProblem = !games ? null : !games.fivem.valid ? 'FiveM introuvable' : !games.gta.valid ? 'GTA V introuvable' : games.gta.edition === 'enhanced' ? 'GTA V Enhanced' : null
+  const gameProblem = !games ? null : !games.fivem.valid
+      ? t('app.gameProblem.fivemMissing')
+      : !games.gta.valid
+        ? t('app.gameProblem.gtaMissing')
+        : games.gta.edition === 'enhanced'
+          ? t('app.gameProblem.gtaEnhanced')
+          : null
   const go = (p: Page): void => {
     setPage(p)
     setOpenPack(null)
@@ -118,9 +120,9 @@ export function App() {
           </span>
         </div>
         <nav>
-          {NAV.map((n) => (
-            <button key={n.id} className={`nav ${page === n.id ? 'is-selected' : ''}`} onClick={() => go(n.id)}>
-              {n.label}
+          {NAV.map((id) => (
+            <button key={id} className={`nav ${page === id ? 'is-selected' : ''}`} onClick={() => go(id)}>
+              {t(`app.nav.${id}`)}
             </button>
           ))}
         </nav>
@@ -144,8 +146,8 @@ export function App() {
                   </svg>
                 </span>
               )}
-              <span className="ellipsis">{account ? account.displayName : 'Compte'}</span>
-              {account?.mustChangePassword && <span className="nav-dot" title="Mot de passe à changer" />}
+              <span className="ellipsis">{account ? account.displayName : t('app.nav.account')}</span>
+              {account?.mustChangePassword && <span className="nav-dot" title={t('app.passwordToChange')} />}
             </span>
           </button>
         </div>
@@ -186,13 +188,13 @@ export function App() {
         {message && (
           <div className={`bar bar-${message.kind} floating`} role="status">
             <span className="bar-text">{message.text}</span>
-            <button className="close" onClick={() => setMessage(null)} aria-label="Fermer">
+            <button className="close" onClick={() => setMessage(null)} aria-label={t('common.close')}>
               ×
             </button>
           </div>
         )}
       </main>
-      {dragging && <div className="drop">Déposez pour ajouter à la bibliothèque</div>}
+      {dragging && <div className="drop">{t('app.drop.library')}</div>}
     </div>
   )
 }

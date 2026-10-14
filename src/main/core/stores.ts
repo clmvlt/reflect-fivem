@@ -1,5 +1,6 @@
 import path from 'node:path'
 import type { AppState, HistoryEntry, Settings } from '@shared/types'
+import { tm } from '@shared/i18n'
 import { readJson, writeJsonAtomic } from '../util/fsx'
 
 export class JsonStore<T> {
@@ -37,7 +38,12 @@ export function defaultSettings(dataDir: string): Settings {
 
 export const emptyState = (): AppState => ({ schema: 1, active: null, history: [] })
 
-export function pushHistory(state: AppState, e: Omit<HistoryEntry, 'at'>): AppState {
-  const history = [{ ...e, at: new Date().toISOString() }, ...state.history].slice(0, 200)
+/**
+ * Ajoute une entrée à l'historique. Avec `msg`, le résumé est traduit à l'affichage ; `summary` (par défaut le texte
+ * de `msg` dans la langue courante) reste le repli.
+ */
+export function pushHistory(state: AppState, e: Omit<HistoryEntry, 'at' | 'summary'> & { summary?: string }): AppState {
+  const entry: HistoryEntry = { ...e, summary: e.summary ?? tm(e.msg), at: new Date().toISOString() }
+  const history = [entry, ...state.history].slice(0, 200)
   return { ...state, history }
 }

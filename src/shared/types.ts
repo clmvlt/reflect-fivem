@@ -1,12 +1,9 @@
 // Types partagés entre le processus principal (Electron) et l'interface (React).
 
+import type { Msg } from './i18n'
+
 /** Racines de destination gérées par l'application. */
 export type RootId = 'fivem' | 'gta'
-
-export const ROOT_LABELS: Record<RootId, string> = {
-  fivem: 'FiveM Application Data',
-  gta: 'Dossier GTA V'
-}
 
 /** Emplacement de destination : une racine + un chemin relatif (séparateur « / », '' = racine). */
 export interface Destination {
@@ -43,6 +40,10 @@ export interface PackComponent {
   fileCount: number
   size: number
   reason: string
+  /** {@link label} à traduire à l'affichage (absent : nom de dossier ou de fichier, ou manifeste d'une version précédente). */
+  labelMsg?: Msg
+  /** {@link reason} à traduire à l'affichage (absent : manifeste d'une version précédente). */
+  reasonMsg?: Msg
 }
 
 export interface PackFileEntry {
@@ -56,6 +57,10 @@ export interface Insight {
   level: 'ok' | 'info' | 'warn' | 'bad'
   title: string
   text: string
+  /** {@link title} à traduire à l'affichage (absent : nom de fichier, ou vérification d'une version précédente). */
+  titleMsg?: Msg
+  /** {@link text} à traduire à l'affichage (absent : vérification d'une version précédente). */
+  textMsg?: Msg
   /** Builds du jeu déclarées par un .asi (FX_ASI_BUILD). */
   builds?: number[]
 }
@@ -72,6 +77,8 @@ export interface PackManifest {
   components: PackComponent[]
   features: string[]
   warnings: string[]
+  /** {@link warnings} à traduire à l'affichage, dans le même ordre (absent : manifeste d'une version précédente). */
+  warningMsgs?: Msg[]
   /** Image principale (chemin relatif au dossier du pack), choisie par l'utilisateur ou automatiquement. */
   cover: string | null
   /** Images d'aperçu fournies dans le pack (chemins relatifs au dossier du pack). */
@@ -142,7 +149,10 @@ export interface HistoryEntry {
   at: string
   action: 'apply' | 'remove' | 'capture' | 'clean' | 'restore' | 'import' | 'delete' | 'cache' | 'graphics' | 'download'
   packName?: string
+  /** Texte de la version qui l'a écrit (repli quand `msg` est absent). */
   summary: string
+  /** Résumé traduit à l'affichage, dans la langue courante. */
+  msg?: Msg
   ok: boolean
 }
 
@@ -158,6 +168,8 @@ export interface Settings {
   gtaPath: string | null
   /** Limite d'images par seconde, appliquée par l'ENB des packs : null ou absent = celle du pack, 0 = aucune limite. */
   fpsLimit?: number | null
+  /** Langue choisie dans les réglages de l'application sur ce poste (absent : jamais choisie). */
+  locale?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -167,6 +179,8 @@ export type GtaEdition = 'legacy' | 'enhanced' | 'unknown'
 export type GtaStore = 'rockstar' | 'steam' | 'epic' | 'unknown'
 
 export interface Check {
+  /** Identifiant stable de la vérification (le libellé suit la langue). */
+  id?: string
   label: string
   ok: boolean
   detail?: string
@@ -399,6 +413,8 @@ export interface AccountMe {
   /** Faux pour un compte créé par Google qui n'a pas encore de mot de passe. */
   hasPassword: boolean
   googleLinked: boolean
+  /** Langue enregistrée dans le compte (code de GET /locales), null si aucune n'a été choisie. */
+  locale: string | null
 }
 
 /** Profil complet du compte connecté. */

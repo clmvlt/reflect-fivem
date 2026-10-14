@@ -29,6 +29,7 @@
   "include": [
     "src/renderer/src/**/*",
     "src/shared/**/*",
+    "src/shared/**/*.json",
     "src/preload/*.d.ts"
   ]
 }

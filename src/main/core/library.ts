@@ -13,20 +13,22 @@
 
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { t } from 'i18next'
+import { tm } from '@shared/i18n'
+import { formatBytes as sizeText, quote } from '@shared/intl'
 import type { Destination, PackComponent, PackFileEntry, PackManifest, PackPatch, RootId } from '@shared/types'
-import { analyzePack, galleryOf, resolveInstallMap, type AnalyzedComponent } from './analyzer'
+import { analyzePack, galleryOf, resolveInstallMap, tmNested, type AnalyzedComponent } from './analyzer'
 import { folderContent, packageContent, readSource, type ContentSource, type PackContent } from './content'
-import { fixReshadeIni, fixReshadeIniText, inspectPack, INSIGHTS_VERSION } from './inspect'
+import { fixReshadeIni, fixReshadeIniText, insight, inspectPack, INSIGHTS_VERSION } from './inspect'
 import type { PackKeys } from './keys'
 import { choosePreset, detectPresets } from './reshade'
-import { ARCHIVE_EXT, detectFeatures, ext, isJunk } from './knowledge'
+import { ARCHIVE_EXT, detectFeatures, ext, isJunk, textMsg } from './knowledge'
 import { readPackageIndex, readSealedFile, sealedFileRef, sealFileFrom, unsealToBuffer, unwrapKey, wrapKey, writeSealedFile } from './sealed'
 import { dropJunk, stripWrapper } from './wrapper'
 import { extractInWorker } from '../archive'
 import { rarVolumeIndex, sanitizeEntryPath } from '../archive/sanitize'
 import { exists, freeSpace, isDir, moveDir, moveFile, newId, readJson, slugify, walkFiles, writeJsonAtomic, formatBytes } from '../util/fsx'
 import { log } from '../util/log'
-import { q } from '../util/text'
 
 export interface StoredManifest extends Omit<PackManifest, 'components'> {
   components: AnalyzedComponent[]
@@ -94,7 +96,7 @@ export class Library {
   // Contenu, réglages et fichiers générés (en clair, ou chiffrés pour un pack protégé)
 
   private localKey(): Promise<Buffer> {
-    if (!this.keys) throw new Error('Packs protégés indisponibles.')
+    if (!this.keys) throw new Error(t('library.errors.protectedUnavailable'))
     return this.keys.local()
   }
 
@@ -104,15 +106,15 @@ export class Library {
     const local = await this.localKey()
     const kept = unwrapKey(p.key, local)
     if (kept) return kept
-    if (!m.marketplace) throw new Error('Clé de ce pack protégé introuvable.')
+    if (!m.marketplace) throw new Error(t('library.errors.keyMissing'))
     let fetched: { packageId: string; key: Buffer }
     try {
       fetched = await this.keys!.fetch(m.marketplace.id)
     } catch (err) {
-      throw new Error(`Ce pack protégé doit être déverrouillé en ligne : ${(err as Error).message}`)
+      throw new Error(t('library.errors.unlockOnline', { error: (err as Error).message }))
     }
     if (fetched.packageId !== p.packageId)
-      throw new Error('Une nouvelle version de ce pack est sur la Marketplace : mettez-le à jour pour pouvoir l’installer.')
+      throw new Error(t('library.errors.newVersion'))
     p.key = wrapKey(fetched.key, local)
     await this.save(m)
     log.info(`Clé du pack protégé ${m.name} redemandée au serveur`)
@@ -225,7 +227,7 @@ export class Library {
 
   async get(id: string): Promise<StoredManifest> {
     const m = await readJson<StoredManifest | null>(path.join(this.packDir(id), 'pack.json'), null)
-    if (!m) throw new Error('Pack introuvable.')
+    if (!m) throw new Error(t('library.errors.notFound'))
     return m
   }
 
@@ -264,7 +266,7 @@ export class Library {
     const map = resolveInstallMap(m.components)
     const content = await this.content(m)
     const { insights, reshadeVersion } = await inspectPack(content, map)
-    const notes = (m.insights ?? []).filter((i) => i.rel === '').map((i) => ({ ...i, title: 'ReShade.ini', text: RESHADE_FIXED }))
+    const notes = (m.insights ?? []).filter((i) => i.rel === '').map((i) => ({ ...i, ...insight(i.rel, i.level, 'ReShade.ini', RESHADE_FIXED) }))
     m.insights = [...insights, ...notes]
     m.reshadeVersion = reshadeVersion
     const { presets, fromIni } = await detectPresets(content, map)
@@ -276,7 +278,7 @@ export class Library {
 
   async setReshadePreset(id: string, rel: string): Promise<StoredManifest> {
     const m = await this.get(id)
-    if (!(m.reshadePresets ?? []).includes(rel)) throw new Error('Preset inconnu.')
+    if (!(m.reshadePresets ?? []).includes(rel)) throw new Error(t('library.errors.unknownPreset'))
     m.reshadePreset = rel
     await this.save(m)
     return m
@@ -327,7 +329,7 @@ export class Library {
   /** Définit l'image du pack : une image de sa galerie ou un fichier enregistré dans le dossier du pack. */
   async setCover(id: string, rel: string | null): Promise<StoredManifest> {
     const m = await this.get(id)
-    if (rel && !m.gallery.includes(rel) && !/^cover-[\w-]+\.(jpe?g|png|webp)$/i.test(rel)) throw new Error('Image inconnue.')
+    if (rel && !m.gallery.includes(rel) && !/^cover-[\w-]+\.(jpe?g|png|webp)$/i.test(rel)) throw new Error(t('library.errors.unknownImage'))
     // Ancienne image enregistrée : supprimée pour ne pas accumuler de fichiers.
     if (m.cover && m.cover !== rel && /^cover-/.test(m.cover)) await fs.rm(path.join(this.packDir(id), m.cover), { force: true }).catch(() => undefined)
     m.cover = rel
@@ -373,18 +375,17 @@ export class Library {
     options: { skipDuplicateCheck?: boolean } = {}
   ): Promise<StoredManifest> {
     const st = await fs.stat(source).catch(() => null)
-    if (!st) throw new ImportError('Fichier introuvable.')
+    if (!st) throw new ImportError(t('library.errors.fileNotFound'))
     const isFolder = st.isDirectory()
     const sourceName = path.basename(source)
     const sourceSize = isFolder ? 0 : st.size
 
     if (!isFolder) {
       const vol = rarVolumeIndex(sourceName)
-      if (vol !== null && vol > 1)
-        throw new ImportError("Ajoutez la première partie de l'archive (.part1.rar).")
-      if (!ARCHIVE_EXT.has(ext(sourceName))) throw new ImportError('Format non pris en charge. Utilisez une archive .zip, .rar ou .7z.')
+      if (vol !== null && vol > 1) throw new ImportError(t('library.errors.firstPart'))
+      if (!ARCHIVE_EXT.has(ext(sourceName))) throw new ImportError(t('library.errors.format'))
       const dup = options.skipDuplicateCheck ? null : await this.findDuplicate(sourceName, sourceSize)
-      if (dup) throw new ImportError(`${q(dup.name)} est déjà dans la liste.`)
+      if (dup) throw new ImportError(t('library.errors.duplicate', { name: quote(dup.name) }))
     }
 
     const id = `${slugify(cleanName(sourceName))}-${newId()}`
@@ -394,12 +395,11 @@ export class Library {
 
     try {
       if (isFolder) {
-        onProgress({ phase: 'Copie du dossier', current: 0, total: 1, detail: sourceName })
+        onProgress({ phase: t('library.phases.copyFolder'), current: 0, total: 1, detail: sourceName })
         await fs.cp(source, raw, { recursive: true })
       } else {
         const free = await freeSpace(this.dir)
-        const spaceError = (need: number): string =>
-          `Pas assez de place sur le disque (${formatBytes(need)} nécessaires).`
+        const spaceError = (need: number): string => t('library.errors.noSpace', { size: sizeText(need) })
         if (free !== null && free < sourceSize * 1.05) throw new ImportError(spaceError(sourceSize))
         // La taille décompressée réelle n'est connue qu'après lecture de l'archive : on interrompt tôt si elle ne tient pas.
         const local = new AbortController()
@@ -415,7 +415,7 @@ export class Library {
                 local.abort()
               }
               onProgress({
-                phase: p.phase === 'list' ? "Lecture de l'archive" : 'Extraction',
+                phase: p.phase === 'list' ? t('library.phases.readArchive') : t('library.phases.extract'),
                 current: p.totalBytes ? p.bytes : p.files,
                 total: p.totalBytes || p.totalFiles,
                 detail: p.current
@@ -431,13 +431,13 @@ export class Library {
 
       await this.extractNested(raw, onProgress, signal)
 
-      onProgress({ phase: 'Analyse du pack', current: 0, total: 1 })
+      onProgress({ phase: t('library.phases.analyzePack'), current: 0, total: 1 })
       let entries = (await walkFiles(raw)).map((f) => ({ rel: f.rel, size: f.size }))
       // Supprime les fichiers parasites (__MACOSX, Thumbs.db...)
       const keep = new Set(dropJunk(entries).map((e) => e.rel))
       for (const e of entries) if (!keep.has(e.rel)) await fs.rm(path.join(raw, ...e.rel.split('/')), { force: true })
       entries = entries.filter((e) => keep.has(e.rel))
-      if (!entries.length) throw new ImportError("L'archive est vide.")
+      if (!entries.length) throw new ImportError(t('library.errors.empty'))
 
       const { entries: stripped, prefix } = stripWrapper(entries)
       const contentSrc = prefix ? path.join(raw, ...prefix.replace(/\/$/, '').split('/')) : raw
@@ -469,6 +469,7 @@ export class Library {
         components: analysis.components,
         features: analysis.features,
         warnings: analysis.warnings,
+        warningMsgs: analysis.warningMsgs,
         cover: null,
         gallery: analysis.gallery.map((r) => `content/${r}`),
         notes: '',
@@ -478,15 +479,9 @@ export class Library {
         reshadeVersion: null,
         files: stripped
       }
-      onProgress({ phase: 'Vérification de la compatibilité FiveM', current: 0, total: 1 })
+      onProgress({ phase: t('library.phases.checkCompat'), current: 0, total: 1 })
       await this.refreshInsights(manifest)
-      if (fixedPaths)
-        manifest.insights.push({
-          rel: '',
-          level: 'info',
-          title: 'ReShade.ini',
-          text: RESHADE_FIXED
-        })
+      if (fixedPaths) manifest.insights.push(insight('', 'info', 'ReShade.ini', RESHADE_FIXED))
       await this.save(manifest)
       log.info(`Pack importé : ${manifest.name} (${manifest.fileCount} fichiers, ${formatBytes(manifest.contentSize)})`)
       return manifest
@@ -520,7 +515,7 @@ export class Library {
             target,
             (p) =>
               onProgress({
-                phase: `Extraction de ${name}`,
+                phase: t('library.phases.extractNamed', { name }),
                 current: p.totalBytes ? p.bytes : p.files,
                 total: p.totalBytes || p.totalFiles,
                 detail: p.current
@@ -555,7 +550,7 @@ export class Library {
     source: { name: string; size: number },
     onProgress: (p: ImportProgress) => void
   ): Promise<StoredManifest> {
-    onProgress({ phase: 'Lecture du pack', current: 0, total: 1 })
+    onProgress({ phase: t('library.phases.readPack'), current: 0, total: 1 })
     const index = await readPackageIndex(file, key)
     // Chemins nettoyés comme à l'extraction d'une archive ; un doublon (casse ignorée, comme sous Windows) remplace le
     // précédent.
@@ -567,9 +562,9 @@ export class Library {
       byRel.set(rel.toLowerCase(), { rel, size: e.size })
     }
     const entries = dropJunk([...byRel.values()]).sort((a, b) => a.rel.localeCompare(b.rel))
-    if (!entries.length) throw new ImportError("L'archive est vide.")
+    if (!entries.length) throw new ImportError(t('library.errors.empty'))
 
-    onProgress({ phase: 'Analyse du pack', current: 0, total: 1 })
+    onProgress({ phase: t('library.phases.analyzePack'), current: 0, total: 1 })
     const { entries: stripped, prefix } = stripWrapper(entries)
     const content = packageContent(file, index, prefix)
     const presets = await findPresets(content, stripped)
@@ -606,6 +601,7 @@ export class Library {
         components: analysis.components,
         features: analysis.features,
         warnings: analysis.warnings,
+        warningMsgs: analysis.warningMsgs,
         cover: null,
         gallery: [],
         notes: '',
@@ -616,9 +612,9 @@ export class Library {
         files: stripped,
         protection
       }
-      onProgress({ phase: 'Vérification de la compatibilité FiveM', current: 0, total: 1 })
+      onProgress({ phase: t('library.phases.checkCompat'), current: 0, total: 1 })
       await this.refreshInsights(manifest)
-      if (fixedPaths) manifest.insights.push({ rel: '', level: 'info', title: 'ReShade.ini', text: RESHADE_FIXED })
+      if (fixedPaths) manifest.insights.push(insight('', 'info', 'ReShade.ini', RESHADE_FIXED))
       await this.save(manifest)
       log.info(`Pack protégé ajouté : ${manifest.name} (${manifest.fileCount} fichiers, ${formatBytes(manifest.contentSize)})`)
       return manifest
@@ -664,7 +660,8 @@ export class Library {
           optional: false,
           fileCount: list.length,
           size: list.reduce((s, f) => s + f.size, 0),
-          reason: "Réinstallé exactement à l'emplacement d'origine",
+          reason: tm(REINSTALLED),
+          reasonMsg: REINSTALLED,
           stripPrefix: `${CAPTURE_TOP[root]}/`,
           files: list.map((f) => f.rel)
         }
@@ -701,7 +698,8 @@ export class Library {
 }
 
 const CAPTURE_TOP: Record<RootId, string> = { fivem: 'FiveM Application Data', gta: 'GTA V' }
-const RESHADE_FIXED = "Chemins du PC de l'auteur corrigés."
+const RESHADE_FIXED = textMsg('library.reshadeFixed')
+const REINSTALLED = textMsg('library.reinstalledInPlace')
 
 /** Presets ReShade parmi les .ini du pack (avant l'analyse, pour la guider). */
 async function findPresets(content: PackContent, entries: PackFileEntry[]): Promise<Set<string>> {
@@ -721,22 +719,33 @@ export function cleanName(fileName: string): string {
       .replace(/(\.part0*\d+)?\.(zip|rar|7z)$/i, '')
       .replace(/[_]+/g, ' ')
       .replace(/\s+/g, ' ')
-      .trim() || 'Pack sans nom'
+      .trim() || t('library.unnamed')
   )
 }
 
-/** Version « publique » du manifeste envoyée à l'interface (sans les listes de fichiers). */
+/**
+ * Version « publique » du manifeste envoyée à l'interface (sans les listes de fichiers). Les textes produits à l'import
+ * (raisons, avertissements, vérifications) sont traduits dans la langue affichée ; ceux d'un manifeste d'une version
+ * précédente, sans clé, restent tels quels.
+ */
 export function toPublic(m: StoredManifest): PackManifest {
   const { files: _files, sourceSize: _s, protection, components, ...rest } = m
   void _files
   void _s
+  const warnings = m.warningMsgs?.length === m.warnings.length ? m.warningMsgs.map(tmNested) : m.warnings
   return {
     ...rest,
+    warnings,
+    insights: (m.insights ?? []).map((i) => ({ ...i, title: i.titleMsg ? tm(i.titleMsg) : i.title, text: i.textMsg ? tm(i.textMsg) : i.text })),
     protected: !!protection,
     components: components.map(({ files: _f, stripPrefix: _p, ...c }) => {
       void _f
       void _p
-      return c as PackComponent
+      return {
+        ...c,
+        label: c.labelMsg ? tm(c.labelMsg) : c.label,
+        reason: c.reasonMsg ? tm(c.reasonMsg) : c.reason
+      } as PackComponent
     })
   }
 }

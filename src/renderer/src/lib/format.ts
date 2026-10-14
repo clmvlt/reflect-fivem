@@ -1,6 +1,6 @@
 // Formats de l'interface : nombres, tailles et dates dans la langue affichée (voir @shared/intl).
 
-import { formatBytes, formatDate, formatNumber, quote } from '@shared/intl'
+import { formatBytes, formatDate, formatDateTime, formatNumber, formatRelative, quote } from '@shared/intl'
 
 export function bytes(n: number): string {
   return formatBytes(n)
@@ -29,6 +29,11 @@ export function packImages(p: { cover: string | null; gallery?: string[] }): str
   return [...new Set([p.cover, ...(p.gallery ?? [])].filter((x): x is string => !!x))]
 }
 
+/** Note moyenne au dixième (4,3 en français, 4.3 en anglais). */
+export function ratingText(average: number): string {
+  return formatNumber(average, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+}
+
 /** Nombre dans la langue affichée (séparateurs de milliers). */
 export function num(n: number): string {
   return formatNumber(n)
@@ -36,4 +41,14 @@ export function num(n: number): string {
 
 export function longDate(iso: string | null): string {
   return formatDate(iso)
+}
+
+/** Date relative pour la semaine écoulée (« il y a 3 h »), sinon la date. */
+export function ago(iso: string): string {
+  return formatRelative(iso)
+}
+
+/** Date et heure complètes (infobulle). */
+export function fullDate(iso: string): string {
+  return formatDateTime(iso)
 }

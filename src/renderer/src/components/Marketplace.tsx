@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import type { AuthorProfile, AuthorSummary, MarketCategory, MarketKind, MarketPack, MarketPackDetail, MarketPage, MarketTag, PackManifest, TaskProgress } from '@shared/types'
 import { MOD_GONE, PACK_GONE, type MarketQuery } from '@shared/api'
 import { apiError, cleanError, useStore } from '../store'
-import { bytes, longDate as date, marketImageUrl, num } from '../lib/format'
+import { bytes, longDate as date, marketImageUrl, num, ratingText } from '../lib/format'
 import { Gallery } from './Gallery'
 import { Markdown } from './Markdown'
 import { Avatar, EmptyState, Progress } from './common'
+import { PackReviews, RatingLine } from './Reviews'
 import { categoryLabel, localMod, ModMarketAction, useModCategories } from './Mods'
 import { PerfBadge, PerfDetails, PerfFacts, usePerfConfirm, usePerformance, type PerfContext } from './Performance'
 import { estimate, type PackPerformance } from '@shared/performance'
@@ -35,7 +36,8 @@ export function Marketplace({
   onBack,
   onOpenLocal,
   author,
-  onAuthor
+  onAuthor,
+  onSignIn
 }: Nav & {
   view: MarketView | null
   depth: number
@@ -44,6 +46,8 @@ export function Marketplace({
   onBack: () => void
   author: string | null
   onAuthor: (slug: string | null) => void
+  /** Page de connexion ; la fiche est rouverte une fois connecté. */
+  onSignIn: () => void
 }) {
   const { t } = useTranslation()
   // Retour : à la liste depuis la première vue ouverte, sinon à la vue précédente (fiche ou auteur).
@@ -55,7 +59,7 @@ export function Marketplace({
     </div>
   )
   if (view?.kind === 'pack')
-    return <MarketDetail key={`${view.catalog ?? 'pack'}:${view.id}`} id={view.id} catalog={view.catalog ?? 'pack'} back={back} onOpen={onOpen} onOpenLocal={onOpenLocal} />
+    return <MarketDetail key={`${view.catalog ?? 'pack'}:${view.id}`} id={view.id} catalog={view.catalog ?? 'pack'} back={back} onOpen={onOpen} onOpenLocal={onOpenLocal} onSignIn={onSignIn} />
   if (view?.kind === 'author') return <AuthorView key={view.slug} slug={view.slug} back={back} onOpen={onOpen} onOpenLocal={onOpenLocal} />
   return <MarketList key={catalog} catalog={catalog} author={author} onAuthor={onAuthor} onOpen={onOpen} onOpenLocal={onOpenLocal} />
 }
@@ -188,7 +192,7 @@ function MarketList({
   const { overview } = useStore()
   const { t, i18n } = useTranslation()
   const mods = catalog === 'mod'
-  const [query, setQuery] = useState<MarketQuery>({ kind: catalog, sort: 'recent', page: 0 })
+  const [query, setQuery] = useState<MarketQuery>({ kind: catalog, sort: 'recommended', page: 0 })
   const [tags, setTags] = useState<MarketTag[]>([])
   const [categories, setCategories] = useState<MarketCategory[]>([])
   const [authors, setAuthors] = useState<AuthorSummary[]>([])
@@ -237,6 +241,8 @@ function MarketList({
         <div className="spacer" />
         <input className="search" type="search" placeholder={t('common.search')} value={search} onChange={(e) => setSearch(e.target.value)} />
         <select value={query.sort} onChange={(e) => setQuery({ ...query, sort: e.target.value as MarketQuery['sort'], page: 0 })} aria-label={t('marketplace.sort.label')}>
+          <option value="recommended">{t('marketplace.sort.recommended')}</option>
+          <option value="rating">{t('marketplace.sort.rating')}</option>
           <option value="recent">{t('marketplace.sort.recent')}</option>
           <option value="popular">{t('marketplace.sort.popular')}</option>
           <option value="name">{t('marketplace.sort.name')}</option>
@@ -406,7 +412,7 @@ const openItem = (item: MarketPack): MarketView => ({ kind: 'pack', id: item.id,
 
 /**
  * Vitrine « Packs du moment » (ou « Mods du moment ») en haut de la Marketplace : une rangée de cartes horizontales
- * compactes (couverture, nom, auteur, résumé, action), qui défile de côté quand il y en a beaucoup.
+ * compactes (couverture, nom, auteur, note, résumé, action), qui défile de côté quand il y en a beaucoup.
  */
 function FeaturedBanner({ items, library, onOpen, onOpenLocal }: Nav & { items: MarketPack[]; library: PackManifest[] }) {
   const { task } = useStore()
@@ -438,11 +444,15 @@ function FeaturedBanner({ items, library, onOpen, onOpenLocal }: Nav & { items: 
                 <div className="name" title={item.name}>
                   {item.name}
                 </div>
-                {item.author && (
-                  <div className="meta">
-                    <Trans i18nKey="marketplace.by" components={{ author: <AuthorLink item={item} onOpen={onOpen} /> }} />
-                  </div>
-                )}
+                <div className="meta">
+                  {item.author && (
+                    <>
+                      <Trans i18nKey="marketplace.by" components={{ author: <AuthorLink item={item} onOpen={onOpen} /> }} />
+                      {' · '}
+                    </>
+                  )}
+                  <RatingLine pack={item} />
+                </div>
                 {item.summary && <p className="featured-summary">{item.summary}</p>}
                 <div className="spacer" />
                 <div className="featured-actions" onClick={(e) => e.stopPropagation()}>
@@ -517,6 +527,7 @@ function MarketCard({
           {others}
         </div>
         <div className="meta meta-row">
+          <RatingLine pack={item} />
           <PerfBadge perf={item.performance} />
         </div>
         <div className="card-foot" onClick={(e) => e.stopPropagation()}>
@@ -588,13 +599,17 @@ function MarketAction({
   )
 }
 
-function MarketDetail({ id, catalog, back, onOpen, onOpenLocal }: Nav & { id: string; catalog: MarketKind; back: ReactNode }) {
+function MarketDetail({ id, catalog, back, onOpen, onOpenLocal, onSignIn }: Nav & { id: string; catalog: MarketKind; back: ReactNode; onSignIn: () => void }) {
   const { overview, task, run } = useStore()
   const { t, i18n } = useTranslation()
   const categories = useModCategories()
   const [pack, setPack] = useState<MarketPackDetail | null>(null)
   // Message à afficher et code de l'API (PACK_GONE / MOD_GONE : fiche introuvable).
   const [error, setError] = useState<{ message: string; code: string | null } | null>(null)
+  // Téléchargements du pack terminés depuis l'ouverture de la fiche (notes relues, note proposée).
+  const [installs, setInstalls] = useState(0)
+  const downloading = task?.kind === 'download' && !!pack && task.detail === pack.id
+  const wasDownloading = useRef(false)
 
   const load = useCallback(async () => {
     try {
@@ -611,8 +626,17 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal }: Nav & { id: st
     void load()
   }, [load, i18n.language])
 
+  // Fin du téléchargement : fiche relue (nombre de téléchargements) et notes relues.
+  useEffect(() => {
+    if (wasDownloading.current && !downloading) {
+      setInstalls((n) => n + 1)
+      void load()
+    }
+    wasDownloading.current = downloading
+  }, [downloading, load])
+
   if (!overview) return null
-  if (error)
+  if (error && !pack)
     return (
       <div className="page">
         {back}
@@ -662,6 +686,9 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal }: Nav & { id: st
               <Trans i18nKey="marketplace.by" components={{ author: <AuthorLink item={pack} onOpen={onOpen} avatar /> }} />
             </div>
           )}
+          <button className="link rating-link" onClick={() => document.getElementById('avis')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+            <RatingLine pack={pack} />
+          </button>
           {pack.summary && <p className="summary">{pack.summary}</p>}
           <div className={mod ? 'side-actions mod-actions' : 'side-actions row-actions'}>
             {mine ? <Progress task={mine} /> : <MarketAction item={pack} library={overview.library} task={task} onOpenLocal={onOpenLocal} wide />}
@@ -688,6 +715,12 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal }: Nav & { id: st
             <dd>{date(pack.archiveUpdatedAt ?? pack.updatedAt)}</dd>
             <dt>{t('marketplace.detail.downloads')}</dt>
             <dd>{num(pack.downloadCount)}</dd>
+            <dt>{t('marketplace.detail.rating')}</dt>
+            <dd>
+              {pack.rating.average !== null && pack.rating.count > 0
+                ? t('marketplace.detail.ratingValue', { rating: ratingText(pack.rating.average), count: pack.rating.count, n: num(pack.rating.count) })
+                : t('reviews.notRated')}
+            </dd>
             {pack.tags.length > 0 && (
               <>
                 <dt>{t('marketplace.detail.tags')}</dt>
@@ -714,6 +747,8 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal }: Nav & { id: st
           <Markdown text={pack.description} />
         </>
       )}
+
+      <PackReviews pack={pack} local={!!local} installs={installs} onChanged={() => void load()} onSignIn={onSignIn} />
     </div>
   )
 }

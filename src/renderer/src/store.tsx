@@ -159,6 +159,7 @@ function resultMessage(p: TaskProgress): Message | null {
     if (d.status === 'updated') return { kind: 'info', text: t('store.download.updated', { name }) }
     if (d.status === 'linked') return { kind: 'info', text: t('store.download.linked', { name }) }
     if (d.status === 'up-to-date') return { kind: 'info', text: t('store.download.upToDate', { name }) }
+    if (d.status === 'claimed') return { kind: 'info', text: t('store.download.claimed', { name }) }
     return { kind: 'info', text: t('store.download.added', { name }) }
   }
   const r = (p.result ?? {}) as { captured?: string | null; errors?: string[]; mods?: number }

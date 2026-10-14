@@ -30,6 +30,7 @@
     }
   },
   "accountView": {
+    "backToPack": "‹ Retour au pack",
     "badges": {
       "admin": "Administrateur",
       "author": "Auteur",
@@ -68,6 +69,7 @@
       "linkUrl": "Adresse du lien",
       "links": "Liens",
       "linksMax": "{{n}} liens au plus.",
+      "muted": "Votre compte a été réduit au silence par la modération : vous ne pouvez plus noter ni commenter les packs.",
       "publish": "Publier sur le site",
       "removeLink": "Retirer ce lien",
       "removePhoto": "Retirer la photo",
@@ -266,6 +268,7 @@
     "confirm": "Confirmer",
     "delete": "Supprimer",
     "disabled": "Désactivé",
+    "edit": "Modifier",
     "enabled": "Activé",
     "error": "Erreur",
     "failed": "Échec.",
@@ -284,6 +287,13 @@
     "save": "Enregistrer",
     "search": "Rechercher",
     "yes": "Oui"
+  },
+  "community": {
+    "errors": {
+      "commentTooLong": "Commentaire trop long ({{max}} caractères au plus).",
+      "emptyComment": "Écrivez votre commentaire.",
+      "invalidRating": "Choisissez une note de 1 à 5 étoiles."
+    }
   },
   "errors": {
     "busy": "Une opération est déjà en cours.",
@@ -756,6 +766,13 @@
       "gtaEnhanced": "Le dossier GTA V choisi est l'édition Enhanced, qui n'accepte pas les mods FiveM.",
       "gtaMissing": "Dossier GTA V introuvable."
     },
+    "rate": {
+      "chipTitle": "Noter {{name}}",
+      "hide": "Masquer",
+      "more_one": "et {{n}} autre",
+      "more_other": "et {{n}} autres",
+      "text": "Notez vos packs et vos mods : votre avis aide les autres joueurs à choisir."
+    },
     "title": "Bibliothèque"
   },
   "market": {
@@ -786,6 +803,7 @@
     },
     "packGone": "Ce pack n’est plus disponible sur la Marketplace.",
     "phase": {
+      "claim": "Validation du téléchargement",
       "downloading": "Téléchargement",
       "images": "Images",
       "resuming": "Connexion interrompue, reprise…",
@@ -834,6 +852,9 @@
       "category": "Catégorie",
       "description": "Description",
       "downloads": "Téléchargements",
+      "rating": "Note",
+      "ratingValue_one": "{{rating}} / 5 ({{n}} note)",
+      "ratingValue_other": "{{rating}} / 5 ({{n}} notes)",
       "size": "Taille",
       "tags": "Étiquettes",
       "updateMod": "Une nouvelle version est en ligne. Si le mod est activé, ses fichiers sont remplacés directement, et il reste activé.",
@@ -875,7 +896,9 @@
       "label": "Trier",
       "name": "Nom",
       "popular": "Populaires",
-      "recent": "Récents"
+      "rating": "Mieux notés",
+      "recent": "Récents",
+      "recommended": "Recommandés"
     }
   },
   "modsView": {
@@ -993,6 +1016,8 @@
     },
     "moreOptions": "Plus d’options",
     "openFolder": "Ouvrir le dossier",
+    "rate": "Noter et commenter",
+    "rateTitle": "Notes et commentaires sur la Marketplace",
     "removeFromGame": "Retirer du jeu",
     "resetUserConfigs": "Revenir à l’original",
     "update": "Mettre à jour",
@@ -1098,6 +1123,136 @@
     "notSealed": "Ce fichier n’est pas chiffré.",
     "unknownVersion": "Version de paquet chiffré inconnue : mettez l’application à jour."
   },
+  "reviews": {
+    "allReplies_one": "Voir les {{n}} réponse",
+    "allReplies_other": "Voir les {{n}} réponses",
+    "badge": {
+      "admin": "Admin",
+      "modAuthor": "Auteur du mod",
+      "packAuthor": "Auteur du pack",
+      "pinned": "Épinglé"
+    },
+    "charCount": "{{n}} / {{max}}",
+    "claim": {
+      "anonymousMod": "Ce mod a été téléchargé sans être connecté.",
+      "anonymousPack": "Ce pack a été téléchargé sans être connecté.",
+      "protectedHint": "Validez votre téléchargement pour pouvoir le noter : votre copie n’est pas modifiée.",
+      "redownload": "Télécharger à nouveau",
+      "redownloadHint": "Téléchargez-le à nouveau, connecté, pour pouvoir le noter ({{size}}) : votre copie n’est pas modifiée.",
+      "validate": "Valider mon téléchargement"
+    },
+    "commentsTitle": "Commentaires",
+    "comments_one": "{{n}} commentaire",
+    "comments_other": "{{n}} commentaires",
+    "confirmDelete": {
+      "comment": "Le commentaire est retiré de la fiche ; ses réponses restent affichées.",
+      "message": "Supprimer ce commentaire ?",
+      "reply": "Votre réponse est retirée de la fiche."
+    },
+    "confirmPurge": {
+      "detail": "Le commentaire et ses réponses sont effacés. Cette action est irréversible.",
+      "message": "Supprimer définitivement ce commentaire ?"
+    },
+    "count_one": "{{n}} note",
+    "count_other": "{{n}} notes",
+    "deleted": "Commentaire supprimé.",
+    "deletedAccount": "Compte supprimé",
+    "deletedComment": "Commentaire supprimé",
+    "distribution": "Répartition des notes",
+    "edited": "Commentaire modifié.",
+    "empty": "Aucun commentaire pour le moment.",
+    "hiddenComment": "Commentaire masqué par la modération",
+    "hide": {
+      "done": "Commentaire masqué.",
+      "label": "Raison",
+      "placeholder": "Raison (facultative, visible des admins)",
+      "submit": "Masquer",
+      "title": "Masquer ce commentaire"
+    },
+    "inviteMod": "Mod installé : qu’en pensez-vous ?",
+    "invitePack": "Pack installé : qu’en pensez-vous ?",
+    "locked": "Commentaires fermés.",
+    "lockedOthers": "Commentaires fermés aux autres comptes.",
+    "menu": {
+      "hide": "Masquer…",
+      "pin": "Épingler",
+      "purge": "Supprimer définitivement",
+      "unhide": "Rendre visible",
+      "unpin": "Ne plus épingler"
+    },
+    "moderationHidden": "Masqué par la modération",
+    "moderationHiddenReason": "Masqué par la modération : {{reason}}",
+    "modified": "(modifié)",
+    "modifiedByModerator": "(modifié par la modération)",
+    "moreOptions": "Plus d’options",
+    "moreReplies": "Voir plus de réponses ({{n}})",
+    "notRated": "Pas encore noté",
+    "outOf5": "{{rating}} sur 5",
+    "pinned": "Commentaire épinglé.",
+    "placeholderMod": "Partagez votre avis sur ce mod…",
+    "placeholderPack": "Partagez votre avis sur ce pack…",
+    "posted": "Commentaire publié.",
+    "publish": "Publier",
+    "purged": "Commentaire supprimé définitivement.",
+    "ratingRemoved": "Note retirée.",
+    "ratingTitle_one": "{{rating}} sur 5, {{n}} note",
+    "ratingTitle_other": "{{rating}} sur 5, {{n}} notes",
+    "ratingsTitle": "Notes",
+    "reason": {
+      "downloadMod": "Installez ce mod pour pouvoir le noter.",
+      "downloadPack": "Installez ce pack pour pouvoir le noter.",
+      "loginMod": "Connectez-vous pour noter ce mod.",
+      "loginPack": "Connectez-vous pour noter ce pack.",
+      "muted": "Votre compte a été réduit au silence par la modération : vous ne pouvez plus noter ni commenter.",
+      "ownMod": "C’est votre mod : vous ne pouvez pas le noter.",
+      "ownPack": "C’est votre pack : vous ne pouvez pas le noter."
+    },
+    "removeMine": "Retirer ma note",
+    "reply": "Répondre",
+    "replyPosted": "Réponse publiée.",
+    "replyTo": "Répondre à {{name}}…",
+    "replyToComment": "Répondre à ce commentaire…",
+    "report": {
+      "details": "Précisions",
+      "detailsPlaceholder": "Précisions (facultatif)",
+      "done": "Merci : le commentaire a été signalé à la modération.",
+      "flag": "Signaler",
+      "reasons": {
+        "abuse": "Insulte ou harcèlement",
+        "inappropriate": "Contenu inapproprié",
+        "offTopic": "Hors sujet",
+        "other": "Autre",
+        "spam": "Spam ou publicité"
+      },
+      "specify": "Précisez la raison",
+      "submit": "Signaler",
+      "title": "Signaler ce commentaire",
+      "withDetails": "{{reason}} : {{details}}"
+    },
+    "reports_one": "{{n}} signalement",
+    "reports_other": "{{n}} signalements",
+    "signIn": "Se connecter",
+    "signInMod": "Connectez-vous pour commenter ce mod.",
+    "signInPack": "Connectez-vous pour commenter ce pack.",
+    "sort": {
+      "label": "Trier les commentaires",
+      "oldest": "Plus anciens",
+      "recent": "Plus récents"
+    },
+    "starLabel": {
+      "bad": "Mauvais",
+      "excellent": "Excellent",
+      "fair": "Moyen",
+      "good": "Bien",
+      "veryGood": "Très bien"
+    },
+    "star_one": "{{count}} étoile : {{label}}",
+    "star_other": "{{count}} étoiles : {{label}}",
+    "thanks": "Merci pour votre note !",
+    "unhidden": "Commentaire de nouveau visible.",
+    "unpinned": "Commentaire désépinglé.",
+    "yourRating": "Votre note"
+  },
   "service": {
     "dialogs": {
       "addPacks": "Ajouter des packs",
@@ -1136,6 +1291,7 @@
       "protectedPackFolder": "Pack protégé : ses fichiers restent chiffrés dans la bibliothèque.",
       "removeInstalledPackFirst": "Retire d'abord le pack installé.",
       "removePackFirst": "Retire d'abord ce pack du jeu.",
+      "signInToClaim": "Connectez-vous pour que le téléchargement soit compté pour votre compte.",
       "unreadableImage": "Image illisible.",
       "waitForTask": "Attendez la fin de l’opération en cours."
     },
@@ -1150,6 +1306,7 @@
     },
     "tasks": {
       "apply": "Installation de {{name}}",
+      "claim": "Validation du téléchargement de {{name}}",
       "clean": "Nettoyage du jeu",
       "clearCache": "Vidage du cache FiveM",
       "delete": "Suppression de {{name}}",
@@ -1240,6 +1397,7 @@
     },
     "download": {
       "added": "{{name}} est dans la bibliothèque.",
+      "claimed": "Téléchargement de {{name}} validé : vous pouvez maintenant le noter.",
       "linked": "{{name}} était déjà dans la bibliothèque : il est maintenant relié à la Marketplace.",
       "modAdded": "{{name}} est dans vos mods.",
       "modInstalledEnabled": "{{name}} est installé et activé.",

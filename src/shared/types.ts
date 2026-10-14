@@ -383,6 +383,11 @@ export interface MarketPack {
   authorProfile: AuthorRef | null
   /** « Pack du moment », mis en avant par l'admin du site (déjà en tête des listes de l'API). */
   featured: boolean
+  /** Note moyenne (arrondie au dixième, null sans note) et nombre de notes. */
+  rating: MarketRating
+  commentCount: number
+  /** Commentaires fermés par l'auteur ou l'admin. */
+  commentsLocked: boolean
   /**
    * Poids sur les performances, estimé par l'API (null : pas encore analysé ; absent : API plus ancienne, rien à
    * afficher).
@@ -402,6 +407,11 @@ export interface MarketPackDetail extends MarketPack {
   youtubeId: string | null
 }
 
+export interface MarketRating {
+  average: number | null
+  count: number
+}
+
 export interface MarketPage {
   items: MarketPack[]
   page: number
@@ -419,6 +429,84 @@ export interface MarketCategory {
   key: string
   label: string
   count: number
+}
+
+/** Pourquoi le compte ne peut pas noter un pack ou un mod. */
+export type RatingReason = 'login-required' | 'download-required' | 'own-pack' | 'muted'
+
+/** Notes d'un pack, et la note du compte connecté. */
+export interface PackRatings extends MarketRating {
+  /** Nombre de notes par nombre d'étoiles (indices 1 à 5). */
+  distribution: Record<1 | 2 | 3 | 4 | 5, number>
+  mine: number | null
+  /** Le compte a téléchargé ce pack (nécessaire pour le noter). */
+  downloaded: boolean
+  canRate: boolean
+  reason: RatingReason | null
+}
+
+/** Commentaire ou réponse sur la fiche d'un pack. */
+export interface PackComment {
+  id: string
+  packId: string
+  parentId: string | null
+  /** Réponse à une réponse : son auteur, affiché « @nom ». */
+  replyTo: { id: string; author: AuthorRef | null } | null
+  status: 'visible' | 'hidden' | 'deleted'
+  /** Texte brut ; null pour un commentaire masqué ou supprimé (sauf pour un admin). */
+  body: string | null
+  author: AuthorRef | null
+  byPackAuthor: boolean
+  byAdmin: boolean
+  /** Note donnée au pack par l'auteur du commentaire. */
+  authorRating: number | null
+  pinned: boolean
+  createdAt: string
+  editedAt: string | null
+  editedByModerator: boolean
+  /** Commentaires seulement (pas les réponses) : nombre de réponses et les 3 premières. */
+  replyCount: number
+  replies: PackComment[]
+  mine: boolean
+  canEdit: boolean
+  canDelete: boolean
+  canReply: boolean
+  /** Admin seulement. */
+  moderationReason: string | null
+  reportCount: number | null
+}
+
+export interface CommentPage {
+  items: PackComment[]
+  page: number
+  total: number
+  totalPages: number
+  commentCount: number
+  locked: boolean
+  canComment: boolean
+}
+
+export interface ReplyPage {
+  items: PackComment[]
+  page: number
+  total: number
+  totalPages: number
+}
+
+/** Pack ou mod téléchargé par le compte connecté (pack.kind). */
+export interface MyDownload {
+  pack: MarketPack
+  firstDownloadedAt: string | null
+  lastDownloadedAt: string | null
+  downloadCount: number
+  myRating: number | null
+}
+
+export interface MyDownloadsPage {
+  items: MyDownload[]
+  page: number
+  total: number
+  totalPages: number
 }
 
 // ---------------------------------------------------------------------------
@@ -483,6 +571,8 @@ export interface AccountMe {
   /** Faux pour un compte créé par Google qui n'a pas encore de mot de passe. */
   hasPassword: boolean
   googleLinked: boolean
+  /** Compte réduit au silence par la modération : ni notes ni commentaires. */
+  muted: boolean
   /** Langue enregistrée dans le compte (code de GET /locales), null si aucune n'a été choisie. */
   locale: string | null
 }

@@ -3,6 +3,7 @@ import type {
   AccountProfile,
   AuthorPage,
   AuthorProfile,
+  CommentPage,
   ForeignItem,
   GamesInfo,
   MarketCategory,
@@ -12,10 +13,14 @@ import type {
   MarketPage,
   MarketTag,
   ModPreflight,
+  MyDownloadsPage,
   Overview,
+  PackComment,
   PackManifest,
   PackPatch,
+  PackRatings,
   ProfileInput,
+  ReplyPage,
   RootId,
   TaskProgress,
   UpdateState
@@ -137,6 +142,11 @@ export interface PackManagerApi {
    * puis activé s'il n'entre en conflit avec aucun autre mod (une mise à jour garde son état).
    */
   marketInstall(id: string, kind?: MarketKind): Promise<string>
+  /**
+   * Pack de la bibliothèque téléchargé sans être connecté : téléchargé de nouveau au nom du compte (la bibliothèque ne
+   * change pas), pour pouvoir le noter.
+   */
+  marketClaim(id: string, kind?: MarketKind): Promise<string>
   /** Auteurs ayant au moins un pack publié. */
   marketAuthors(query: AuthorQuery): Promise<AuthorPage>
   /** Page publique d'un auteur (adresse ou identifiant de son compte). */
@@ -147,6 +157,29 @@ export interface PackManagerApi {
   openLink(url: string): Promise<void>
   /** Ouvre une invitation Discord dans l'application Discord si elle est installée, sinon dans le navigateur. */
   openDiscordInvite(code: string): Promise<void>
+
+  // Notes et commentaires : `kind` (pack par défaut) choisit le catalogue de l'API (/packs ou /mods).
+
+  /** Notes d'un pack (avec la note du compte connecté et s'il peut noter). */
+  packRatings(packId: string, kind?: MarketKind): Promise<PackRatings>
+  /** Note de 1 à 5 étoiles ; null retire la note. */
+  packRate(packId: string, stars: number | null, kind?: MarketKind): Promise<PackRatings>
+  packComments(packId: string, query: CommentQuery, kind?: MarketKind): Promise<CommentPage>
+  /** Réponses à un commentaire, les plus anciennes d'abord. */
+  packCommentReplies(packId: string, commentId: string, page: number, size?: number, kind?: MarketKind): Promise<ReplyPage>
+  /** parentId : commentaire ou réponse auquel on répond. */
+  packCommentPost(packId: string, body: string, parentId?: string, kind?: MarketKind): Promise<PackComment>
+  packCommentEdit(packId: string, commentId: string, body: string, kind?: MarketKind): Promise<PackComment>
+  packCommentDelete(packId: string, commentId: string, kind?: MarketKind): Promise<void>
+  packCommentReport(packId: string, commentId: string, reason?: string, kind?: MarketKind): Promise<void>
+  /** Admin : masque (ou rend visible) un commentaire. */
+  adminCommentHide(commentId: string, hidden: boolean, reason?: string): Promise<void>
+  /** Admin : épingle un commentaire visible (pas une réponse) en tête de la fiche. */
+  adminCommentPin(commentId: string, pinned: boolean): Promise<void>
+  /** Admin : supprime définitivement un commentaire et ses réponses. */
+  adminCommentDelete(commentId: string): Promise<void>
+  /** Packs et mods (ou seulement l'un des deux) téléchargés par le compte connecté, avec sa note. */
+  myDownloads(page: number, kind?: MarketKind): Promise<MyDownloadsPage>
 
   /** Compte connecté sur cet appareil (gardé localement, vérifié en arrière-plan), null sans compte. */
   accountGet(): Promise<AccountMe | null>
@@ -201,7 +234,8 @@ export interface MarketQuery {
   category?: string
   /** Packs d'un auteur (adresse de son compte). */
   author?: string
-  sort?: 'recent' | 'popular' | 'name'
+  /** recommended (défaut de l'API) : les mieux notés, avec un bonus aux packs récents. */
+  sort?: MarketSort
   page?: number
   /**
    * « Compatibles avec mon PC » : packs dont les besoins minimaux en 1080p tiennent dans cette mémoire vidéo (Mo) et
@@ -209,6 +243,13 @@ export interface MarketQuery {
    */
   vram?: number
   gpuClass?: number
+}
+
+export type MarketSort = 'recommended' | 'rating' | 'recent' | 'popular' | 'name'
+
+export interface CommentQuery {
+  sort?: 'recent' | 'oldest'
+  page?: number
 }
 
 export interface MenuItem {

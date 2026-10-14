@@ -11,6 +11,9 @@
 // personne reste connectée sans rien faire. Seul un 401 « refresh-invalid » déconnecte ; hors ligne ou serveur
 // indisponible, la connexion est gardée et le renouvellement réessayé plus tard.
 //
+// Les notes et commentaires des packs passent aussi par ici (call) : au nom du compte s'il y en a un, anonymes sinon.
+// Les téléchargements de la Marketplace demandent un jeton d'accès valide (accessToken) pour être comptés au compte.
+//
 // Connexion des versions 1.7.0 à 1.8.2 ({token: "pm_…"}) : convertie par /auth/app/migrate à la première requête
 // (l'ancien jeton est alors supprimé par l'API) ; hors ligne, l'ancien fichier est gardé jusqu'au prochain essai.
 //
@@ -149,6 +152,7 @@ interface RemoteMe {
   mustChangePassword?: boolean
   hasPassword: boolean
   googleLinked: boolean
+  muted?: boolean
   locale?: string | null
 }
 
@@ -181,6 +185,7 @@ function toMe(r: RemoteMe): AccountMe {
     mustChangePassword: !!r.mustChangePassword,
     hasPassword: !!r.hasPassword,
     googleLinked: !!r.googleLinked,
+    muted: !!r.muted,
     locale: typeof r.locale === 'string' && r.locale ? r.locale : null
   }
 }
@@ -500,6 +505,35 @@ export class Account {
     return profile
   }
 
+  // ---------------------------------------------------------------- requêtes pour les autres modules
+
+  /**
+   * Requête de l'API au nom du compte connecté, anonyme sans connexion (ou si la connexion vient d'expirer) ;
+   * `auth: 'required'` refuse la requête sans connexion (401 « signed-out »).
+   */
+  async call<T>(method: string, pathname: string, opts: { json?: unknown; auth?: 'optional' | 'required' } = {}): Promise<T> {
+    const anonymous = (): boolean => opts.auth !== 'required' && !this.session && !this.legacy
+    if (anonymous()) return this.request<T>(method, pathname, { json: opts.json })
+    try {
+      return await this.authed<T>(method, pathname, { json: opts.json })
+    } catch (err) {
+      if (anonymous()) return this.request<T>(method, pathname, { json: opts.json })
+      throw err
+    }
+  }
+
+  /** Jeton d'accès valide pour une requête faite ailleurs (téléchargements), renouvelé s'il expire bientôt ; null sans connexion. */
+  async accessToken(): Promise<string | null> {
+    if (!this.session && !this.legacy) return null
+    return (await this.ready()).accessToken
+  }
+
+  /** Jeton d'accès refusé (401 « token-invalid ») : renouvelé, sauf si une autre requête l'a déjà fait, puis renvoyé. */
+  async renewRejected(token: string): Promise<string | null> {
+    if (this.session?.accessToken === token) await this.renew()
+    return this.accessToken()
+  }
+
   // ---------------------------------------------------------------- jetons
 
   /** Un seul renouvellement (ou conversion) à la fois : les appels simultanés attendent le même. */
@@ -608,6 +642,8 @@ export class Account {
     const code = typeof problem?.code === 'string' ? problem.code : undefined
     if (response.status === 403 && code === 'password-change-required' && this.session && !this.session.me.mustChangePassword)
       await this.updateMe({ ...this.session.me, mustChangePassword: true })
+    // Compte réduit au silence depuis la dernière lecture : l'interface désactive notes et commentaires.
+    if (response.status === 403 && code === 'muted' && this.session && !this.session.me.muted) await this.updateMe({ ...this.session.me, muted: true })
     throw new ApiError(problemMessage(response.status, problem), response.status, code)
   }
 }

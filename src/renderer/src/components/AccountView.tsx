@@ -9,11 +9,19 @@ const BIO_MAX = 2000
 const LINKS_MAX = 8
 
 /** Compte reflect-fivem.com : connexion, puis profil public, mot de passe et déconnexion. */
-export function AccountView({ onOpenAuthor }: { onOpenAuthor: (slug: string) => void }) {
+export function AccountView({ onOpenAuthor, onBack }: { onOpenAuthor: (slug: string) => void; onBack?: () => void }) {
   const { t } = useTranslation()
   const { account } = useStore()
   return (
     <div className="page">
+      {/* Connexion demandée depuis la fiche d'un pack : on peut y revenir sans se connecter. */}
+      {onBack && (
+        <div className="back-row">
+          <button className="link" onClick={onBack}>
+            {t('accountView.backToPack')}
+          </button>
+        </div>
+      )}
       <header className="page-head">
         <h1>{t('accountView.title')}</h1>
       </header>
@@ -351,6 +359,12 @@ function Profile({ me, onOpenAuthor }: { me: AccountMe; onOpenAuthor: (slug: str
           </>
         }
       />
+
+      {me.muted && (
+        <div className="bar bar-warning form-error">
+          <span className="bar-text">{t('accountView.profile.muted')}</span>
+        </div>
+      )}
 
       <div className="section-head">
         <h2>{t('accountView.profile.title')}</h2>

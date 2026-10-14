@@ -30,6 +30,7 @@
     }
   },
   "accountView": {
+    "backToPack": "‹ Back to pack",
     "badges": {
       "admin": "Administrator",
       "author": "Author",
@@ -68,6 +69,7 @@
       "linkUrl": "Link URL",
       "links": "Links",
       "linksMax": "{{n}} links at most.",
+      "muted": "Your account has been muted by the moderators: you can no longer rate or comment on packs.",
       "publish": "Publish on the website",
       "removeLink": "Remove this link",
       "removePhoto": "Remove photo",
@@ -266,6 +268,7 @@
     "confirm": "Confirm",
     "delete": "Delete",
     "disabled": "Off",
+    "edit": "Edit",
     "enabled": "On",
     "error": "Error",
     "failed": "Failed.",
@@ -284,6 +287,13 @@
     "save": "Save",
     "search": "Search",
     "yes": "Yes"
+  },
+  "community": {
+    "errors": {
+      "commentTooLong": "Comment too long ({{max}} characters max).",
+      "emptyComment": "Write your comment.",
+      "invalidRating": "Choose a rating from 1 to 5 stars."
+    }
   },
   "errors": {
     "busy": "Another operation is already running.",
@@ -756,6 +766,13 @@
       "gtaEnhanced": "The selected GTA V folder is the Enhanced edition, which doesn't support FiveM mods.",
       "gtaMissing": "GTA V folder not found."
     },
+    "rate": {
+      "chipTitle": "Rate {{name}}",
+      "hide": "Hide",
+      "more_one": "and {{n}} more",
+      "more_other": "and {{n}} more",
+      "text": "Rate your packs and mods: your feedback helps other players choose."
+    },
     "title": "Library"
   },
   "market": {
@@ -786,6 +803,7 @@
     },
     "packGone": "This pack is no longer available on the Marketplace.",
     "phase": {
+      "claim": "Confirming the download",
       "downloading": "Downloading",
       "images": "Images",
       "resuming": "Connection interrupted, resuming…",
@@ -834,6 +852,9 @@
       "category": "Category",
       "description": "Description",
       "downloads": "Downloads",
+      "rating": "Rating",
+      "ratingValue_one": "{{rating}} / 5 ({{n}} rating)",
+      "ratingValue_other": "{{rating}} / 5 ({{n}} ratings)",
       "size": "Size",
       "tags": "Tags",
       "updateMod": "A new version is available. If the mod is enabled, its files are replaced directly and it stays enabled.",
@@ -875,7 +896,9 @@
       "label": "Sort",
       "name": "Name",
       "popular": "Popular",
-      "recent": "Recent"
+      "rating": "Top rated",
+      "recent": "Recent",
+      "recommended": "Recommended"
     }
   },
   "modsView": {
@@ -993,6 +1016,8 @@
     },
     "moreOptions": "More options",
     "openFolder": "Open folder",
+    "rate": "Rate and review",
+    "rateTitle": "Ratings and reviews on the Marketplace",
     "removeFromGame": "Remove from game",
     "resetUserConfigs": "Restore original",
     "update": "Update",
@@ -1098,6 +1123,136 @@
     "notSealed": "This file isn't encrypted.",
     "unknownVersion": "Unknown encrypted package version: update the app."
   },
+  "reviews": {
+    "allReplies_one": "View {{n}} reply",
+    "allReplies_other": "View all {{n}} replies",
+    "badge": {
+      "admin": "Admin",
+      "modAuthor": "Mod author",
+      "packAuthor": "Pack author",
+      "pinned": "Pinned"
+    },
+    "charCount": "{{n}} / {{max}}",
+    "claim": {
+      "anonymousMod": "This mod was downloaded while signed out.",
+      "anonymousPack": "This pack was downloaded while signed out.",
+      "protectedHint": "Confirm your download to rate it: your copy is not changed.",
+      "redownload": "Download again",
+      "redownloadHint": "Download it again while signed in to rate it ({{size}}): your copy is not changed.",
+      "validate": "Confirm my download"
+    },
+    "commentsTitle": "Comments",
+    "comments_one": "{{n}} comment",
+    "comments_other": "{{n}} comments",
+    "confirmDelete": {
+      "comment": "The comment is removed from the page; its replies stay visible.",
+      "message": "Delete this comment?",
+      "reply": "Your reply is removed from the page."
+    },
+    "confirmPurge": {
+      "detail": "The comment and its replies are erased. This cannot be undone.",
+      "message": "Permanently delete this comment?"
+    },
+    "count_one": "{{n}} rating",
+    "count_other": "{{n}} ratings",
+    "deleted": "Comment deleted.",
+    "deletedAccount": "Deleted account",
+    "deletedComment": "Comment deleted",
+    "distribution": "Rating breakdown",
+    "edited": "Comment edited.",
+    "empty": "No comments yet.",
+    "hiddenComment": "Comment hidden by the moderators",
+    "hide": {
+      "done": "Comment hidden.",
+      "label": "Reason",
+      "placeholder": "Reason (optional, visible to admins)",
+      "submit": "Hide",
+      "title": "Hide this comment"
+    },
+    "inviteMod": "Mod installed: what do you think?",
+    "invitePack": "Pack installed: what do you think?",
+    "locked": "Comments are closed.",
+    "lockedOthers": "Comments are closed to other accounts.",
+    "menu": {
+      "hide": "Hide…",
+      "pin": "Pin",
+      "purge": "Delete permanently",
+      "unhide": "Make visible",
+      "unpin": "Unpin"
+    },
+    "moderationHidden": "Hidden by the moderators",
+    "moderationHiddenReason": "Hidden by the moderators: {{reason}}",
+    "modified": "(edited)",
+    "modifiedByModerator": "(edited by a moderator)",
+    "moreOptions": "More options",
+    "moreReplies": "Show more replies ({{n}})",
+    "notRated": "Not rated yet",
+    "outOf5": "{{rating}} out of 5",
+    "pinned": "Comment pinned.",
+    "placeholderMod": "Share your thoughts on this mod…",
+    "placeholderPack": "Share your thoughts on this pack…",
+    "posted": "Comment posted.",
+    "publish": "Post",
+    "purged": "Comment permanently deleted.",
+    "ratingRemoved": "Rating removed.",
+    "ratingTitle_one": "{{rating}} out of 5, {{n}} rating",
+    "ratingTitle_other": "{{rating}} out of 5, {{n}} ratings",
+    "ratingsTitle": "Ratings",
+    "reason": {
+      "downloadMod": "Install this mod to rate it.",
+      "downloadPack": "Install this pack to rate it.",
+      "loginMod": "Sign in to rate this mod.",
+      "loginPack": "Sign in to rate this pack.",
+      "muted": "Your account has been muted by the moderators: you can no longer rate or comment.",
+      "ownMod": "This is your mod: you can’t rate it.",
+      "ownPack": "This is your pack: you can’t rate it."
+    },
+    "removeMine": "Remove my rating",
+    "reply": "Reply",
+    "replyPosted": "Reply posted.",
+    "replyTo": "Reply to {{name}}…",
+    "replyToComment": "Reply to this comment…",
+    "report": {
+      "details": "Details",
+      "detailsPlaceholder": "Details (optional)",
+      "done": "Thanks: the comment has been reported to the moderators.",
+      "flag": "Report",
+      "reasons": {
+        "abuse": "Insults or harassment",
+        "inappropriate": "Inappropriate content",
+        "offTopic": "Off topic",
+        "other": "Other",
+        "spam": "Spam or advertising"
+      },
+      "specify": "Specify the reason",
+      "submit": "Report",
+      "title": "Report this comment",
+      "withDetails": "{{reason}}: {{details}}"
+    },
+    "reports_one": "{{n}} report",
+    "reports_other": "{{n}} reports",
+    "signIn": "Sign in",
+    "signInMod": "Sign in to comment on this mod.",
+    "signInPack": "Sign in to comment on this pack.",
+    "sort": {
+      "label": "Sort comments",
+      "oldest": "Oldest",
+      "recent": "Newest"
+    },
+    "starLabel": {
+      "bad": "Bad",
+      "excellent": "Excellent",
+      "fair": "Fair",
+      "good": "Good",
+      "veryGood": "Very good"
+    },
+    "star_one": "{{count}} star: {{label}}",
+    "star_other": "{{count}} stars: {{label}}",
+    "thanks": "Thanks for your rating!",
+    "unhidden": "Comment visible again.",
+    "unpinned": "Comment unpinned.",
+    "yourRating": "Your rating"
+  },
   "service": {
     "dialogs": {
       "addPacks": "Add packs",
@@ -1136,6 +1291,7 @@
       "protectedPackFolder": "Protected pack: its files stay encrypted in the library.",
       "removeInstalledPackFirst": "Remove the installed pack first.",
       "removePackFirst": "Remove this pack from the game first.",
+      "signInToClaim": "Sign in so the download counts for your account.",
       "unreadableImage": "Unreadable image.",
       "waitForTask": "Wait for the current operation to finish."
     },
@@ -1150,6 +1306,7 @@
     },
     "tasks": {
       "apply": "Installing {{name}}",
+      "claim": "Confirming the download of {{name}}",
       "clean": "Cleaning the game",
       "clearCache": "Clearing the FiveM cache",
       "delete": "Deleting {{name}}",
@@ -1240,6 +1397,7 @@
     },
     "download": {
       "added": "{{name}} is in the library.",
+      "claimed": "Download of {{name}} confirmed: you can now rate it.",
       "linked": "{{name}} was already in the library: it is now linked to the Marketplace.",
       "modAdded": "{{name}} is in your mods.",
       "modInstalledEnabled": "{{name}} is installed and enabled.",

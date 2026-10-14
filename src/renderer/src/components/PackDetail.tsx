@@ -26,7 +26,7 @@ const destinations = (): { key: string; label: string; dest: Destination | null 
 const keyOf = (d: Destination | null): string => (d ? `${d.root}:${d.path}` : 'none')
 const labelOf = (d: Destination): string => `${d.root === 'fivem' ? 'FiveM' : 'GTA V'}${d.path ? ` › ${d.path.split('/').join(' › ')}` : ''}`
 
-export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () => void }) {
+export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest; onBack: () => void; onOpenMarket: (marketId: string) => void }) {
   const { t } = useTranslation()
   const { overview, task, run } = useStore()
   const perfCtx = usePerformance()
@@ -194,6 +194,11 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
           {pack.protected && <p className="hint">{t(pack.kind === 'mod' ? 'common.protectedMod' : 'common.protectedPack')}</p>}
 
           <div className="side-links">
+            {market && !gone && (
+              <button onClick={() => onOpenMarket(market.id)} title={t('packDetail.rateTitle')}>
+                {t('packDetail.rate')}
+              </button>
+            )}
             {!pack.protected && <button onClick={() => void run(() => window.api.openPackFolder(pack.id))}>{t('packDetail.openFolder')}</button>}
             <button
               className="more"

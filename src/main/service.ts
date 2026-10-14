@@ -5,7 +5,7 @@ import path from 'node:path'
 import { app, BrowserWindow, dialog, Menu, nativeImage, net, safeStorage, screen, shell, systemPreferences } from 'electron'
 import type { AppState, GamesInfo, MarketKind, Overview, PackPatch, RootId, Settings, TaskProgress } from '@shared/types'
 import type { AccountMe, ProfileInput } from '@shared/types'
-import type { AuthorQuery, ComponentFile, ForeignSelection, MarketQuery, MenuItem, PackManagerApi } from '@shared/api'
+import type { AuthorQuery, CommentQuery, ComponentFile, ForeignSelection, MarketQuery, MenuItem, PackManagerApi } from '@shared/api'
 import { IPC } from '@shared/api'
 import i18next, { t } from 'i18next'
 import { currentLocale, initI18n, msg, supportedLocale } from '@shared/i18n'
@@ -14,6 +14,7 @@ import { detectGames, inspectFiveM, inspectGta, normalizeFiveMPath } from './cor
 import { Installer, type Report } from './core/installer'
 import { FPS_LIMIT_MAX, FPS_LIMIT_MIN } from './core/enb'
 import { Account, AVATAR_EXTENSIONS, TokenFile } from './core/account'
+import { Community } from './core/community'
 import { KeyRing, type SystemProtection } from './core/keys'
 import { Library, toPublic, type StoredManifest } from './core/library'
 import { GraphicsManager, screenSize } from './core/graphics'
@@ -74,6 +75,8 @@ export class Service {
   private keys: KeyRing
   /** Compte reflect-fivem.com (facultatif) : jeton gardé chiffré par Windows. */
   account: Account
+  /** Notes et commentaires des packs. */
+  community!: Community
   /** Configuration de la machine (carte graphique en cache), comparée aux packs dans l'interface. */
   hardware: Hardware
   /** Modèle de comparaison des performances de l'API. */
@@ -177,7 +180,9 @@ export class Service {
       fpsLimit: () => this.settings.get().fpsLimit ?? null
     })
     await fs.rm(path.join(this.dataDir, 'jobs'), { recursive: true, force: true }).catch(() => undefined)
-    this.marketplace = new Marketplace(this.apiUrl, path.join(this.dataDir, 'Marketplace', 'images'), () => this.library, () => this.modLibrary)
+    // Téléchargements faits avec le jeton du compte connecté : comptés pour lui (et nécessaires pour noter).
+    this.marketplace = new Marketplace(this.apiUrl, path.join(this.dataDir, 'Marketplace', 'images'), () => this.library, this.account, () => this.modLibrary)
+    this.community = new Community(this.account, (items) => this.marketplace.toPacks(items))
   }
 
   /** Langue changée : processus principal (menus, textes produits ici), toutes les fenêtres, caches des textes de l'API. */
@@ -779,6 +784,16 @@ export class Service {
       })
     },
 
+    marketClaim: async (id: string, kind: MarketKind = 'pack') => {
+      if (!this.account.current()) throw this.toError(t('service.errors.signInToClaim'))
+      const remote = await this.marketplace.detail(id, kind)
+      return this.startTask('download', t('service.tasks.claim', { name: remote.name }), remote.id, async (report, signal) => ({
+        ...(await this.marketplace.claim(remote.id, report, signal, kind)),
+        kind,
+        status: 'claimed'
+      }))
+    },
+
     marketAuthors: (query: AuthorQuery) => this.marketplace.authors(query),
 
     marketAuthor: (slugOrId: string) => this.marketplace.author(slugOrId),
@@ -806,6 +821,32 @@ export class Service {
       const url = app.getApplicationNameForProtocol('discord://') ? `discord://-/invite/${code}` : `https://discord.gg/${code}`
       await shell.openExternal(url)
     },
+
+    packRatings: (packId: string, kind?: MarketKind) => this.community.ratings(packId, kind),
+
+    packRate: (packId: string, stars: number | null, kind?: MarketKind) => this.community.rate(packId, stars, kind),
+
+    packComments: (packId: string, query: CommentQuery, kind?: MarketKind) => this.community.comments(packId, query, kind),
+
+    packCommentReplies: (packId: string, commentId: string, page: number, size?: number, kind?: MarketKind) =>
+      this.community.replies(packId, commentId, page, size, kind),
+
+    packCommentPost: (packId: string, body: string, parentId?: string, kind?: MarketKind) => this.community.post(packId, body, parentId, kind),
+
+    packCommentEdit: (packId: string, commentId: string, body: string, kind?: MarketKind) => this.community.edit(packId, commentId, body, kind),
+
+    packCommentDelete: (packId: string, commentId: string, kind?: MarketKind) => this.community.remove(packId, commentId, kind),
+
+    packCommentReport: (packId: string, commentId: string, reason?: string, kind?: MarketKind) =>
+      this.community.report(packId, commentId, reason, kind),
+
+    adminCommentHide: (commentId: string, hidden: boolean, reason?: string) => this.community.hide(commentId, hidden, reason),
+
+    adminCommentPin: (commentId: string, pinned: boolean) => this.community.pin(commentId, pinned),
+
+    adminCommentDelete: (commentId: string) => this.community.purge(commentId),
+
+    myDownloads: (page: number, kind?: MarketKind) => this.community.myDownloads(page, kind),
 
     accountGet: async () => this.account.current(),
 

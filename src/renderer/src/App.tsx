@@ -39,6 +39,8 @@ export function App() {
   const [catalog, setCatalog] = useState<MarketKind>('pack')
   const where = useRef({ page, catalog })
   where.current = { page, catalog }
+  // Connexion demandée depuis une fiche (pour noter, commenter) : retour à la fiche une fois connecté.
+  const [signInFromMarket, setSignInFromMarket] = useState(false)
   const [dragging, setDragging] = useState(false)
 
   // Glisser-déposer d'archives (ou de dossiers) n'importe où dans la fenêtre.
@@ -105,6 +107,12 @@ export function App() {
     []
   )
 
+  useEffect(() => {
+    if (!account || !signInFromMarket) return
+    setSignInFromMarket(false)
+    if (page === 'account') setPage('market')
+  }, [account, signInFromMarket, page])
+
   // Barre latérale affichée dès le premier rendu ; les pages attendent l'état de l'application.
   const detail = openPack ? overview?.library.find((p) => p.id === openPack) : null
   const games = overview?.games
@@ -125,6 +133,7 @@ export function App() {
     setMarketAuthor(null)
     setOpenPack(null)
     setMarketStack([])
+    setSignInFromMarket(false)
   }
   const openLocal = (id: string): void => {
     setPage('library')
@@ -134,12 +143,16 @@ export function App() {
     setPage('market')
     setMarketStack([{ kind: 'author', slug }])
   }
-  /** Fiche Marketplace d'un pack (ou d'un mod) de la bibliothèque. */
+  /** Fiche Marketplace d'un pack (ou d'un mod) de la bibliothèque (notes et commentaires). */
   const openMarketPack = (id: string, kind: MarketKind = 'pack'): void => {
     setPage('market')
     setOpenPack(null)
     setCatalog(kind)
     setMarketStack([{ kind: 'pack', id, catalog: kind }])
+  }
+  const signIn = (): void => {
+    setPage('account')
+    setSignInFromMarket(true)
   }
 
   return (
@@ -215,7 +228,7 @@ export function App() {
           <>
             {page === 'library' &&
               (detail ? (
-                <PackDetail pack={detail} onBack={() => setOpenPack(null)} />
+                <PackDetail pack={detail} onBack={() => setOpenPack(null)} onOpenMarket={(id) => openMarketPack(id)} />
               ) : (
                 <Library kind={catalog} onOpen={setOpenPack} onOpenMarket={openMarketPack} onBrowse={(k) => go('market', k)} />
               ))}
@@ -229,11 +242,19 @@ export function App() {
                 onOpenLocal={openLocal}
                 author={marketAuthor}
                 onAuthor={setMarketAuthor}
+                onSignIn={signIn}
               />
             )}
             {page === 'graphics' && <Graphics />}
             {page === 'cleanup' && <Cleanup />}
-            {page === 'account' && <AccountView onOpenAuthor={openAuthor} />}
+            {page === 'account' && <AccountView onOpenAuthor={openAuthor} onBack={
+                  signInFromMarket
+                    ? () => {
+                        setSignInFromMarket(false)
+                        setPage('market')
+                      }
+                    : undefined
+                } />}
             {page === 'settings' && <SettingsView />}
           </>
         )}

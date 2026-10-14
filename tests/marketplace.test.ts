@@ -1,8 +1,9 @@
-// Marketplace : packs du moment (champ `featured` et GET /packs/featured), y compris avec une API plus ancienne.
+// Marketplace : packs du moment (champ `featured` et GET /packs/featured), y compris avec une API plus ancienne ;
+// notes dans les cartes, tri par défaut, clé d'un paquet chiffré demandée au nom du compte connecté.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const fetchMock = vi.fn<(url: string) => Promise<Response>>()
-vi.mock('electron', () => ({ net: { fetch: (url: string) => fetchMock(url) } }))
+const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>()
+vi.mock('electron', () => ({ net: { fetch: (url: string, init?: RequestInit) => fetchMock(url, init) } }))
 
 const { Marketplace, toMarketPack } = await import('../src/main/core/marketplace')
 type RemoteSummary = import('../src/main/core/marketplace').RemoteSummary
@@ -48,7 +49,7 @@ describe('pack du moment', () => {
     it('liste les packs mis en avant dans l’ordre de l’API', async () => {
       fetchMock.mockResolvedValue(json(200, [remote({ featured: true, slug: 'b' }), remote({ id: 'x', featured: true, slug: 'a' })]))
       const items = await market.featured()
-      expect(fetchMock).toHaveBeenCalledWith('https://api.test/api/packs/featured')
+      expect(fetchMock).toHaveBeenCalledWith('https://api.test/api/packs/featured', expect.anything())
       expect(items.map((p) => [p.slug, p.featured])).toEqual([
         ['b', true],
         ['a', true]
@@ -73,6 +74,59 @@ describe('pack du moment', () => {
   })
 })
 
+describe('notes dans les cartes', () => {
+  it('reprend la moyenne, le nombre de notes et de commentaires', () => {
+    const pack = toMarketPack(remote({ rating: { average: 4.3, count: 12 }, commentCount: 5, commentsLocked: true }), undefined)
+    expect(pack.rating).toEqual({ average: 4.3, count: 12 })
+    expect(pack.commentCount).toBe(5)
+    expect(pack.commentsLocked).toBe(true)
+  })
+
+  it('pas encore noté, ou API plus ancienne', () => {
+    expect(toMarketPack(remote({ rating: { average: null, count: 0 } }), undefined).rating).toEqual({ average: null, count: 0 })
+    const old = toMarketPack(remote(), undefined)
+    expect(old).toMatchObject({ rating: { average: null, count: 0 }, commentCount: 0, commentsLocked: false })
+  })
+})
+
+describe('requêtes de la Marketplace', () => {
+  const library = { list: async () => [] } as unknown as Library
+  beforeEach(() => fetchMock.mockReset())
+  const header = (call: unknown[]): string | undefined => new Headers((call[1] as RequestInit | undefined)?.headers).get('Authorization') ?? undefined
+
+  it('tri « recommandés » par défaut', async () => {
+    fetchMock.mockResolvedValue(json(200, { items: [], page: 0, size: 24, total: 0, totalPages: 0 }))
+    await new Marketplace('https://api.test/api', 'cache', () => library).list({})
+    expect(new URL(fetchMock.mock.calls[0][0]).searchParams.get('sort')).toBe('recommended')
+  })
+
+  it('clé d’un paquet chiffré demandée avec le jeton du compte, renouvelé s’il est refusé', async () => {
+    const key = Buffer.alloc(32, 7).toString('base64')
+    const renewRejected = vi.fn(async () => 'at_2')
+    const market = new Marketplace('https://api.test/api', 'cache', () => library, { accessToken: async () => 'at_1', renewRejected })
+    fetchMock
+      .mockResolvedValueOnce(json(401, { detail: 'Jeton expiré.', code: 'token-invalid' }))
+      .mockResolvedValueOnce(json(200, { packageId: 'a'.repeat(32), key }))
+    expect((await market.packageKey('p1')).packageId).toBe('a'.repeat(32))
+    expect(fetchMock.mock.calls.map(header)).toEqual(['Bearer at_1', 'Bearer at_2'])
+    expect(renewRejected).toHaveBeenCalledWith('at_1')
+  })
+
+  it('sans connexion (ou connexion non renouvelée) : requête anonyme', async () => {
+    const key = Buffer.alloc(32, 7).toString('base64')
+    fetchMock.mockImplementation(async () => json(200, { packageId: 'b'.repeat(32), key }))
+    await new Marketplace('https://api.test/api', 'cache', () => library, { accessToken: async () => null, renewRejected: async () => null }).packageKey('p1')
+    const offline = { accessToken: async () => Promise.reject(new Error('hors ligne')), renewRejected: async () => null }
+    await new Marketplace('https://api.test/api', 'cache', () => library, offline).packageKey('p1')
+    expect(fetchMock.mock.calls.map(header)).toEqual([undefined, undefined])
+  })
+
+  it('erreur de l’API : son message (detail)', async () => {
+    fetchMock.mockResolvedValue(json(403, { detail: 'Ce pack est réservé.', code: 'not-allowed' }))
+    await expect(new Marketplace('https://api.test/api', 'cache', () => library).packageKey('p1')).rejects.toThrow('Ce pack est réservé.')
+  })
+})
+
 describe('catalogue des mods', () => {
   const library = (items: unknown[] = []): Library => ({ list: async () => items }) as unknown as Library
   // Sans valeur de retour : une fonction renvoyée serait appelée par vitest à la fin du test.
@@ -87,7 +141,7 @@ describe('catalogue des mods', () => {
   })
 
   it('les mods sont demandés à /mods, jamais à /packs', async () => {
-    const market = new Marketplace('https://api.test/api', 'cache', () => library(), () => library())
+    const market = new Marketplace('https://api.test/api', 'cache', () => library(), null, () => library())
     fetchMock.mockImplementation(async () => page([]))
     await market.list({ kind: 'mod', category: 'weapons', q: 'fusil' })
     const url = new URL(fetchMock.mock.calls[0][0])
@@ -116,7 +170,7 @@ describe('catalogue des mods', () => {
   it('mises à jour : les mods sont suivis comme les packs ; une API sans mods ne les marque pas retirés', async () => {
     const mod = { id: 'mod-local', marketplace: { id: 'm1', sha256: 'ancien', downloadedAt: '2026-01-01' } }
     const pack = { id: 'pack-local', marketplace: { id: 'p1', sha256: 'b46a', downloadedAt: '2026-01-01' } }
-    const market = new Marketplace('https://api.test/api', 'cache', () => library([pack]), () => library([mod]))
+    const market = new Marketplace('https://api.test/api', 'cache', () => library([pack]), null, () => library([mod]))
     fetchMock.mockImplementation(async (url) =>
       url.includes('/mods?') ? page([remote({ id: 'm1', kind: 'mod', sha256: 'nouveau' })]) : page([remote({ id: 'p1', sha256: 'b46a' })])
     )

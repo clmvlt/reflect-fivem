@@ -1,6 +1,6 @@
-import { useMemo, useState, type MouseEvent } from 'react'
+import { useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { MarketKind, PackManifest, RootId, TaskProgress } from '@shared/types'
+import type { MarketKind, MyDownload, PackManifest, RootId, TaskProgress } from '@shared/types'
 import { useStore } from '../store'
 import { bytes, num } from '../lib/format'
 import { problemCount } from '@shared/insights'
@@ -92,6 +92,8 @@ export function Library({
           <button onClick={() => void choose(p.which)}>{t('libraryView.chooseFolder')}</button>
         </div>
       ))}
+
+      <RateReminder onOpen={onOpenMarket} />
 
       {mods ? (
         <ModLibrary query={query} onOpenMarket={onOpenMarket} onBrowse={() => onBrowse('mod')} />
@@ -240,5 +242,68 @@ function ForeignCard({ files, size, task }: { files: number; size: number; task:
         </div>
       </div>
     </article>
+  )
+}
+
+const DISMISSED_KEY = 'rate-reminder-dismissed'
+
+function readDismissed(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? '[]') as unknown
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+/** « Notez vos packs » : packs et mods de la bibliothèque téléchargés avec le compte et pas encore notés. */
+function RateReminder({ onOpen }: { onOpen: (marketId: string, kind?: MarketKind) => void }) {
+  const { t } = useTranslation()
+  const { account, overview } = useStore()
+  const [items, setItems] = useState<MyDownload[]>([])
+  const [dismissed, setDismissed] = useState(readDismissed)
+  const userId = account && !account.muted ? account.id : null
+  // Relu quand un pack arrive dans la bibliothèque (téléchargement terminé).
+  const libraryKey = [...(overview?.library ?? []), ...(overview?.mods ?? [])].map((p) => p.marketplace?.id ?? '').join()
+
+  useEffect(() => {
+    if (userId === null) return setItems([])
+    let live = true
+    window.api.myDownloads(0).then(
+      (p) => live && setItems(p.items),
+      () => undefined
+    )
+    return () => {
+      live = false
+    }
+  }, [userId, libraryKey])
+
+  const todo = items.filter((d) => d.myRating === null && d.pack.localId && d.pack.authorProfile?.id !== userId && !dismissed.includes(d.pack.id))
+  if (userId === null || !todo.length) return null
+  const dismiss = (): void => {
+    const next = [...dismissed, ...todo.map((d) => d.pack.id)].slice(-200)
+    setDismissed(next)
+    try {
+      localStorage.setItem(DISMISSED_KEY, JSON.stringify(next))
+    } catch {
+      /* stockage indisponible : masqué pour cette session */
+    }
+  }
+  return (
+    <div className="bar rate-reminder">
+      <span className="bar-text">{t('libraryView.rate.text')}</span>
+      {todo.slice(0, 3).map((d) => (
+        <button key={d.pack.id} className="rate-chip" title={t('libraryView.rate.chipTitle', { name: d.pack.name })} onClick={() => onOpen(d.pack.id, d.pack.kind)}>
+          <span className="star-on" aria-hidden>
+            ★
+          </span>
+          <span className="ellipsis">{d.pack.name}</span>
+        </button>
+      ))}
+      {todo.length > 3 && <span className="muted small">{t('libraryView.rate.more', { count: todo.length - 3, n: num(todo.length - 3) })}</span>}
+      <button className="close" onClick={dismiss} aria-label={t('libraryView.rate.hide')} title={t('libraryView.rate.hide')}>
+        ×
+      </button>
+    </div>
   )
 }

@@ -10,6 +10,8 @@
 // Le pack garde un lien vers sa fiche (marketplace.id / sha256) : une autre empreinte en ligne signale une
 // nouvelle version. Les images sont servies à l'interface par pm-media://market/... avec un cache sur le disque, les
 // photos des auteurs par pm-media://avatar/... (même cache).
+// Compte connecté : l'archive, le paquet chiffré et sa clé sont demandés avec son jeton d'accès, pour que le
+// téléchargement lui soit compté (nécessaire pour noter le pack). Sans connexion, le téléchargement reste anonyme.
 
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream, promises as fs } from 'node:fs'
@@ -27,6 +29,7 @@ import type {
   MarketPack,
   MarketPackDetail,
   MarketPage,
+  MarketRating,
   MarketTag,
   ProfileLink
 } from '@shared/types'
@@ -74,6 +77,10 @@ export interface RemoteSummary {
   /** Pack chiffré : installable seulement avec l'application, qui télécharge {@link encryptedPackage}. */
   encrypted?: boolean
   encryptedPackage?: { size?: number | null; sha256?: string | null } | null
+  /** Absents avec une API plus ancienne. */
+  rating?: { average?: number | null; count?: number } | null
+  commentCount?: number
+  commentsLocked?: boolean
   /** Poids sur les performances (null : pas encore analysé ; absent avec une API plus ancienne). */
   performance?: unknown
 }
@@ -113,6 +120,14 @@ interface RemotePage {
   size: number
   total: number
   totalPages: number
+}
+
+/** Jeton d'accès du compte connecté (voir Account), pour les téléchargements. */
+export interface DownloadAuth {
+  /** Jeton valide (renouvelé s'il expire bientôt), null sans connexion. */
+  accessToken(): Promise<string | null>
+  /** Jeton refusé par l'API : renouvelé, puis renvoyé (null si la connexion a expiré). */
+  renewRejected(token: string): Promise<string | null>
 }
 
 export interface InstallHooks {
@@ -167,6 +182,11 @@ function authorName(r: RemoteSummary): string {
   return r.author || r.authorProfile?.displayName || ''
 }
 
+function ratingOf(r: RemoteSummary): MarketRating {
+  const average = r.rating?.average
+  return { average: typeof average === 'number' && Number.isFinite(average) ? average : null, count: r.rating?.count ?? 0 }
+}
+
 /** Corps d'une erreur de l'API (application/problem+json), lu sur une copie de la réponse. */
 async function problemOf(response: Response): Promise<{ detail: string | null; code: string | null }> {
   const p = (await response.clone().json().catch(() => null)) as { detail?: unknown; code?: unknown } | null
@@ -196,6 +216,9 @@ export function toMarketPack(r: RemoteSummary, local: StoredManifest | undefined
     cover: r.cover,
     authorProfile: r.authorProfile ? toAuthorRef(r.authorProfile) : null,
     featured: r.featured === true,
+    rating: ratingOf(r),
+    commentCount: r.commentCount ?? 0,
+    commentsLocked: r.commentsLocked === true,
     // API plus ancienne, sans le champ : rien à afficher (et non « pas encore analysé »).
     ...('performance' in r ? { performance: parsePackPerformance(r.performance) } : {}),
     localId: local?.id ?? null,
@@ -231,6 +254,7 @@ export class Marketplace {
     private apiUrl: string,
     private cacheDir: string,
     private library: () => Library,
+    private auth: DownloadAuth | null = null,
     /** Bibliothèque des mods (absente : les mods ne sont pas suivis). */
     private modLibrary: (() => Library) | null = null
   ) {}
@@ -243,16 +267,49 @@ export class Marketplace {
 
   // ------------------------------------------------------------------ lecture
 
-  private async get<T>(pathAndQuery: string, notFound: () => Error = () => goneError('pack')): Promise<T> {
+  /** `asAccount` : requête envoyée au nom du compte connecté (clé d'un paquet chiffré). */
+  private async get<T>(pathAndQuery: string, notFound: () => Error = () => goneError('pack'), asAccount = false): Promise<T> {
+    const url = `${this.apiUrl}${pathAndQuery}`
     let response: Response
     try {
-      response = await apiFetch(`${this.apiUrl}${pathAndQuery}`, { signal: AbortSignal.timeout(20_000) })
+      const signal = AbortSignal.timeout(20_000)
+      response = asAccount ? await this.fetchAsAccount(url, { signal }) : await apiFetch(url, { signal })
     } catch {
       throw new Error(t('market.errors.unreachable'))
     }
     if (response.status === 404) throw notFound()
     if (!response.ok) throw new Error((await problemOf(response)).detail ?? t('market.errors.badStatus', { status: response.status }))
     return (await response.json()) as T
+  }
+
+  /** Jeton d'accès du compte connecté ; null sans connexion, ou si elle n'a pas pu être renouvelée (requête anonyme). */
+  private async token(): Promise<string | null> {
+    try {
+      return (await this.auth?.accessToken()) ?? null
+    } catch (err) {
+      log.info(`Téléchargement anonyme : connexion non renouvelée (${(err as Error).message})`)
+      return null
+    }
+  }
+
+  /**
+   * Requête avec le jeton d'accès du compte connecté, demandé à chaque fois : l'API ne le vérifie qu'au début de la
+   * requête, il est donc renouvelé avant de lancer ou de reprendre un téléchargement. Refusé (401 « token-invalid ») :
+   * renouvelé une fois, puis la requête est rejouée.
+   */
+  private async fetchAsAccount(url: string, init: { headers?: Record<string, string>; signal: AbortSignal }): Promise<Response> {
+    const send = (token: string | null): Promise<Response> =>
+      apiFetch(url, { ...init, headers: { ...init.headers, ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
+    const token = await this.token()
+    const response = await send(token)
+    if (response.status !== 401 || !token || !this.auth || (await problemOf(response)).code !== 'token-invalid') return response
+    let next: string | null = null
+    try {
+      next = await this.auth.renewRejected(token)
+    } catch (err) {
+      log.info(`Téléchargement anonyme : connexion non renouvelée (${(err as Error).message})`)
+    }
+    return send(next)
   }
 
   private async localIndex(kind: MarketKind = 'pack'): Promise<Map<string, StoredManifest>> {
@@ -267,13 +324,16 @@ export class Marketplace {
     return index
   }
 
-  private toMarket(r: RemoteSummary, index: Map<string, StoredManifest>): MarketPack {
-    return toMarketPack(r, index.get(r.id))
+  /** Packs et mods reçus d'une autre partie de l'API (téléchargés par le compte), avec leur état dans la bibliothèque. */
+  async toPacks(items: RemoteSummary[]): Promise<MarketPack[]> {
+    const packs = await this.localIndex('pack')
+    const mods = items.some((r) => kindOf(r) === 'mod') ? await this.localIndex('mod') : new Map<string, StoredManifest>()
+    return items.map((r) => toMarketPack(r, (kindOf(r) === 'mod' ? mods : packs).get(r.id)))
   }
 
   async list(query: MarketQuery): Promise<MarketPage> {
     const kind = query.kind ?? 'pack'
-    const params = new URLSearchParams({ page: String(query.page ?? 0), size: '24', sort: query.sort ?? 'recent' })
+    const params = new URLSearchParams({ page: String(query.page ?? 0), size: '24', sort: query.sort ?? 'recommended' })
     if (query.q?.trim()) params.set('q', query.q.trim())
     if (query.tag) params.set('tag', query.tag)
     if (query.author) params.set('author', query.author)
@@ -283,7 +343,7 @@ export class Marketplace {
     if (Number.isInteger(query.gpuClass) && query.gpuClass! >= 0) params.set('gpuClass', String(query.gpuClass))
     const [page, index] = await Promise.all([this.get<RemotePage>(`${catalogPath(kind)}?${params}`), this.localIndex(kind)])
     for (const r of page.items) this.catalog.set(r.id, r)
-    return { items: page.items.map((r) => this.toMarket(r, index)), page: page.page, total: page.total, totalPages: page.totalPages }
+    return { items: page.items.map((r) => toMarketPack(r, index.get(r.id))), page: page.page, total: page.total, totalPages: page.totalPages }
   }
 
   tags(kind: MarketKind = 'pack'): Promise<MarketTag[]> {
@@ -304,7 +364,7 @@ export class Marketplace {
       const [items, index] = await Promise.all([this.get<RemoteSummary[]>(`${catalogPath(kind)}/featured`), this.localIndex(kind)])
       if (!Array.isArray(items)) return []
       for (const r of items) this.catalog.set(r.id, r)
-      return items.map((r) => this.toMarket(r, index))
+      return items.map((r) => toMarketPack(r, index.get(r.id)))
     } catch (err) {
       log.info(`${kind === 'mod' ? 'Mods' : 'Packs'} du moment non chargés : ${(err as Error).message}`)
       return []
@@ -313,7 +373,7 @@ export class Marketplace {
 
   async detail(idOrSlug: string, kind: MarketKind = 'pack'): Promise<MarketPackDetail> {
     const [r, index] = await Promise.all([this.remoteDetail(idOrSlug, kind), this.localIndex(kind)])
-    return { ...this.toMarket(r, index), description: r.description, archiveName: r.archiveName ?? '', images: r.images, youtubeId: youtubeId(r) }
+    return { ...toMarketPack(r, index.get(r.id)), description: r.description, archiveName: r.archiveName ?? '', images: r.images, youtubeId: youtubeId(r) }
   }
 
   /**
@@ -591,9 +651,31 @@ export class Marketplace {
     return { packId: next.id, name: next.name, kind: 'mod', status: 'updated', enabled }
   }
 
+  /**
+   * Pack déjà dans la bibliothèque mais téléchargé sans être connecté : téléchargé de nouveau au nom du compte, sans rien
+   * changer à la bibliothèque, pour que le compte puisse le noter. Pack chiffré : demander sa clé suffit.
+   */
+  async claim(id: string, report: Report, signal: AbortSignal, kind: MarketKind = 'pack'): Promise<{ name: string }> {
+    const remote = await this.remoteDetail(id, kind)
+    if (remote.encrypted) {
+      report(t('market.phase.claim'), 0, 0)
+      await this.packageKey(remote.id, kind)
+    } else {
+      const download = downloadOf(remote, this.apiUrl, kind)
+      if (!download) throw new Error(t(kind === 'mod' ? 'market.errors.noArchiveMod' : 'market.errors.noArchivePack'))
+      // Archive laissée par un téléchargement précédent : elle ne serait pas demandée à l'API.
+      await fs.rm(path.join(this.library().dir, '.downloads', remote.id), { recursive: true, force: true }).catch(() => undefined)
+      const file = await this.download(remote, download, report, signal)
+      await fs.rm(path.dirname(file), { recursive: true, force: true }).catch(() => undefined)
+    }
+    log.info(`Marketplace : téléchargement de ${remote.name} compté pour le compte`)
+    return { name: remote.name }
+  }
+
   /** Clé du paquet chiffré actuel d'un pack (ou d'un mod), et l'identifiant de ce paquet. */
   async packageKey(id: string, kind: MarketKind = 'pack'): Promise<{ packageId: string; key: Buffer }> {
-    const body = await this.get<{ packageId?: unknown; key?: unknown }>(`${catalogPath(kind)}/${encodeURIComponent(id)}/package/key`, () => goneError(kind))
+    // Demander la clé compte le téléchargement pour le compte connecté.
+    const body = await this.get<{ packageId?: unknown; key?: unknown }>(`${catalogPath(kind)}/${encodeURIComponent(id)}/package/key`, () => goneError(kind), true)
     const key = typeof body.key === 'string' ? Buffer.from(body.key, 'base64') : null
     if (typeof body.packageId !== 'string' || !/^[0-9a-f]{32}$/.test(body.packageId) || key?.length !== KEY_SIZE)
       throw new Error(t(kind === 'mod' ? 'market.errors.badKeyMod' : 'market.errors.badKeyPack'))
@@ -654,7 +736,8 @@ export class Marketplace {
     }
     if (start === size) return
     const headers: Record<string, string> = start > 0 ? { Range: `bytes=${start}-`, 'If-Range': `"${sha}"` } : {}
-    const response = await apiFetch(url, { headers, signal })
+    // Avec le jeton du compte à chaque requête, reprises comprises : le dernier octet envoyé compte le téléchargement.
+    const response = await this.fetchAsAccount(url, { headers, signal })
     if (response.status === 200) start = 0
     else if (response.status !== 206) {
       const detail = (await problemOf(response)).detail

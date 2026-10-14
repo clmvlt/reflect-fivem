@@ -11,13 +11,11 @@ import { Marketplace, type MarketView } from './components/Marketplace'
 import { AccountView } from './components/AccountView'
 import { Avatar } from './components/common'
 import { UpdatePanel } from './components/UpdatePanel'
+import { DiscordIcon, DiscordView } from './components/DiscordView'
 import { GameControl } from './components/GameControl'
 import icon from './assets/icon.png'
 
-// Invitation du serveur Discord de support (discord.gg/rtBZAxqtsu).
-const SUPPORT_INVITE = 'rtBZAxqtsu'
-
-type Page = 'library' | 'market' | 'graphics' | 'cleanup' | 'account' | 'settings'
+type Page = 'library' | 'market' | 'graphics' | 'cleanup' | 'discord' | 'account' | 'settings'
 
 /** Bibliothèque et Marketplace s'ouvrent sur les packs ; Packs et Mods s'affichent en dessous quand l'une est ouverte. */
 const SUB_NAV: { kind: MarketKind; label: 'packs' | 'mods' }[] = [
@@ -205,6 +203,14 @@ export function App() {
               {gameProblem}
             </button>
           )}
+          <button className={`nav side-discord ${page === 'discord' ? 'is-selected' : ''}`} onClick={() => go('discord')}>
+            <span className="nav-account">
+              <span className="avatar discord-nav-icon" style={{ width: 24, height: 24 }} aria-hidden>
+                <DiscordIcon size={14} />
+              </span>
+              <span className="ellipsis">{t('app.nav.discord')}</span>
+            </span>
+          </button>
           {/* Compte : tout en bas de la barre latérale. */}
           <button className={`nav side-account ${page === 'account' ? 'is-selected' : ''}`} onClick={() => go('account')}>
             <span className="nav-account">
@@ -249,6 +255,7 @@ export function App() {
             )}
             {page === 'graphics' && <Graphics />}
             {page === 'cleanup' && <Cleanup />}
+            {page === 'discord' && <DiscordView />}
             {page === 'account' && <AccountView onOpenAuthor={openAuthor} onBack={
                   signInFromMarket
                     ? () => {
@@ -259,16 +266,6 @@ export function App() {
                 } />}
             {page === 'settings' && <SettingsView />}
           </>
-        )}
-
-        {/* Masqué pendant un message : il en couvrirait le bouton de fermeture. */}
-        {!message && (
-          <button className="support-link" onClick={() => void run(() => window.api.openDiscordInvite(SUPPORT_INVITE))}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-              <path d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.6 1.3a18.4 18.4 0 0 0-5.6 0L8.6 3a19.7 19.7 0 0 0-4.9 1.5C.6 9.1-.3 13.6.1 18.1a19.9 19.9 0 0 0 6 3l1.3-2.1a12.9 12.9 0 0 1-2-1l.5-.4a14.2 14.2 0 0 0 12.2 0l.5.4c-.6.4-1.3.7-2 1l1.3 2.1a19.8 19.8 0 0 0 6-3c.5-5.2-.9-9.7-3.6-13.7ZM8 15.3c-1.2 0-2.2-1.1-2.2-2.4S6.8 10.5 8 10.5s2.2 1.1 2.2 2.4-1 2.4-2.2 2.4Zm8 0c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4Z" />
-            </svg>
-            Support Discord
-          </button>
         )}
 
         {message && (

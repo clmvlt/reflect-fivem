@@ -295,6 +295,30 @@
       "invalidRating": "Choisissez une note de 1 à 5 étoiles."
     }
   },
+  "discord": {
+    "intro": "Rejoignez la communauté Reflect FiveM : joueurs, créateurs de packs et l’équipe de l’application s’y retrouvent.",
+    "join": "Rejoindre le serveur",
+    "joinHint": "S’ouvre dans l’application Discord si elle est installée, sinon dans votre navigateur.",
+    "title": "Notre serveur Discord",
+    "topics": {
+      "help": {
+        "text": "Un pack qui ne s’installe pas, un souci avec FiveM ou avec l’application : posez votre question, la communauté et l’équipe vous répondent.",
+        "title": "Demander de l’aide"
+      },
+      "ideas": {
+        "text": "Une fonctionnalité qui vous manque, une amélioration à suggérer : vos propositions orientent les prochaines versions.",
+        "title": "Proposer des idées"
+      },
+      "news": {
+        "text": "Nouveaux packs, mises à jour de l’application et annonces : soyez parmi les premiers informés.",
+        "title": "Suivre les nouveautés"
+      },
+      "packs": {
+        "text": "Partagez vos captures et vos réglages, échangez avec les créateurs et découvrez les packs préférés des autres joueurs.",
+        "title": "Discuter des packs"
+      }
+    }
+  },
   "errors": {
     "busy": "Une opération est déjà en cours.",
     "network": "Serveur injoignable. Vérifiez votre connexion à Internet.",

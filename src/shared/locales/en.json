@@ -295,6 +295,30 @@
       "invalidRating": "Choose a rating from 1 to 5 stars."
     }
   },
+  "discord": {
+    "intro": "Join the Reflect FiveM community: players, pack creators and the app team all meet there.",
+    "join": "Join the server",
+    "joinHint": "Opens in the Discord app if it is installed, otherwise in your browser.",
+    "title": "Our Discord server",
+    "topics": {
+      "help": {
+        "text": "A pack that won’t install, an issue with FiveM or with the app: ask your question, the community and the team will answer.",
+        "title": "Get help"
+      },
+      "ideas": {
+        "text": "A feature you’re missing, an improvement to suggest: your ideas shape the next versions.",
+        "title": "Suggest ideas"
+      },
+      "news": {
+        "text": "New packs, app updates and announcements: be among the first to know.",
+        "title": "Follow the news"
+      },
+      "packs": {
+        "text": "Share your screenshots and settings, chat with creators and discover other players’ favorite packs.",
+        "title": "Talk about packs"
+      }
+    }
+  },
   "errors": {
     "busy": "Another operation is already running.",
     "network": "Can’t reach the server. Check your Internet connection.",

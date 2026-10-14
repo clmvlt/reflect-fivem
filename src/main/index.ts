@@ -8,7 +8,7 @@ import { t } from 'i18next'
 import { initI18n } from '@shared/i18n'
 import { ApiError } from './core/account'
 import { resolveDataDir } from './core/dataDir'
-import { describeLink, findDeepLink, parsePackLink, PROTOCOL } from './core/deepLink'
+import { describeLink, findDeepLink, type MarketLink, parseMarketLink, PROTOCOL } from './core/deepLink'
 import { EXEC_FLAG, LOCALE_FLAG, runElevatedWorker } from './core/elevation'
 import { Service } from './service'
 import { isInside } from './util/fsx'
@@ -54,24 +54,24 @@ function startApp(): void {
   let win: BrowserWindow | null = null
   const service = new Service(dataDir, () => win, apiUrl)
 
-  // Lien « fivem-pack-manager://pack/<id> » : gardé jusqu'à ce que la page de l'application soit chargée.
-  let pendingPack: string | null = null
+  // Lien « fivem-pack-manager://pack/<id> » ou « …://mod/<id> » : gardé jusqu'à ce que la page de l'application soit chargée.
+  let pendingPack: MarketLink | null = null
   let pageLoaded = false
   const sendPendingPack = (): void => {
     if (!pendingPack || !pageLoaded || !win || win.isDestroyed()) return
-    win.webContents.send(IPC.openMarketPack, pendingPack)
+    win.webContents.send(IPC.openMarketPack, pendingPack.id, pendingPack.kind)
     pendingPack = null
   }
   const receiveLink = (argv: readonly string[]): void => {
     const link = findDeepLink(argv)
     if (!link) return
-    const id = parsePackLink(link)
-    if (!id) {
+    const target = parseMarketLink(link)
+    if (!target) {
       log.warn(`Lien ignoré : ${describeLink(link)}`)
       return
     }
-    log.info(`Lien reçu : pack ${id}`)
-    pendingPack = id
+    log.info(`Lien reçu : ${target.kind} ${target.id}`)
+    pendingPack = target
     sendPendingPack()
   }
   receiveLink(process.argv)
@@ -88,22 +88,24 @@ function startApp(): void {
     log.info(`Démarrage v${app.getVersion()}, données : ${dataDir}`)
 
     // Images des packs : pm-media://pack/<id>/<chemin>, limité au dossier de la bibliothèque.
-    // Images de la Marketplace : pm-media://market/<pack>/<image>[?size=thumb], mises en cache sur le disque.
+    // Images de la Marketplace : pm-media://market/<pack>/<image>[?size=thumb][&kind=mod], mises en cache sur le disque.
     // Photos des comptes : pm-media://avatar/<compte>/<version>, même cache.
     protocol.handle('pm-media', (req) => {
       const url = new URL(req.url)
       const parts = url.pathname.split('/').filter(Boolean).map((p) => decodeURIComponent(p))
       if (url.host === 'market') {
         if (parts.length !== 2) return new Response('Interdit', { status: 403 })
-        return service.marketplace.image(parts[0], parts[1], url.searchParams.get('size') === 'thumb')
+        const kind = url.searchParams.get('kind') === 'mod' ? 'mod' : 'pack'
+        return service.marketplace.image(parts[0], parts[1], url.searchParams.get('size') === 'thumb', kind)
       }
       if (url.host === 'avatar') {
         if (parts.length !== 2) return new Response('Interdit', { status: 403 })
         return service.marketplace.avatar(parts[0], parts[1])
       }
-      const lib = service.library.dir
+      // Images des mods : pm-media://mod/<id>/<chemin>, limité au dossier de la bibliothèque des mods.
+      const lib = url.host === 'mod' ? service.modLibrary.dir : service.library.dir
       const file = path.resolve(lib, ...parts)
-      if (url.host !== 'pack' || !isInside(lib, file) || !/\.(png|jpe?g|webp|gif|bmp)$/i.test(file)) return new Response('Interdit', { status: 403 })
+      if ((url.host !== 'pack' && url.host !== 'mod') || !isInside(lib, file) || !/\.(png|jpe?g|webp|gif|bmp)$/i.test(file)) return new Response('Interdit', { status: 403 })
       return net.fetch(pathToFileURL(file).toString())
     })
 

@@ -11,14 +11,18 @@ export function q(s: string): string {
   return quote(s)
 }
 
-/** URL d'une image d'un pack (servie par le processus principal, limitée à la bibliothèque). */
-export function mediaUrl(packId: string, rel: string): string {
-  return `pm-media://pack/${encodeURIComponent(packId)}/${rel.split('/').map(encodeURIComponent).join('/')}`
+/** URL d'une image d'un pack ou d'un mod (servie par le processus principal, limitée à sa bibliothèque). */
+export function mediaUrl(packId: string, rel: string, kind: 'pack' | 'mod' = 'pack'): string {
+  return `pm-media://${kind}/${encodeURIComponent(packId)}/${rel.split('/').map(encodeURIComponent).join('/')}`
 }
 
 /** Image de la Marketplace, mise en cache par le processus principal. */
-export function marketImageUrl(packId: string, imageId: string, thumb = false): string {
-  return `pm-media://market/${encodeURIComponent(packId)}/${encodeURIComponent(imageId)}${thumb ? '?size=thumb' : ''}`
+export function marketImageUrl(packId: string, imageId: string, thumb = false, kind: 'pack' | 'mod' = 'pack'): string {
+  const params = new URLSearchParams()
+  if (thumb) params.set('size', 'thumb')
+  if (kind === 'mod') params.set('kind', 'mod')
+  const query = params.toString()
+  return `pm-media://market/${encodeURIComponent(packId)}/${encodeURIComponent(imageId)}${query ? `?${query}` : ''}`
 }
 
 export function packImages(p: { cover: string | null; gallery?: string[] }): string[] {

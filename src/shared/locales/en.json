@@ -32,7 +32,8 @@
   "accountView": {
     "badges": {
       "admin": "Administrator",
-      "author": "Author"
+      "author": "Author",
+      "modAuthor": "Mod author"
     },
     "fields": {
       "displayName": "Display name",
@@ -67,6 +68,7 @@
       "linkUrl": "Link URL",
       "links": "Links",
       "linksMax": "{{n}} links at most.",
+      "publish": "Publish on the website",
       "removeLink": "Remove this link",
       "removePhoto": "Remove photo",
       "saved": "Profile saved.",
@@ -127,6 +129,8 @@
       "groupMods": ".rpf archives → FiveM mods folder",
       "groupPlugins": "Graphics DLLs, .asi files and configurations → FiveM plugins",
       "gtaRootDir": "Folder to copy to the GTA V root folder (ENB configuration)",
+      "modGtaRoot": "Files for the GTA V root folder: a mod only installs into FiveM.app",
+      "modOutside": "Destination outside the FiveM.app mods, plugins, addons and citizen folders",
       "modsDir": "“mods” folder: .rpf archives loaded by FiveM",
       "modsDirNoRpf": "“mods” folder: .rpf archives loaded by FiveM (no .rpf file found)",
       "pluginsContent": "Contains ReShade / graphics DLLs / .asi files: contents of the FiveM plugins folder",
@@ -137,6 +141,9 @@
       "specialDir": "{{name}} folder recognized"
     },
     "warnings": {
+      "modDropped_one": "{{count}} item ignored: a mod only installs into the FiveM mods, plugins, addons and citizen folders.",
+      "modDropped_other": "{{count}} items ignored: a mod only installs into the FiveM mods, plugins, addons and citizen folders.",
+      "modNothingInstallable": "No installable file for FiveM.app was found in this mod.",
       "nothingInstallable": "No installable file was found in this pack.",
       "partialDuplicate_one": "{{count}} file from “{{label}}” also exists in “{{other}}”: only the first one will be installed.",
       "partialDuplicate_other": "{{count}} files from “{{label}}” also exist in “{{other}}”: only the first one will be installed.",
@@ -147,8 +154,10 @@
     }
   },
   "app": {
+    "acceptedFormats": "Accepted formats",
     "drop": {
-      "library": "Drop to add to the library"
+      "library": "Drop to add to the library",
+      "mods": "Drop to add to your mods"
     },
     "gameProblem": {
       "fivemMissing": "FiveM not found",
@@ -170,7 +179,9 @@
       "deleteDetail": "The pack is removed from the library and its files are deleted. The game is not modified.",
       "deleteTitle": "Delete {{name}}?"
     },
-    "passwordToChange": "Password needs to be changed"
+    "passwordToChange": "Password needs to be changed",
+    "updatesAvailable_one": "{{count}} update available",
+    "updatesAvailable_other": "{{count}} updates available"
   },
   "archive": {
     "errors": {
@@ -212,6 +223,9 @@
     "game": {
       "action": "Clean the game",
       "confirm": {
+        "modStaysEnabled": "Your mod stays enabled.",
+        "modsKept": "Your mods stay in the library, disabled.",
+        "modsStayEnabled": "Your {{n}} mods stay enabled.",
         "shotsUntouched": "Screenshots are not affected.",
         "stash": "Manually installed mods are moved into an “Old installation” pack that you can reinstall at any time.",
         "title": "Restore the original game?"
@@ -219,11 +233,15 @@
       "nothing": "No graphics mod installed.",
       "removes": "Removes {{summary}}.",
       "summary": {
+        "enabledMod": "your mod {{name}}",
+        "enabledMods": "your {{n}} enabled mods",
         "manualMods_one": "{{count}} manually installed mod",
         "manualMods_other": "{{count}} manually installed mods",
         "pack": "the pack {{name}}"
       },
-      "title": "Restore the original game"
+      "title": "Restore the original game",
+      "withModOne": "Also remove my mod {{name}} (it stays in the library)",
+      "withModsMany": "Also remove my {{n}} enabled mods (they stay in the library)"
     },
     "scanning": "Scanning…",
     "shots": {
@@ -258,6 +276,7 @@
     "ok": "OK",
     "open": "Open",
     "previous": "Previous",
+    "protectedMod": "Protected mod: it stays encrypted in your library. Its files can only be read by the game, while it is installed.",
     "protectedPack": "Protected pack: it stays encrypted in your library. Its files can only be read by the game, while it is installed.",
     "refresh": "Refresh",
     "remove": "Remove",
@@ -489,6 +508,9 @@
     "graphicsChanged_other": "{{n}} graphics settings changed ({{target}})",
     "graphicsRestored": "Original graphics settings restored ({{target}})",
     "linked": "Linked to the Marketplace",
+    "modAdded_one": "Mod added ({{n}} file)",
+    "modAdded_other": "Mod added ({{n}} files)",
+    "modDeleted": "Mod deleted",
     "removed": "Removed",
     "screenshotsMoved_one": "{{n}} screenshot moved",
     "screenshotsMoved_other": "{{n}} screenshots moved",
@@ -533,6 +555,7 @@
   "installer": {
     "errors": {
       "alreadyClean": "No mods to remove: the game is already unmodified.",
+      "enhancedMod": "GTA V Enhanced doesn't support FiveM mods.",
       "enhancedPack": "GTA V Enhanced doesn't support FiveM graphics mods.",
       "fivemMissing": "FiveM folder not found. Set it in Settings.",
       "fivemNotFound": "FiveM folder not found.",
@@ -541,8 +564,15 @@
       "gameRunning": "Close FiveM before continuing.",
       "gtaMissing": "GTA V folder not found. Set it in Settings.",
       "installFailed": "Installation failed.",
+      "modConflict": "{{name}} and {{other}} replace the same files ({{path}}). Disable {{other}} to continue.",
+      "modEmpty": "This mod has nothing to install.",
+      "modForeign_one": "This mod would replace a manually installed file ({{files}}). Move it away first from the Cleanup page.",
+      "modForeign_other": "This mod would replace {{count}} manually installed files ({{files}}). Move them away first from the Cleanup page.",
+      "modLibraryUnavailable": "Mod library unavailable.",
+      "modOutsideFolders": "A mod can only write to FiveM's mods, plugins, addons and citizen folders.",
       "noSpace": "Not enough disk space ({{size}} required).",
       "nothingChanged": "{{error}} Nothing was changed.",
+      "operationFailed": "The operation failed.",
       "packEmpty": "This pack has nothing to install.",
       "removeFailed_one": "{{count}} file couldn't be removed. Close FiveM and try again.",
       "removeFailed_other": "{{count}} files couldn't be removed. Close FiveM and try again."
@@ -551,7 +581,10 @@
     "history": {
       "cleanedBoth": "Game restored to original ({{pack}} removed, mods moved to {{captured}})",
       "cleanedCaptured": "Game restored to original (mods moved to {{captured}})",
-      "cleanedRemoved": "Game restored to original ({{pack}} removed)"
+      "cleanedRemoved": "Game restored to original ({{pack}} removed)",
+      "modBoth": "$t(installer.plan.{{title}}), {{pulled}} pack file(s) replaced, {{restored}} pack file(s) restored",
+      "modPulled": "$t(installer.plan.{{title}}), {{pulled}} pack file(s) replaced",
+      "modRestored": "$t(installer.plan.{{title}}), {{restored}} pack file(s) restored"
     },
     "names": {
       "manualAdditions": "Manual additions",
@@ -565,6 +598,10 @@
       "clearCache": "Clearing the cache",
       "fpsLimit": "Frame rate limit",
       "install": "Installing {{name}}",
+      "modDisable": "Disabling {{name}}",
+      "modDisableAll": "Disabling mods",
+      "modEnable": "Enabling {{name}}",
+      "modUpdate": "Updating {{name}}",
       "moveScreenshots": "Moving screenshots",
       "remove": "Removing {{name}}",
       "removeMods": "Removing mods"
@@ -623,7 +660,9 @@
       "fileNotFound": "File not found.",
       "firstPart": "Add the first part of the archive (.part1.rar).",
       "format": "Unsupported format. Use a .zip, .rar or .7z archive.",
+      "formatMod": "Unsupported format. Use a .zip, .rar or .7z archive, or a .rpf file.",
       "keyMissing": "The key for this protected pack could not be found.",
+      "modNothing": "This mod has nothing to install in FiveM.app (mods, plugins, addons or citizen folders).",
       "newVersion": "A new version of this pack is on the Marketplace: update it to be able to install it.",
       "noSpace": "Not enough disk space ({{size}} required).",
       "notFound": "Pack not found.",
@@ -633,8 +672,10 @@
       "unlockOnline": "This protected pack must be unlocked online: {{error}}"
     },
     "phases": {
+      "analyzeMod": "Analyzing the mod",
       "analyzePack": "Analyzing the pack",
       "checkCompat": "Checking FiveM compatibility",
+      "copyFile": "Copying the file",
       "copyFolder": "Copying the folder",
       "extract": "Extracting",
       "extractNamed": "Extracting {{name}}",
@@ -647,6 +688,7 @@
   },
   "libraryView": {
     "addPack": "Add a pack…",
+    "browseMarket": "Browse the Marketplace",
     "card": {
       "install": "Install",
       "installed": "Installed",
@@ -660,12 +702,19 @@
       "text": "Add a graphics pack from an archive, or drag it straight into this window.",
       "title": "No packs yet"
     },
+    "enabledCount_one": "{{n}} enabled",
+    "enabledCount_other": "{{n}} enabled",
     "foreign": {
       "meta_one": "{{n}} file · {{size}}",
       "meta_other": "{{n}} files · {{size}}",
       "removeTitle": "Move them into an “Old installation” pack",
       "title": "Manually installed mods"
     },
+    "importMod": "Import a mod…",
+    "modsNoteEnabled_one": "{{n}} mod · {{enabled}}",
+    "modsNoteEnabled_other": "{{n}} mods · {{enabled}}",
+    "modsNote_one": "{{n}} mod",
+    "modsNote_other": "{{n}} mods",
     "moreOptions": "More options",
     "packsNote_one": "{{n}} pack · {{size}}",
     "packsNote_other": "{{n}} packs · {{size}}",
@@ -682,19 +731,27 @@
   "market": {
     "authorGone": "This author doesn’t exist (anymore).",
     "errors": {
+      "badKeyMod": "The Marketplace isn’t responding correctly (invalid mod key).",
       "badKeyPack": "The Marketplace isn’t responding correctly (invalid pack key).",
       "badStatus": "The Marketplace isn’t responding correctly (error {{status}}).",
       "cancelled": "Canceled.",
+      "changedDuringDownloadMod": "The mod was updated during the download: start the download again.",
       "changedDuringDownloadPack": "The pack was updated during the download: start the download again.",
       "corrupted": "The downloaded file is damaged. Start the download again.",
       "downloadFailed": "Download failed (error {{status}}).",
       "emptyResponse": "Empty response.",
       "incomplete": "Incomplete download.",
+      "modUpdateFailed": "Update of {{name}} not installed: {{error}}",
+      "noArchiveMod": "This mod doesn’t have an archive yet.",
       "noArchivePack": "This pack doesn’t have an archive yet.",
+      "noModLibrary": "Mod library unavailable.",
       "noSpace": "Not enough disk space ({{size}} required).",
       "unreachable": "Can’t reach the Marketplace. Check your internet connection."
     },
+    "modGone": "This mod is no longer available on the Marketplace.",
     "notes": {
+      "enableFromLibrary": "Enable it from your library.",
+      "modNotEnabled": "{{name}} is in your mods but wasn’t enabled: {{reason}}",
       "updateNotInstalled": "The new version of {{name}} is in your library. Install it to replace the old one: {{error}}"
     },
     "packGone": "This pack is no longer available on the Marketplace.",
@@ -702,6 +759,7 @@
       "downloading": "Downloading",
       "images": "Images",
       "resuming": "Connection interrupted, resuming…",
+      "unlockMod": "Unlocking the mod",
       "unlockPack": "Unlocking the pack",
       "verifying": "Verifying the file"
     }
@@ -713,15 +771,21 @@
       "newVersion": "New version",
       "update": "Update"
     },
+    "allCategories": "All",
+    "allMods": "All mods",
     "allPacks": "All packs",
     "allTags": "All",
     "author": {
       "memberSince": "member since {{date}}",
+      "mods": "Mods",
       "packs": "Packs"
     },
+    "authorChipMods_one": "{{name}}: {{n}} mod",
+    "authorChipMods_other": "{{name}}: {{n}} mods",
     "authorChipPacks_one": "{{name}}: {{n}} pack",
     "authorChipPacks_other": "{{name}}: {{n}} packs",
     "authorFilter": {
+      "mods": "Mods by {{name}}",
       "packs": "Packs by {{name}}",
       "seePage": "View profile ›"
     },
@@ -731,10 +795,12 @@
     "backToList": "‹ Marketplace",
     "by": "by <author></author>",
     "detail": {
+      "category": "Category",
       "description": "Description",
       "downloads": "Downloads",
       "size": "Size",
       "tags": "Tags",
+      "updateMod": "A new version is available. If the mod is enabled, its files are replaced directly and it stays enabled.",
       "updatePack": "A new version is available. Your settings and ReShade preset are kept.",
       "updatedAt": "Updated",
       "version": "Version",
@@ -743,15 +809,24 @@
     "downloads_one": "{{n}} download",
     "downloads_other": "{{n}} downloads",
     "empty": {
+      "byAuthorMod": "This author hasn’t published any mods.",
       "byAuthorPack": "This author hasn’t published any packs.",
+      "noMatchMod": "No mods match this search.",
       "noMatchPack": "No packs match this search.",
+      "noneMod": "No mods published yet.",
       "nonePack": "No packs published yet."
     },
     "featured": {
+      "badgeMod": "Featured mod",
       "badgePack": "Featured pack",
+      "mods_one": "Featured mod",
+      "mods_other": "Featured mods",
       "packs_one": "Featured pack",
-      "packs_other": "Featured packs"
+      "packs_other": "Featured packs",
+      "sub": "picked by the team"
     },
+    "mods_one": "{{n}} mod",
+    "mods_other": "{{n}} mods",
     "packs_one": "{{n}} pack",
     "packs_other": "{{n}} packs",
     "page": "Page {{page}} of {{total}}",
@@ -762,6 +837,67 @@
       "popular": "Popular",
       "recent": "Recent"
     }
+  },
+  "modsView": {
+    "browse": "Browse mods",
+    "byAuthor": "by {{author}}",
+    "conflict": {
+      "detail_one": "{{mod}} and {{names}} replace the same files ({{files}}). Only one can be enabled: it will be disabled to enable {{mod}}.",
+      "detail_other": "{{mod}} and {{names}} replace the same files ({{files}}). Only one can be enabled: they will be disabled to enable {{mod}}.",
+      "message": "Disable {{names}}?",
+      "ok": "Disable and enable"
+    },
+    "delete": {
+      "detail": "The mod is removed from your mods and its files are deleted. The game is not changed.",
+      "detailEnabled": "The mod is removed from the game, then from your mods, and its files are deleted.",
+      "message": "Delete {{mod}}?"
+    },
+    "disable": "Disable",
+    "disableAll": {
+      "detail": "All your mods are removed from the game at once; the installed graphics pack stays in place. They stay in your mods, ready to be enabled again.",
+      "message_one": "Disable {{n}} mod?",
+      "message_other": "Disable {{n}} mods?",
+      "ok": "Disable all",
+      "title": "To play on a server in pure mode: the graphics pack stays installed"
+    },
+    "empty": {
+      "text": "Weapons, vehicles, sounds… Mods add to your graphics pack without replacing it. Import one, or drag it into this window.",
+      "title": "No mods yet"
+    },
+    "enable": "Enable",
+    "fileListMore": "{{files}}… ({{n}} in total)",
+    "files_one": "{{n}} file",
+    "files_other": "{{n}} files",
+    "gone": "Removed from the Marketplace",
+    "import": "Import a mod…",
+    "install": "Install",
+    "menu": {
+      "hideFiles": "Hide files",
+      "market": "View page",
+      "openFolder": "Open folder",
+      "showFiles": "Show files"
+    },
+    "moreOptions": "More options",
+    "newVersion": "New version",
+    "noMatch": "No mods match this search.",
+    "overridePack": {
+      "detail_one": "{{mod}} replaces {{n}} file of the installed graphics pack ({{files}}). It will be restored when you disable the mod.",
+      "detail_other": "{{mod}} replaces {{n}} files of the installed graphics pack ({{files}}). They will be restored when you disable the mod.",
+      "message": "Replace files of {{pack}}?",
+      "ok": "Enable"
+    },
+    "preparing": "Preparing",
+    "protected": "protected",
+    "pureModeHint": "Some FiveM servers don't allow mods (pure mode): on those servers, your mods are simply ignored.",
+    "shadowed_one": "Replaces {{n}} file of the installed graphics pack, restored if it is disabled.",
+    "shadowed_other": "Replaces {{n}} files of the installed graphics pack, restored if it is disabled.",
+    "stateDisabled": "In your mods, disabled",
+    "stateEnabled": "Enabled in game",
+    "switch": {
+      "disable": "Disable this mod",
+      "enable": "Enable this mod"
+    },
+    "update": "Update"
   },
   "packDetail": {
     "back": "‹ Library",
@@ -848,11 +984,18 @@
       "archives": "Archives",
       "avatar": "Profile picture",
       "images": "Images",
+      "importMods": "Import mods",
+      "modFiles": "Mods (archives or .rpf)",
       "packImage": "Pack image"
     },
     "errors": {
       "cannotOpenFolder": "Can’t open this folder.",
       "closeGameForGraphics": "Close FiveM before changing settings: the game rewrites them when it quits.",
+      "closeGameForMod": "Close FiveM before enabling or disabling a mod.",
+      "closeGameForModDelete": "Close FiveM before deleting an enabled mod.",
+      "closeGameForMods": "Close FiveM before disabling mods.",
+      "disableModsFirst": "Disable your mods first.",
+      "fileError": "{{file}}: {{message}}",
       "fivemFolderNotFound": "FiveM folder not found.",
       "folderExists": "The folder {{path}} already exists.",
       "graphicsFileMissing": "Settings file not found.",
@@ -867,12 +1010,14 @@
       "noFiles": "No files.",
       "notFiveMDir": "This folder is not a FiveM folder.",
       "notGtaDir": "This folder is not a GTA V folder (GTA5.exe not found).",
+      "protectedModFolder": "Protected mod: its files stay encrypted in the library.",
       "protectedPackFolder": "Protected pack: its files stay encrypted in the library.",
       "removeInstalledPackFirst": "Remove the installed pack first.",
       "removePackFirst": "Remove this pack from the game first.",
       "unreadableImage": "Unreadable image.",
       "waitForTask": "Wait for the current operation to finish."
     },
+    "modConflict": "it replaces files from {{names}}. Enable it from your mods to choose which one to keep.",
     "packMenu": {
       "changeImage": "Change image…",
       "openFolder": "Open folder",
@@ -886,7 +1031,12 @@
       "clean": "Cleaning the game",
       "clearCache": "Clearing the FiveM cache",
       "delete": "Deleting {{name}}",
+      "disableAllMods": "Disabling mods",
+      "disableMod": "Disabling {{name}}",
       "download": "Downloading {{name}}",
+      "enableMod": "Enabling {{name}}",
+      "importMods_one": "Adding {{count}} mod",
+      "importMods_other": "Adding {{count}} mods",
       "importOne": "Adding {{name}}",
       "importPacks_one": "Adding {{count}} pack",
       "importPacks_other": "Adding {{count}} packs",
@@ -961,15 +1111,31 @@
   "store": {
     "captured": "Your previous mods were stashed in {{name}}. Install it to get them back.",
     "clean": {
+      "modsDisabled_one": "Your mod is disabled (still in your mods).",
+      "modsDisabled_other": "Your {{count}} mods are disabled (still in your mods).",
       "restored": "Game restored to its original state.",
       "restoredCaptured": "Game restored to its original state. Your manually installed mods were stashed in {{name}}."
     },
     "download": {
       "added": "{{name}} is in the library.",
       "linked": "{{name}} was already in the library: it is now linked to the Marketplace.",
+      "modAdded": "{{name}} is in your mods.",
+      "modInstalledEnabled": "{{name}} is installed and enabled.",
+      "modUpdatedEnabled": "{{name}} is up to date and still enabled.",
       "upToDate": "{{name}} is already up to date.",
       "updated": "{{name}} is up to date."
     },
+    "mod": {
+      "deleted": "{{name}} was deleted.",
+      "disabled": "{{name}} is disabled: takes effect the next time FiveM starts.",
+      "disabledCount_one": "{{count}} mod disabled: the game now only has the graphics pack.",
+      "disabledCount_other": "{{count}} mods disabled: the game now only has the graphics pack.",
+      "enabled": "{{name}} is enabled: takes effect the next time FiveM starts.",
+      "importedMany": "{{n}} mods added: enable them with their switches.",
+      "importedOne": "{{name}} is in your mods: enable it with its switch.",
+      "noneEnabled": "No mods were enabled."
+    },
+    "theMod": "The mod",
     "thePack": "The pack"
   },
   "system": {

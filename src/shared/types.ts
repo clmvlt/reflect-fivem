@@ -5,6 +5,9 @@ import type { Msg } from './i18n'
 /** Racines de destination gérées par l'application. */
 export type RootId = 'fivem' | 'gta'
 
+/** Genre d'un élément : pack graphique (un seul installé à la fois) ou mod (plusieurs à la fois, en plus du pack). */
+export type MarketKind = 'pack' | 'mod'
+
 /** Emplacement de destination : une racine + un chemin relatif (séparateur « / », '' = racine). */
 export interface Destination {
   root: RootId
@@ -110,6 +113,10 @@ export interface PackManifest {
    * dans les dossiers du jeu, pendant qu'il y est installé.
    */
   protected?: boolean
+  /** Mod (bibliothèque des mods) ; absent : pack graphique. */
+  kind?: MarketKind
+  /** Catégorie d'un mod de la Marketplace (clé de GET /mods/categories), null sinon. */
+  category?: string | null
 }
 
 /** Lien entre un pack de la bibliothèque et sa fiche sur la Marketplace. */
@@ -120,6 +127,8 @@ export interface MarketplaceLink {
   sha256: string
   version: string
   downloadedAt: string
+  /** Catalogue de la fiche (absent : pack, avant l'arrivée des mods). */
+  kind?: MarketKind
 }
 
 /** Fichier réellement présent dans les dossiers du jeu, installé par l'application. */
@@ -145,9 +154,34 @@ export interface ActiveInstall {
   partial: boolean
 }
 
+/** Fichier du pack graphique actif remplacé par un mod : réinstallé depuis le pack quand le mod est retiré. */
+export interface ShadowedFile {
+  packId: string
+  file: InstalledFile
+}
+
+/**
+ * Mod de la bibliothèque des mods et son état dans le jeu. Plusieurs mods peuvent être activés en même temps, en plus du
+ * pack graphique actif et indépendamment de lui.
+ */
+export interface InstalledMod {
+  /** Identifiant du mod dans la bibliothèque des mods. */
+  id: string
+  name: string
+  enabled: boolean
+  /** Dernière activation (null : jamais activé, ou désactivé). */
+  appliedAt: string | null
+  roots: Record<RootId, string>
+  /** Fichiers posés dans le jeu (vide quand le mod est désactivé). */
+  files: InstalledFile[]
+  createdDirs: Destination[]
+  /** Fichiers du pack actif que ce mod remplace. */
+  shadowed: ShadowedFile[]
+}
+
 export interface HistoryEntry {
   at: string
-  action: 'apply' | 'remove' | 'capture' | 'clean' | 'restore' | 'import' | 'delete' | 'cache' | 'graphics' | 'download'
+  action: 'apply' | 'remove' | 'capture' | 'clean' | 'restore' | 'import' | 'delete' | 'cache' | 'graphics' | 'download' | 'mod'
   packName?: string
   /** Texte de la version qui l'a écrit (repli quand `msg` est absent). */
   summary: string
@@ -159,6 +193,8 @@ export interface HistoryEntry {
 export interface AppState {
   schema: 1
   active: ActiveInstall | null
+  /** Mods (absent dans un state.json d'avant les mods : liste vide). */
+  mods: InstalledMod[]
   history: HistoryEntry[]
 }
 
@@ -255,7 +291,7 @@ export interface ForeignItem {
 
 export interface TaskProgress {
   taskId: string
-  kind: 'import' | 'apply' | 'remove' | 'delete' | 'stash' | 'clean' | 'cache' | 'screenshots' | 'trash' | 'move-library' | 'download'
+  kind: 'import' | 'apply' | 'remove' | 'delete' | 'stash' | 'clean' | 'cache' | 'screenshots' | 'trash' | 'move-library' | 'download' | 'mod'
   title: string
   phase: string
   current: number
@@ -272,6 +308,8 @@ export interface Overview {
   games: GamesInfo
   state: AppState
   library: PackManifest[]
+  /** Bibliothèque des mods (leur état dans le jeu : state.mods). */
+  mods: PackManifest[]
   /** Mods installés à la main, hors pack actif. */
   foreign: { files: number; size: number } | null
   /** Couleur d'accent de Windows (#rrggbb). */
@@ -280,9 +318,19 @@ export interface Overview {
   dataDir: string
   /** Adresse de l'API de la Marketplace. */
   apiUrl: string
-  /** Packs de la bibliothèque dont une nouvelle version est en ligne, et ceux retirés de la Marketplace. */
+  /** Packs et mods de la bibliothèque dont une nouvelle version est en ligne, et ceux retirés de la Marketplace. */
   market: { updates: string[]; gone: string[] }
   update: UpdateState
+}
+
+/** Ce que changerait l'activation d'un mod (rien n'est modifié). */
+export interface ModPreflight {
+  /** Raisons d'empêcher l'activation, en une phrase courte chacune. */
+  blockers: string[]
+  /** Mods activés qui écrivent les mêmes fichiers : à désactiver pour continuer. */
+  conflicts: { id: string; name: string; files: string[] }[]
+  /** Fichiers du pack graphique actif remplacés tant que le mod est activé (remis en place quand il est désactivé). */
+  pack: { name: string; files: string[] } | null
 }
 
 export interface ComponentPatch {
@@ -309,6 +357,9 @@ export interface MarketImage {
 
 export interface MarketPack {
   id: string
+  kind: MarketKind
+  /** Catégorie d'un mod (clé), null pour un pack. */
+  category: string | null
   slug: string
   name: string
   summary: string
@@ -355,6 +406,13 @@ export interface MarketTag {
   count: number
 }
 
+/** Catégorie des mods (GET /mods/categories), dans l'ordre d'affichage ; `count` : mods publiés. */
+export interface MarketCategory {
+  key: string
+  label: string
+  count: number
+}
+
 // ---------------------------------------------------------------------------
 // Comptes et auteurs
 
@@ -375,6 +433,7 @@ export interface ProfileLink {
 /** Auteur dans la liste des auteurs de la Marketplace. */
 export interface AuthorSummary extends AuthorRef {
   packCount: number
+  modCount: number
   /** Total affiché des téléchargements de ses packs. */
   downloads: number
 }
@@ -392,6 +451,7 @@ export interface AuthorProfile extends AuthorRef {
   links: ProfileLink[]
   createdAt: string | null
   packCount: number
+  modCount: number
   downloads: number
 }
 
@@ -408,6 +468,8 @@ export interface AccountMe {
   role: 'user' | 'admin'
   admin: boolean
   canPublish: boolean
+  /** Peut publier des mods (depuis le site). */
+  canPublishMods: boolean
   /** Mot de passe imposé : à changer avant toute autre action. */
   mustChangePassword: boolean
   /** Faux pour un compte créé par Google qui n'a pas encore de mot de passe. */

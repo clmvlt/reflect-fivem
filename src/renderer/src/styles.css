@@ -356,9 +356,14 @@ input[type='checkbox'] {
   flex: none;
 }
 
+/* Toujours sur une ligne (« Dans la bibliothèque » dans une carte étroite) : coupé avec « … » si la place manque. */
 .state {
+  min-width: 0;
+  overflow: hidden;
   color: var(--accent-text);
   font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .state.big {
   font-size: 16px;
@@ -1465,66 +1470,98 @@ button.google {
   animation: featured-glow 3.5s ease-in-out infinite alternate;
 }
 .featured {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
-  gap: 16px;
   margin-bottom: 20px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.featured-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 2px 10px;
+  color: var(--accent-text);
+  font-weight: 600;
+}
+.featured-sub {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 400;
+}
+/* Une seule rangée : défile de côté au-delà de la largeur de la page. */
+.featured-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(340px, 440px);
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
 }
 .featured-item {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  border-radius: 8px;
+  grid-template-columns: 168px minmax(0, 1fr);
+  border: 1px solid var(--border);
+  border-radius: 6px;
   background: var(--surface);
   overflow: hidden;
   cursor: pointer;
-  animation: featured-glow 3.5s ease-in-out infinite alternate;
+  scroll-snap-align: start;
 }
 .featured-item:hover {
   background: var(--surface-hover);
 }
 .featured-cover {
-  aspect-ratio: 16 / 9;
+  min-height: 100%;
   background: var(--media);
   overflow: hidden;
+}
+.featured-cover .cover-empty {
+  font-size: 13px;
 }
 .featured-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
   min-width: 0;
-  padding: 16px 16px 14px;
+  padding: 10px 12px;
 }
-.featured-name {
-  font-size: 20px;
-  line-height: 26px;
-  word-break: break-word;
+.featured-body .meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 .featured-summary {
   display: -webkit-box;
-  margin: 0;
+  margin: 4px 0 0;
   overflow: hidden;
   color: var(--text-2);
+  font-size: 12px;
+  line-height: 16px;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
 }
 .featured-actions {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 32px;
+  margin-top: 6px;
   cursor: default;
 }
 .side .featured-badge {
   margin-bottom: -4px;
 }
-@media (max-width: 760px) {
+@media (max-width: 600px) {
+  .featured-row {
+    grid-auto-columns: minmax(280px, 1fr);
+  }
   .featured-item {
-    grid-template-columns: 1fr;
+    grid-template-columns: 120px minmax(0, 1fr);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .card.is-featured,
-  .featured-item {
+  .card.is-featured {
     animation: none;
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 16px color-mix(in srgb, var(--accent) 25%, transparent);
   }
@@ -1630,4 +1667,189 @@ button.google {
   .profile-head {
     flex-wrap: wrap;
   }
+}
+
+/* ------------------------------------------------------------ Mises à jour à faire */
+
+.nav-badge {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #d13438;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  transform: translateY(-50%);
+}
+
+/* ------------------------------------------------------------ Mods */
+
+/* Packs et Mods sous Bibliothèque et Marketplace, dans la barre latérale. */
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nav.is-open {
+  font-weight: 600;
+}
+.nav.nav-sub {
+  height: 32px;
+  padding-left: 32px;
+  color: var(--text-2);
+}
+.nav.nav-sub.is-selected {
+  color: var(--text);
+}
+.mods-hint {
+  margin: -8px 0 16px;
+}
+.mods-hint-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.mods-hint-row .mods-hint {
+  flex: 1;
+}
+.mods-hint-row button {
+  flex: none;
+  margin-top: -12px;
+}
+.mod-row {
+  min-height: 64px;
+}
+.mod-thumb {
+  flex: none;
+  width: 80px;
+  height: 45px;
+  border-radius: 4px;
+  background: var(--media);
+  overflow: hidden;
+}
+.mod-thumb .cover-empty {
+  padding: 4px;
+  font-size: 10px;
+  overflow: hidden;
+}
+.mod-row:not(.is-enabled) .mod-thumb {
+  opacity: 0.6;
+}
+.switch.mod-switch {
+  width: auto;
+}
+.mod-switch .switch-text {
+  min-width: 72px;
+}
+.mod-files {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  user-select: text;
+}
+.side-actions.mod-actions {
+  gap: 8px;
+}
+.chip-count {
+  margin-left: 6px;
+  opacity: 0.7;
+  font-size: 11px;
+}
+.check-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ------------------------------------------------------------ États vides */
+
+.empty-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 540px;
+  margin: 32px auto 0;
+  padding: 44px 32px 36px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: center;
+}
+.empty-panel.is-compact {
+  margin-top: 16px;
+  padding: 32px 24px;
+  border: 0;
+  background: transparent;
+}
+.empty-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 6px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-text);
+}
+.empty-panel.is-compact .empty-icon {
+  width: 52px;
+  height: 52px;
+  background: var(--hover);
+  color: var(--text-2);
+}
+.empty-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+.empty-panel.is-compact .empty-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.empty-text {
+  max-width: 420px;
+  margin: 0;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.empty-formats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.format-tag {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-2);
+  font-family: Consolas, monospace;
+  font-size: 11px;
+}
+.empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.empty-panel .hint {
+  max-width: 420px;
 }

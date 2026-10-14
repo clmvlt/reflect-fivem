@@ -11,7 +11,7 @@ import { LanguageSelect } from './LanguageSelect'
 const STORE_LABEL: Record<string, string> = { rockstar: 'Rockstar Games Launcher', steam: 'Steam', epic: 'Epic Games' }
 
 /** Actions de l'historique (clés settings.history.action.*). */
-const HISTORY_ACTIONS: readonly HistoryEntry['action'][] = ['apply', 'remove', 'capture', 'clean', 'restore', 'import', 'delete', 'cache', 'graphics', 'download']
+const HISTORY_ACTIONS: readonly HistoryEntry['action'][] = ['apply', 'remove', 'capture', 'clean', 'restore', 'import', 'delete', 'cache', 'graphics', 'download', 'mod']
 
 export function SettingsView() {
   const { t } = useTranslation()

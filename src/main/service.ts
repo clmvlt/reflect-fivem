@@ -3,19 +3,19 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { app, BrowserWindow, dialog, Menu, nativeImage, net, safeStorage, shell, systemPreferences } from 'electron'
-import type { AppState, GamesInfo, Overview, PackPatch, RootId, Settings, TaskProgress } from '@shared/types'
+import type { AppState, GamesInfo, MarketKind, Overview, PackPatch, RootId, Settings, TaskProgress } from '@shared/types'
 import type { AccountMe, ProfileInput } from '@shared/types'
-import type { AuthorQuery, ComponentFile, ForeignSelection, MarketQuery, PackManagerApi } from '@shared/api'
+import type { AuthorQuery, ComponentFile, ForeignSelection, MarketQuery, MenuItem, PackManagerApi } from '@shared/api'
 import { IPC } from '@shared/api'
 import i18next, { t } from 'i18next'
 import { currentLocale, initI18n, msg, supportedLocale } from '@shared/i18n'
-import { formatNumber } from '@shared/intl'
+import { formatNumber, quote } from '@shared/intl'
 import { detectGames, inspectFiveM, inspectGta, normalizeFiveMPath } from './core/games'
 import { Installer, type Report } from './core/installer'
 import { FPS_LIMIT_MAX, FPS_LIMIT_MIN } from './core/enb'
 import { Account, AVATAR_EXTENSIONS, TokenFile } from './core/account'
 import { KeyRing, type SystemProtection } from './core/keys'
-import { Library, toPublic } from './core/library'
+import { Library, toPublic, type StoredManifest } from './core/library'
 import { GraphicsManager } from './core/graphics'
 import { languageFetch } from './core/http'
 import { accountLanguageAction, fetchLanguages, startupLocale } from './core/language'
@@ -24,13 +24,15 @@ import { AppUpdater } from './core/updater'
 import { runningGameProcesses } from './util/win'
 import type { GraphicsTarget } from '@shared/graphics'
 import { fileDestination } from './core/analyzer'
-import { defaultSettings, emptyState, JsonStore, pushHistory } from './core/stores'
+import { defaultSettings, emptyState, JsonStore, normalizeState, pushHistory } from './core/stores'
 import { exists, isInside, moveDir, readJson, writeJsonAtomic } from './util/fsx'
 import { log } from './util/log'
 
 type ServerApi = Omit<PackManagerApi, 'onTask' | 'onChanged' | 'onUpdate' | 'onAccount' | 'onLanguage' | 'onOpenMarketPack' | 'getPathForFile'>
 
 const MARKET_REFRESH = 6 * 60 * 60 * 1000
+/** Bibliothèque des mods : sous-dossier de la bibliothèque des packs (ignoré par celle-ci, comme tout dossier « . »). */
+const modsDir = (libraryDir: string): string => path.join(libraryDir, '.mods')
 /** Requêtes vers l'API, avec la langue affichée (Accept-Language). */
 const apiFetch = languageFetch((url, init) => net.fetch(url, init))
 
@@ -54,6 +56,8 @@ export class Service {
   settings: JsonStore<Settings>
   state: JsonStore<AppState>
   library!: Library
+  /** Bibliothèque des mods (leur état dans le jeu : state.mods). */
+  modLibrary!: Library
   installer!: Installer
   graphics: GraphicsManager
   marketplace!: Marketplace
@@ -75,7 +79,7 @@ export class Service {
     private getWindow: () => BrowserWindow | null,
     public apiUrl: string
   ) {
-    this.keys = new KeyRing(path.join(dataDir, 'protection.key'), systemProtection, (marketId) => this.marketplace.packageKey(marketId))
+    this.keys = new KeyRing(path.join(dataDir, 'protection.key'), systemProtection, (marketId, kind) => this.marketplace.packageKey(marketId, kind))
     this.account = new Account({
       apiUrl,
       store: new TokenFile(path.join(dataDir, 'account.dat'), systemProtection),
@@ -111,6 +115,9 @@ export class Service {
     initI18n(locale)
     log.info(`Langue : ${locale}`)
     await this.state.load(emptyState())
+    // state.json d'avant les mods : liste des mods ajoutée (vide).
+    const state = normalizeState(this.state.get())
+    if (state !== this.state.get()) await this.state.set(state)
     // Détection des jeux (registre lu par PowerShell : une demi-seconde, plus sur un PC lent) lancée tout de suite,
     // pendant l'ouverture de la fenêtre. L'interface s'affiche sans l'attendre avec celle du lancement précédent,
     // puis se met à jour si elle a changé.
@@ -128,16 +135,19 @@ export class Service {
     )
     this.library = new Library(this.settings.get().libraryDir, this.keys)
     await this.library.cleanupStaging()
+    this.modLibrary = new Library(modsDir(this.settings.get().libraryDir), this.keys)
+    await this.modLibrary.cleanupStaging()
     this.installer = new Installer({
       jobsDir: path.join(this.dataDir, 'jobs'),
       library: () => this.library,
+      modLibrary: () => this.modLibrary,
       state: this.state,
       detectGames: () => this.refreshGames(),
       saveCover: (src, packDir) => saveCover(src, packDir),
       fpsLimit: () => this.settings.get().fpsLimit ?? null
     })
     await fs.rm(path.join(this.dataDir, 'jobs'), { recursive: true, force: true }).catch(() => undefined)
-    this.marketplace = new Marketplace(this.apiUrl, path.join(this.dataDir, 'Marketplace', 'images'), () => this.library)
+    this.marketplace = new Marketplace(this.apiUrl, path.join(this.dataDir, 'Marketplace', 'images'), () => this.library, () => this.modLibrary)
   }
 
   /** Langue changée : processus principal (menus, textes produits ici) et toutes les fenêtres. */
@@ -218,6 +228,24 @@ export class Service {
     return { ...s.games, runningProcesses: [] }
   }
 
+  /**
+   * Mod tout juste téléchargé : activé s'il n'entre en conflit avec aucun autre mod et que rien ne l'empêche (il peut
+   * remplacer des fichiers du pack actif, remis en place quand il sera désactivé). Renvoie null s'il a été activé,
+   * sinon la raison.
+   */
+  private async enableIfFree(modId: string, report: Report): Promise<string | null> {
+    try {
+      const pre = await this.installer.modPreflight(modId)
+      if (pre.blockers.length) return pre.blockers[0]
+      if (pre.conflicts.length)
+        return t('service.modConflict', { names: pre.conflicts.map((c) => quote(c.name)).join(', ') })
+      await this.installer.setModEnabled(modId, true, report)
+      return null
+    } catch (err) {
+      return (err as Error).message
+    }
+  }
+
   private screenshotsDir(): string {
     return path.join(app.getPath('pictures'), 'FiveM')
   }
@@ -267,6 +295,7 @@ export class Service {
       // Mods installés à la main : parcours des dossiers du jeu, en même temps que la bibliothèque.
       const pendingForeign = (this.foreign ??= this.installer.foreignSummary(games).catch(() => null))
       const library = await this.library.list()
+      const mods = await this.modLibrary.list()
       const market = await this.marketplace.status().catch(() => ({ updates: [], gone: [] }))
       const foreign = await pendingForeign
       return {
@@ -274,6 +303,7 @@ export class Service {
         games,
         state: this.state.get(),
         library: library.map(toPublic),
+        mods: mods.map(toPublic),
         foreign,
         accent: accentColor(),
         version: app.getVersion(),
@@ -328,11 +358,10 @@ export class Service {
 
     importPacks: async (paths: string[]) => {
       if (!paths.length) throw this.toError(t('service.errors.noFiles'))
-      const title =
-        paths.length > 1
-          ? t('service.tasks.importPacks', { count: paths.length })
-          : t('service.tasks.importOne', { name: path.basename(paths[0]).replace(/\.(zip|rar|7z)$/i, '') })
-      return this.startTask('import', title, null, async (report, signal) => {
+      // Nom de l'archive (seule) : affiché sur la carte du pack en cours d'ajout.
+      const name = paths.length === 1 ? path.basename(paths[0]).replace(/\.(zip|rar|7z)$/i, '') : null
+      const title = name ? t('service.tasks.importOne', { name }) : t('service.tasks.importPacks', { count: paths.length })
+      return this.startTask('import', title, name, async (report, signal) => {
         const imported: string[] = []
         const errors: string[] = []
         for (let i = 0; i < paths.length; i++) {
@@ -477,7 +506,75 @@ export class Service {
         return { trashed: done }
       }),
 
-    cleanGame: async () => this.startTask('clean', t('service.tasks.clean'), 'game', (report) => this.installer.cleanGame(report)),
+    cleanGame: async (withMods?: boolean) =>
+      this.startTask('clean', t('service.tasks.clean'), 'game', (report) => this.installer.cleanGame(report, withMods === true)),
+
+    pickModFiles: async () => {
+      const w = this.getWindow()
+      const opts = {
+        title: t('service.dialogs.importMods'),
+        properties: ['openFile' as const, 'multiSelections' as const],
+        filters: [{ name: t('service.dialogs.modFiles'), extensions: ['zip', 'rar', '7z', 'rpf'] }]
+      }
+      const r = w ? await dialog.showOpenDialog(w, opts) : await dialog.showOpenDialog(opts)
+      return r.canceled ? [] : r.filePaths
+    },
+
+    importMods: async (paths: string[]) => {
+      if (!paths.length) throw this.toError(t('service.errors.noFiles'))
+      const title =
+        paths.length > 1
+          ? t('service.tasks.importMods', { count: paths.length })
+          : t('service.tasks.importOne', { name: path.basename(paths[0]).replace(/\.(zip|rar|7z|rpf)$/i, '') })
+      return this.startTask('mod', title, 'mod-import', async (report, signal) => {
+        const imported: string[] = []
+        const errors: string[] = []
+        for (const p of paths) {
+          try {
+            const m = await this.modLibrary.import(p, (pr) => report(pr.phase, pr.current, pr.total), signal, { kind: 'mod' })
+            imported.push(m.name)
+            await this.state.set(pushHistory(this.state.get(), { action: 'import', packName: m.name, ok: true, msg: msg('history.modAdded', { count: m.fileCount, n: formatNumber(m.fileCount) }) }))
+            this.changed()
+          } catch (err) {
+            if (signal.aborted) throw err
+            errors.push(paths.length > 1 ? t('service.errors.fileError', { file: path.basename(p), message: (err as Error).message }) : (err as Error).message)
+          }
+        }
+        if (errors.length && !imported.length) throw this.toError(errors.join('\n'))
+        return { imported, errors }
+      })
+    },
+
+    modPreflight: (id: string) => this.installer.modPreflight(id),
+
+    setModEnabled: async (id: string, enabled: boolean, disable?: string[]) => {
+      if ((await runningGameProcesses()).length) throw this.toError(t('service.errors.closeGameForMod'))
+      const m = await this.modLibrary.get(id)
+      const title = t(enabled ? 'service.tasks.enableMod' : 'service.tasks.disableMod', { name: m.name })
+      return this.startTask('mod', title, id, (report) => this.installer.setModEnabled(id, enabled, report, disable ?? []))
+    },
+
+    disableAllMods: async () => {
+      if ((await runningGameProcesses()).length) throw this.toError(t('service.errors.closeGameForMods'))
+      return this.startTask('mod', t('service.tasks.disableAllMods'), 'mods-all', (report) => this.installer.disableAllMods(report))
+    },
+
+    deleteMod: async (id: string) => {
+      const m = await this.modLibrary.get(id)
+      const enabled = this.state.get().mods.some((x) => x.id === id && x.enabled)
+      if (enabled && (await runningGameProcesses()).length) throw this.toError(t('service.errors.closeGameForModDelete'))
+      return this.startTask('mod', t('service.tasks.delete', { name: m.name }), id, async (report) => {
+        await this.installer.forgetMod(id, report)
+        await this.modLibrary.remove(id, (done, total) => report(t('service.phases.deleting'), done, total))
+        await this.state.set(pushHistory(this.state.get(), { action: 'delete', packName: m.name, ok: true, msg: msg('history.modDeleted') }))
+        return { name: m.name, deleted: true }
+      })
+    },
+
+    openModFolder: async (id: string) => {
+      if ((await this.modLibrary.get(id)).protection) throw this.toError(t('service.errors.protectedModFolder'))
+      if (await shell.openPath(this.modLibrary.contentDir(id))) throw this.toError(t('service.errors.cannotOpenFolder'))
+    },
 
     moveScreenshots: async () => {
       const dir = this.screenshotsDir()
@@ -539,6 +636,7 @@ export class Service {
       if (path.resolve(oldDir).toLowerCase() === target.toLowerCase()) throw this.toError(t('service.errors.libraryAlreadyThere'))
       if (isInside(oldDir, target)) throw this.toError(t('service.errors.libraryInsideCurrent'))
       if (this.state.get().active) throw this.toError(t('service.errors.removeInstalledPackFirst'))
+      if (this.state.get().mods.some((m) => m.enabled)) throw this.toError(t('service.errors.disableModsFirst'))
       return this.startTask('move-library', t('service.tasks.moveLibrary'), null, async (report) => {
         await fs.mkdir(target, { recursive: true })
         const packs = await this.library.list()
@@ -548,8 +646,14 @@ export class Service {
           if (await exists(dest)) throw this.toError(t('service.errors.folderExists', { path: dest }))
           await moveDir(this.library.packDir(packs[i].id), dest)
         }
+        // Bibliothèque des mods : déplacée en entier.
+        if (await exists(modsDir(oldDir))) {
+          if (await exists(modsDir(target))) throw this.toError(t('service.errors.folderExists', { path: modsDir(target) }))
+          await moveDir(modsDir(oldDir), modsDir(target))
+        }
         await this.settings.patch({ libraryDir: target })
         this.library = new Library(target, this.keys)
+        this.modLibrary = new Library(modsDir(target), this.keys)
         await fs.rm(path.join(oldDir, '.staging'), { recursive: true, force: true }).catch(() => undefined)
         return { moved: packs.length }
       })
@@ -583,22 +687,40 @@ export class Service {
       return r.response === 0
     },
 
+    popupMenu: async (items: MenuItem[]) => {
+      const w = this.getWindow()
+      return new Promise<string | null>((resolve) => {
+        let choice: string | null = null
+        const template: Electron.MenuItemConstructorOptions[] = []
+        for (const item of items) {
+          if (item.separator && template.length) template.push({ type: 'separator' })
+          template.push({ label: item.label, enabled: item.enabled !== false, click: () => (choice = item.id) })
+        }
+        Menu.buildFromTemplate(template).popup({ window: w ?? undefined, callback: () => setTimeout(() => resolve(choice), 0) })
+      })
+    },
+
     marketList: (query: MarketQuery) => this.marketplace.list(query),
 
-    marketTags: () => this.marketplace.tags(),
+    marketTags: (kind?: MarketKind) => this.marketplace.tags(kind),
 
-    marketFeatured: () => this.marketplace.featured(),
+    marketCategories: () => this.marketplace.categories(),
 
-    marketDetail: (idOrSlug: string) => this.marketplace.detail(idOrSlug),
+    marketFeatured: (kind?: MarketKind) => this.marketplace.featured(kind),
 
-    marketInstall: async (id: string) => {
-      const remote = await this.marketplace.detail(id)
+    marketDetail: (idOrSlug: string, kind?: MarketKind) => this.marketplace.detail(idOrSlug, kind),
+
+    marketInstall: async (id: string, kind: MarketKind = 'pack') => {
+      const remote = await this.marketplace.detail(id, kind)
       const title = t(remote.updateAvailable ? 'service.tasks.update' : 'service.tasks.download', { name: remote.name })
       return this.startTask('download', title, remote.id, async (report, signal) => {
-        const result = await this.marketplace.install(remote.id, report, signal, {
+        const hooks = {
           activeId: () => this.state.get().active?.packId ?? null,
-          apply: (packId, r) => this.installer.apply(packId, r)
-        })
+          apply: (packId: string, r: Report) => this.installer.apply(packId, r),
+          enableMod: (modId: string, r: Report) => this.enableIfFree(modId, r),
+          replaceMod: (oldId: string, next: StoredManifest, r: Report) => this.installer.replaceMod(oldId, next, r)
+        }
+        const result = await this.marketplace.install(remote.id, report, signal, hooks, kind)
         if (result.status !== 'up-to-date') {
           const summary = msg({ added: 'history.downloaded', updated: 'history.updated', linked: 'history.linked' }[result.status])
           await this.state.set(pushHistory(this.state.get(), { action: 'download', packName: result.name, ok: true, msg: summary }))

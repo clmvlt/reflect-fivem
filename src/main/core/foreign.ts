@@ -3,7 +3,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { t } from 'i18next'
-import type { ActiveInstall, ForeignItem, GamesInfo, RootId } from '@shared/types'
+import type { ActiveInstall, ForeignItem, GamesInfo, InstalledMod, RootId } from '@shared/types'
 import { classifyGtaRootEntry, classifyPluginsEntry } from './knowledge'
 import { walkFiles } from '../util/fsx'
 
@@ -11,8 +11,9 @@ export function managedKey(root: RootId, rel: string): string {
   return `${root}:${rel.toLowerCase()}`
 }
 
-export function managedSet(active: ActiveInstall | null): Set<string> {
-  return new Set((active?.files ?? []).map((f) => managedKey(f.root, f.path)))
+/** Fichiers posés par l'application : ceux du pack actif et ceux des mods activés. */
+export function managedSet(active: ActiveInstall | null, mods: InstalledMod[] = []): Set<string> {
+  return new Set([...(active?.files ?? []), ...mods.flatMap((m) => m.files)].map((f) => managedKey(f.root, f.path)))
 }
 
 async function listDir(dir: string): Promise<import('node:fs').Dirent[]> {
@@ -52,8 +53,9 @@ async function fivemContentIndex(fivem: string): Promise<Set<string> | null> {
   }
 }
 
-export async function scanForeign(games: GamesInfo, active: ActiveInstall | null): Promise<ForeignItem[]> {
-  const managed = managedSet(active)
+/** Éléments installés à la main ; les fichiers du pack actif et des mods activés ({@link mods}) n'en font pas partie. */
+export async function scanForeign(games: GamesInfo, active: ActiveInstall | null, mods: InstalledMod[] = []): Promise<ForeignItem[]> {
+  const managed = managedSet(active, mods)
   const out: ForeignItem[] = []
 
   const addEntry = async (
@@ -139,11 +141,12 @@ export interface ForeignCollection {
 export async function collectForeign(
   games: GamesInfo,
   active: ActiveInstall | null,
-  selection?: { root: RootId; path: string; isDir: boolean }[]
+  selection?: { root: RootId; path: string; isDir: boolean }[],
+  mods: InstalledMod[] = []
 ): Promise<ForeignCollection> {
-  const managed = managedSet(active)
+  const managed = managedSet(active, mods)
   const out: ForeignCollection = { moves: [], files: [] }
-  const items = selection ?? (await scanForeign(games, active)).filter((i) => i.recommended)
+  const items = selection ?? (await scanForeign(games, active, mods)).filter((i) => i.recommended)
   for (const item of items) {
     const rootPath = item.root === 'fivem' ? games.fivem.path : games.gta.path
     if (!rootPath) continue

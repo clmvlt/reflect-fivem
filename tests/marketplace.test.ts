@@ -72,3 +72,60 @@ describe('pack du moment', () => {
     })
   })
 })
+
+describe('catalogue des mods', () => {
+  const library = (items: unknown[] = []): Library => ({ list: async () => items }) as unknown as Library
+  // Sans valeur de retour : une fonction renvoyée serait appelée par vitest à la fin du test.
+  beforeEach(() => {
+    fetchMock.mockReset()
+  })
+  const page = (items: RemoteSummary[]): Response => json(200, { items, page: 0, size: 24, total: items.length, totalPages: 1 })
+
+  it('genre et catégorie d’un mod ; un pack n’a pas de catégorie', () => {
+    expect(toMarketPack(remote({ kind: 'mod', category: 'weapons' }), undefined)).toMatchObject({ kind: 'mod', category: 'weapons' })
+    expect(toMarketPack(remote({ category: 'weapons' }), undefined)).toMatchObject({ kind: 'pack', category: null })
+  })
+
+  it('les mods sont demandés à /mods, jamais à /packs', async () => {
+    const market = new Marketplace('https://api.test/api', 'cache', () => library(), () => library())
+    fetchMock.mockImplementation(async () => page([]))
+    await market.list({ kind: 'mod', category: 'weapons', q: 'fusil' })
+    const url = new URL(fetchMock.mock.calls[0][0])
+    expect(url.pathname).toBe('/api/mods')
+    expect(url.searchParams.get('category')).toBe('weapons')
+    // Catégorie ignorée pour les packs.
+    await market.list({ category: 'weapons' })
+    expect(new URL(fetchMock.mock.calls[1][0]).searchParams.has('category')).toBe(false)
+
+    fetchMock.mockResolvedValue(json(200, [{ key: 'weapons', label: 'Armes', count: 3 }, { key: 'other', label: '', count: 0 }]))
+    expect(await market.categories()).toEqual([
+      { key: 'weapons', label: 'Armes', count: 3 },
+      { key: 'other', label: 'other', count: 0 }
+    ])
+    expect(fetchMock.mock.calls.at(-1)![0]).toBe('https://api.test/api/mods/categories')
+
+    fetchMock.mockResolvedValue(json(200, { packageId: 'c'.repeat(32), key: Buffer.alloc(32, 1).toString('base64') }))
+    await market.packageKey('m1', 'mod')
+    expect(fetchMock.mock.calls.at(-1)![0]).toBe('https://api.test/api/mods/m1/package/key')
+
+    fetchMock.mockResolvedValue(json(404, {}))
+    await expect(market.detail('m1', 'mod')).rejects.toThrow('Ce mod n’est plus disponible sur la Marketplace.')
+    expect(fetchMock.mock.calls.at(-1)![0]).toBe('https://api.test/api/mods/m1')
+  })
+
+  it('mises à jour : les mods sont suivis comme les packs ; une API sans mods ne les marque pas retirés', async () => {
+    const mod = { id: 'mod-local', marketplace: { id: 'm1', sha256: 'ancien', downloadedAt: '2026-01-01' } }
+    const pack = { id: 'pack-local', marketplace: { id: 'p1', sha256: 'b46a', downloadedAt: '2026-01-01' } }
+    const market = new Marketplace('https://api.test/api', 'cache', () => library([pack]), () => library([mod]))
+    fetchMock.mockImplementation(async (url) =>
+      url.includes('/mods?') ? page([remote({ id: 'm1', kind: 'mod', sha256: 'nouveau' })]) : page([remote({ id: 'p1', sha256: 'b46a' })])
+    )
+    await market.refreshCatalog()
+    expect(fetchMock.mock.calls.map((c) => new URL(c[0]).pathname)).toEqual(['/api/packs', '/api/mods'])
+    expect(await market.status()).toEqual({ updates: ['mod-local'], gone: [] })
+
+    fetchMock.mockImplementation(async (url) => (url.includes('/mods?') ? json(404, {}) : page([remote({ id: 'p1', sha256: 'b46a' })])))
+    await market.refreshCatalog()
+    expect(await market.status()).toEqual({ updates: [], gone: [] })
+  })
+})

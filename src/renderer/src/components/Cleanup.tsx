@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { ForeignItem } from '@shared/types'
 import { formatList } from '@shared/intl'
 import { useStore } from '../store'
-import { bytes, q } from '../lib/format'
+import { bytes, num, q } from '../lib/format'
 import { Progress } from './common'
 
 const key = (i: ForeignItem): string => `${i.root}:${i.path}`
@@ -19,6 +19,8 @@ export function Cleanup() {
   const [items, setItems] = useState<ForeignItem[] | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [cache, setCache] = useState<{ size: number } | null | undefined>(undefined)
+  // Nettoyer le jeu : retirer aussi les mods de la bibliothèque des mods (sinon ils restent activés).
+  const [withMods, setWithMods] = useState(false)
 
   const scan = useCallback(async () => {
     const list = (await run(() => window.api.scanForeign())) ?? []
@@ -66,25 +68,42 @@ export function Cleanup() {
     if (ok) await run(() => window.api.trashScreenshots())
   }
 
-  // Remise d'origine du jeu : pack installé + mods installés à la main.
+  // Remise d'origine du jeu : pack installé + mods installés à la main (+ vos mods, sur demande).
   const active = overview?.state.active ?? null
   const recommended = mods.filter((i) => i.recommended)
-  const nothingToClean = !active && !recommended.length
+  const enabledMods = (overview?.state.mods ?? []).filter((m) => m.enabled)
+  const removeMods = withMods && enabledMods.length > 0
+  const nothingToClean = !active && !recommended.length && !removeMods
   const cleanSummary = formatList(
     [
       active ? t('cleanup.game.summary.pack', { name: q(active.packName) }) : null,
-      recommended.length ? t('cleanup.game.summary.manualMods', { count: recommended.length }) : null
+      recommended.length ? t('cleanup.game.summary.manualMods', { count: recommended.length }) : null,
+      removeMods
+        ? enabledMods.length > 1
+          ? t('cleanup.game.summary.enabledMods', { n: num(enabledMods.length) })
+          : t('cleanup.game.summary.enabledMod', { name: q(enabledMods[0].name) })
+        : null
     ].filter((s): s is string => !!s)
   )
   const cleanGame = async (): Promise<void> => {
+    const kept =
+      enabledMods.length && !removeMods
+        ? enabledMods.length > 1
+          ? t('cleanup.game.confirm.modsStayEnabled', { n: num(enabledMods.length) })
+          : t('cleanup.game.confirm.modStaysEnabled')
+        : null
     // Phrases complètes mises bout à bout.
     const detail = [
       t('cleanup.game.removes', { summary: cleanSummary }),
       t('cleanup.game.confirm.stash'),
+      removeMods ? t('cleanup.game.confirm.modsKept') : null,
+      kept,
       t('cleanup.game.confirm.shotsUntouched')
-    ].join(' ')
+    ]
+      .filter(Boolean)
+      .join(' ')
     const ok = await window.api.confirm(t('cleanup.game.confirm.title'), detail, t('cleanup.game.action'))
-    if (ok) await run(() => window.api.cleanGame())
+    if (ok) await run(() => window.api.cleanGame(removeMods))
   }
 
   return (
@@ -104,6 +123,14 @@ export function Cleanup() {
             <div className="meta">
               {items === null ? t('cleanup.scanning') : nothingToClean ? t('cleanup.game.nothing') : t('cleanup.game.removes', { summary: cleanSummary })}
             </div>
+            {enabledMods.length > 0 && (
+              <label className="check-line small">
+                <input type="checkbox" checked={withMods} onChange={(e) => setWithMods(e.target.checked)} />
+                {enabledMods.length > 1
+                  ? t('cleanup.game.withModsMany', { n: num(enabledMods.length) })
+                  : t('cleanup.game.withModOne', { name: q(enabledMods[0].name) })}
+              </label>
+            )}
           </div>
           {mine('game') ? (
             <Progress task={mine('game')!} />

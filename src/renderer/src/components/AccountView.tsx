@@ -246,6 +246,7 @@ function AccountHead({ me, actions }: { me: AccountMe; actions?: ReactNode }) {
   const badges = [
     me.admin && t('accountView.badges.admin'),
     me.canPublish && t('accountView.badges.author'),
+    me.canPublishMods && !me.admin && t('accountView.badges.modAuthor'),
     me.googleLinked && 'Google'
   ].filter(Boolean) as string[]
   return (
@@ -353,7 +354,15 @@ function Profile({ me, onOpenAuthor }: { me: AccountMe; onOpenAuthor: (slug: str
 
       <div className="section-head">
         <h2>{t('accountView.profile.title')}</h2>
-        {me.canPublish && me.slug && <button onClick={() => onOpenAuthor(me.slug)}>{t('accountView.profile.authorPage')}</button>}
+        {(me.canPublish || me.canPublishMods) && (
+          <div className="head-actions">
+            {/* Pas d'espace auteur dans l'application : publication des packs et des mods sur le site. */}
+            <button onClick={() => void window.api.openSite('/studio/').catch((e: unknown) => setMessage({ kind: 'error', text: cleanError(e) }))}>
+              {t('accountView.profile.publish')}
+            </button>
+            {me.slug && <button onClick={() => onOpenAuthor(me.slug)}>{t('accountView.profile.authorPage')}</button>}
+          </div>
+        )}
       </div>
       {loadError ? (
         <div className="form-panel">

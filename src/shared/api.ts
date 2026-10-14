@@ -5,10 +5,13 @@ import type {
   AuthorProfile,
   ForeignItem,
   GamesInfo,
+  MarketCategory,
+  MarketKind,
   MarketPack,
   MarketPackDetail,
   MarketPage,
   MarketTag,
+  ModPreflight,
   Overview,
   PackManifest,
   PackPatch,
@@ -66,8 +69,27 @@ export interface PackManagerApi {
   trashScreenshots(): Promise<string>
   /** Ouvre le dossier des captures : plugins de FiveM, ou Images\FiveM (créé si besoin). */
   openScreenshots(where: 'plugins' | 'pictures'): Promise<void>
-  /** Retire le pack installé et range les mods installés à la main : le jeu redevient d'origine. */
-  cleanGame(): Promise<string>
+  /**
+   * Retire le pack installé et range les mods installés à la main : le jeu redevient d'origine. `withMods` : désactive
+   * aussi les mods de la bibliothèque des mods (sinon ils restent en place).
+   */
+  cleanGame(withMods?: boolean): Promise<string>
+
+  /** Choisit des mods sur le disque (archives .zip / .rar / .7z ou .rpf seuls). */
+  pickModFiles(): Promise<string[]>
+  /** Ajoute des mods à la bibliothèque des mods (désactivés). */
+  importMods(paths: string[]): Promise<string>
+  /** Ce que changerait l'activation d'un mod : conflits avec d'autres mods, fichiers du pack actif remplacés. */
+  modPreflight(id: string): Promise<ModPreflight>
+  /**
+   * Active ou désactive un mod (FiveM doit être fermé). `disable` : mods en conflit à désactiver dans la même opération.
+   */
+  setModEnabled(id: string, enabled: boolean, disable?: string[]): Promise<string>
+  /** Désactive d'un coup tous les mods activés (FiveM doit être fermé) ; le pack graphique reste installé. */
+  disableAllMods(): Promise<string>
+  /** Retire le mod du jeu s'il est activé, puis de la bibliothèque des mods. */
+  deleteMod(id: string): Promise<string>
+  openModFolder(id: string): Promise<void>
 
   /** Réglages graphiques du jeu (null si aucun fichier de réglages n'a été trouvé). */
   getGraphics(target?: GraphicsTarget['id']): Promise<GraphicsState | null>
@@ -86,15 +108,22 @@ export interface PackManagerApi {
   packMenu(id: string): Promise<'rename' | 'image' | 'open' | 'delete' | null>
   /** Boîte de confirmation native de Windows. */
   confirm(message: string, detail: string, okLabel: string): Promise<boolean>
+  /** Menu natif : identifiant de l'élément choisi, null si le menu est fermé sans choix. */
+  popupMenu(items: MenuItem[]): Promise<string | null>
 
-  /** Packs publiés sur la Marketplace. */
+  /** Packs (ou mods, query.kind) publiés sur la Marketplace. */
   marketList(query: MarketQuery): Promise<MarketPage>
-  marketTags(): Promise<MarketTag[]>
-  /** Packs mis en avant (« Pack du moment »), le plus récent en premier ; liste vide en cas d'erreur. */
-  marketFeatured(): Promise<MarketPack[]>
-  marketDetail(idOrSlug: string): Promise<MarketPackDetail>
-  /** Télécharge le pack (ou sa nouvelle version) et l'ajoute à la bibliothèque. */
-  marketInstall(id: string): Promise<string>
+  marketTags(kind?: MarketKind): Promise<MarketTag[]>
+  /** Catégories des mods avec leur nombre de mods publiés. */
+  marketCategories(): Promise<MarketCategory[]>
+  /** Packs (ou mods) mis en avant (« du moment »), le plus récent en premier ; liste vide en cas d'erreur. */
+  marketFeatured(kind?: MarketKind): Promise<MarketPack[]>
+  marketDetail(idOrSlug: string, kind?: MarketKind): Promise<MarketPackDetail>
+  /**
+   * Télécharge le pack (ou sa nouvelle version) et l'ajoute à la bibliothèque. Mod : ajouté à la bibliothèque des mods
+   * puis activé s'il n'entre en conflit avec aucun autre mod (une mise à jour garde son état).
+   */
+  marketInstall(id: string, kind?: MarketKind): Promise<string>
   /** Auteurs ayant au moins un pack publié. */
   marketAuthors(query: AuthorQuery): Promise<AuthorPage>
   /** Page publique d'un auteur (adresse ou identifiant de son compte). */
@@ -146,17 +175,29 @@ export interface PackManagerApi {
   onAccount(cb: (me: AccountMe | null) => void): () => void
   /** Langue changée (réglages, ou langue du compte appliquée à la connexion). */
   onLanguage(cb: (code: string) => void): () => void
-  /** Lien « fivem-pack-manager://pack/<id> » reçu du site : ouvrir la fiche de ce pack dans la Marketplace. */
-  onOpenMarketPack(cb: (id: string) => void): () => void
+  /** Lien « fivem-pack-manager://pack/<id> » ou « …://mod/<id> » reçu du site : ouvrir cette fiche dans la Marketplace. */
+  onOpenMarketPack(cb: (id: string, kind: MarketKind) => void): () => void
 }
 
 export interface MarketQuery {
+  /** Catalogue : packs graphiques (défaut) ou mods. */
+  kind?: MarketKind
   q?: string
   tag?: string
+  /** Mods d'une catégorie (clé). */
+  category?: string
   /** Packs d'un auteur (adresse de son compte). */
   author?: string
   sort?: 'recent' | 'popular' | 'name'
   page?: number
+}
+
+export interface MenuItem {
+  id: string
+  label: string
+  enabled?: boolean
+  /** Séparateur avant cet élément. */
+  separator?: boolean
 }
 
 export interface LanguageOption {
@@ -181,8 +222,9 @@ export const IPC = {
   openMarketPack: 'pm:open-market-pack'
 } as const
 
-/** Code d'erreur de marketDetail quand l'API ne connaît pas (ou plus) le pack : inutile de réessayer. */
+/** Codes d'erreur de marketDetail quand l'API ne connaît pas (ou plus) le pack ou le mod : inutile de réessayer. */
 export const PACK_GONE = 'pack-gone'
+export const MOD_GONE = 'mod-gone'
 
 /**
  * Une erreur ne passe d'un processus à l'autre qu'avec son message : le statut HTTP et le `code` d'une erreur de l'API

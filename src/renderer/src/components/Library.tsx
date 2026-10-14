@@ -1,14 +1,28 @@
 import { useMemo, useState, type MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { PackManifest, RootId, TaskProgress } from '@shared/types'
+import type { MarketKind, PackManifest, RootId, TaskProgress } from '@shared/types'
 import { useStore } from '../store'
 import { bytes, num } from '../lib/format'
 import { problemCount } from '@shared/insights'
-import { Cover, packMenuAction, packMeta, Progress, RenameInput } from './common'
+import { Cover, EmptyState, packMenuAction, packMeta, Progress, RenameInput } from './common'
+import { ModLibrary, useModActions } from './Mods'
 
-export function Library({ onOpen }: { onOpen: (id: string) => void }) {
+export function Library({
+  kind,
+  onOpen,
+  onOpenMarket,
+  onBrowse
+}: {
+  /** Packs graphiques ou mods, choisi dans la barre latérale. */
+  kind: MarketKind
+  onOpen: (id: string) => void
+  onOpenMarket: (marketId: string, kind?: MarketKind) => void
+  /** Marketplace, sur les packs ou sur les mods. */
+  onBrowse: (kind: MarketKind) => void
+}) {
   const { t } = useTranslation()
   const { overview, task, run } = useStore()
+  const modActions = useModActions()
   const [query, setQuery] = useState('')
   const library = overview?.library
   const activeId = overview?.state.active?.packId ?? null
@@ -21,6 +35,7 @@ export function Library({ onOpen }: { onOpen: (id: string) => void }) {
 
   if (!overview) return null
   const { games, state, foreign } = overview
+  const mods = kind === 'mod'
   const build = games.fivem.buildNumber ? Number(games.fivem.buildNumber) : null
 
   const add = async (): Promise<void> => {
@@ -41,9 +56,17 @@ export function Library({ onOpen }: { onOpen: (id: string) => void }) {
   const showForeign = !!foreign && !state.active && !query
   const empty = !(library ?? []).length && !showForeign && !importing
 
-  const note = (library ?? []).length
-    ? t('libraryView.packsNote', { count: library!.length, n: num(library!.length), size: bytes(library!.reduce((s, p) => s + p.contentSize, 0)) })
-    : ''
+  const enabledMods = overview.state.mods.filter((m) => m.enabled).length
+  const note = mods
+    ? overview.mods.length
+      ? enabledMods
+        ? t('libraryView.modsNoteEnabled', { count: overview.mods.length, n: num(overview.mods.length), enabled: t('libraryView.enabledCount', { count: enabledMods, n: num(enabledMods) }) })
+        : t('libraryView.modsNote', { count: overview.mods.length, n: num(overview.mods.length) })
+      : ''
+    : (library ?? []).length
+      ? t('libraryView.packsNote', { count: library!.length, n: num(library!.length), size: bytes(library!.reduce((s, p) => s + p.contentSize, 0)) })
+      : ''
+  const searchable = (mods ? overview.mods : (library ?? [])).length > 3
 
   return (
     <div className="page">
@@ -51,10 +74,16 @@ export function Library({ onOpen }: { onOpen: (id: string) => void }) {
         <h1>{t('libraryView.title')}</h1>
         <span className="page-note">{note}</span>
         <div className="spacer" />
-        {(library ?? []).length > 3 && <input className="search" type="search" placeholder={t('common.search')} value={query} onChange={(e) => setQuery(e.target.value)} />}
-        <button className="primary" onClick={() => void add()} disabled={!!task}>
-          {t('libraryView.addPack')}
-        </button>
+        {searchable && <input className="search" type="search" placeholder={t('common.search')} value={query} onChange={(e) => setQuery(e.target.value)} />}
+        {mods ? (
+          <button className="primary" onClick={() => void modActions.importFiles()} disabled={!!task}>
+            {t('libraryView.importMod')}
+          </button>
+        ) : (
+          <button className="primary" onClick={() => void add()} disabled={!!task}>
+            {t('libraryView.addPack')}
+          </button>
+        )}
       </header>
 
       {problems.map((p) => (
@@ -64,11 +93,20 @@ export function Library({ onOpen }: { onOpen: (id: string) => void }) {
         </div>
       ))}
 
-      {empty ? (
-        <div className="empty-state">
-          <p>{t('libraryView.empty.title')}</p>
-          <p className="muted">{t('libraryView.empty.text')}</p>
-        </div>
+      {mods ? (
+        <ModLibrary query={query} onOpenMarket={onOpenMarket} onBrowse={() => onBrowse('mod')} />
+      ) : empty ? (
+        <EmptyState
+          icon="pack"
+          title={t('libraryView.empty.title')}
+          text={t('libraryView.empty.text')}
+          formats={['.zip', '.rar', '.7z']}
+        >
+          <button className="primary" onClick={() => void add()} disabled={!!task}>
+            {t('libraryView.addPack')}
+          </button>
+          <button onClick={() => onBrowse('pack')}>{t('libraryView.browseMarket')}</button>
+        </EmptyState>
       ) : (
         <div className="grid">
           {importing && (

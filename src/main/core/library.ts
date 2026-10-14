@@ -7,6 +7,9 @@
 //   <bibliothèque>/<id>/generated/  fichiers écrits à l'installation (ReShade.ini pointé sur le preset choisi...)
 //   <bibliothèque>/<id>/cover-*.jpg image choisie pour le pack
 //
+// La bibliothèque des mods est une autre instance (dossier <bibliothèque>/.mods), au même format : chaque mod y est un
+// « pack » marqué kind: 'mod', dont les destinations sont limitées à FiveM.app (voir restrictToFiveM).
+//
 // Pack protégé (chiffré sur la Marketplace) : rien n'est jamais extrait. content/ est remplacé par le paquet chiffré
 // reçu du serveur (content.fpk), gardé tel quel ; user/, generated/ et fixed/ (fichiers corrigés à l'import) sont
 // chiffrés avec la clé locale (voir keys.ts et sealed.ts). Le contenu n'est en clair que dans le jeu, une fois installé.
@@ -16,8 +19,8 @@ import path from 'node:path'
 import { t } from 'i18next'
 import { tm } from '@shared/i18n'
 import { formatBytes as sizeText, quote } from '@shared/intl'
-import type { Destination, PackComponent, PackFileEntry, PackManifest, PackPatch, RootId } from '@shared/types'
-import { analyzePack, galleryOf, resolveInstallMap, tmNested, type AnalyzedComponent } from './analyzer'
+import type { Destination, MarketKind, PackComponent, PackFileEntry, PackManifest, PackPatch, RootId } from '@shared/types'
+import { analyzePack, galleryOf, resolveInstallMap, restrictToFiveM, tmNested, type AnalysisResult, type AnalyzedComponent } from './analyzer'
 import { folderContent, packageContent, readSource, type ContentSource, type PackContent } from './content'
 import { fixReshadeIni, fixReshadeIniText, insight, inspectPack, INSIGHTS_VERSION } from './inspect'
 import type { PackKeys } from './keys'
@@ -62,6 +65,13 @@ export interface ImportProgress {
 }
 
 export class ImportError extends Error {}
+
+export interface ImportOptions {
+  /** Nouvelle version d'un pack de la Marketplace, qui peut porter le même nom de fichier que l'ancienne. */
+  skipDuplicateCheck?: boolean
+  /** Mod : un .rpf seul est accepté, et seuls les dossiers mods, plugins, addons et citizen de FiveM.app sont utilisés. */
+  kind?: MarketKind
+}
 
 const MAX_NESTED_DEPTH = 3
 
@@ -109,7 +119,7 @@ export class Library {
     if (!m.marketplace) throw new Error(t('library.errors.keyMissing'))
     let fetched: { packageId: string; key: Buffer }
     try {
-      fetched = await this.keys!.fetch(m.marketplace.id)
+      fetched = await this.keys!.fetch(m.marketplace.id, m.marketplace.kind ?? m.kind ?? 'pack')
     } catch (err) {
       throw new Error(t('library.errors.unlockOnline', { error: (err as Error).message }))
     }
@@ -143,6 +153,31 @@ export class Library {
     } catch {
       return null
     }
+  }
+
+  /**
+   * Fichier du pack d'après son chemin dans le dossier du pack (InstalledFile.source : content/..., user/...,
+   * generated/...), pour le réinstaller ; null s'il est introuvable ou illisible.
+   */
+  async installSource(m: StoredManifest, source: string): Promise<SizedSource | null> {
+    const parts = source.split(/[\\/]/).filter(Boolean)
+    if (!parts.length || parts.includes('..')) return null
+    const file = path.join(this.packDir(m.id), ...parts)
+    if (!m.protection) {
+      const st = await fs.stat(file).catch(() => null)
+      return st?.isFile() ? { src: file, size: st.size } : null
+    }
+    if (parts[0] === 'content') {
+      const rel = parts.slice(1).join('/')
+      try {
+        const s = (await this.content(m)).source(rel)
+        const size = m.files.find((f) => f.rel.toLowerCase() === rel.toLowerCase())?.size ?? 0
+        return { ...s, size }
+      } catch {
+        return null
+      }
+    }
+    return this.sealedSource(file, await this.localKey())
   }
 
   /** Réglage modifié en jeu gardé pour ce pack ; null s'il n'y en a pas (ou s'il est illisible, pour un pack protégé). */
@@ -364,26 +399,20 @@ export class Library {
     return (await this.list()).find((m) => m.sourceArchive === sourceName && m.sourceSize === sourceSize) ?? null
   }
 
-  /**
-   * Importe une archive (.zip / .rar / .7z) ou un dossier déjà extrait. skipDuplicateCheck : nouvelle version d'un
-   * pack de la Marketplace, qui peut porter le même nom de fichier que l'ancienne.
-   */
-  async import(
-    source: string,
-    onProgress: (p: ImportProgress) => void,
-    signal?: AbortSignal,
-    options: { skipDuplicateCheck?: boolean } = {}
-  ): Promise<StoredManifest> {
+  /** Importe une archive (.zip / .rar / .7z), un dossier déjà extrait ou, pour un mod, un .rpf seul. */
+  async import(source: string, onProgress: (p: ImportProgress) => void, signal?: AbortSignal, options: ImportOptions = {}): Promise<StoredManifest> {
     const st = await fs.stat(source).catch(() => null)
     if (!st) throw new ImportError(t('library.errors.fileNotFound'))
     const isFolder = st.isDirectory()
     const sourceName = path.basename(source)
     const sourceSize = isFolder ? 0 : st.size
+    const mod = options.kind === 'mod'
+    const loneRpf = mod && !isFolder && ext(sourceName) === '.rpf'
 
     if (!isFolder) {
       const vol = rarVolumeIndex(sourceName)
       if (vol !== null && vol > 1) throw new ImportError(t('library.errors.firstPart'))
-      if (!ARCHIVE_EXT.has(ext(sourceName))) throw new ImportError(t('library.errors.format'))
+      if (!ARCHIVE_EXT.has(ext(sourceName)) && !loneRpf) throw new ImportError(mod ? t('library.errors.formatMod') : t('library.errors.format'))
       const dup = options.skipDuplicateCheck ? null : await this.findDuplicate(sourceName, sourceSize)
       if (dup) throw new ImportError(t('library.errors.duplicate', { name: quote(dup.name) }))
     }
@@ -397,6 +426,12 @@ export class Library {
       if (isFolder) {
         onProgress({ phase: t('library.phases.copyFolder'), current: 0, total: 1, detail: sourceName })
         await fs.cp(source, raw, { recursive: true })
+      } else if (loneRpf) {
+        // .rpf seul : un mod d'un seul fichier, installé dans FiveM.app/mods.
+        const free = await freeSpace(this.dir)
+        if (free !== null && free < sourceSize * 1.05) throw new ImportError(t('library.errors.noSpace', { size: sizeText(sourceSize) }))
+        onProgress({ phase: t('library.phases.copyFile'), current: 0, total: 1, detail: sourceName })
+        await fs.copyFile(source, path.join(raw, sourceName))
       } else {
         const free = await freeSpace(this.dir)
         const spaceError = (need: number): string => t('library.errors.noSpace', { size: sizeText(need) })
@@ -431,7 +466,7 @@ export class Library {
 
       await this.extractNested(raw, onProgress, signal)
 
-      onProgress({ phase: t('library.phases.analyzePack'), current: 0, total: 1 })
+      onProgress({ phase: mod ? t('library.phases.analyzeMod') : t('library.phases.analyzePack'), current: 0, total: 1 })
       let entries = (await walkFiles(raw)).map((f) => ({ rel: f.rel, size: f.size }))
       // Supprime les fichiers parasites (__MACOSX, Thumbs.db...)
       const keep = new Set(dropJunk(entries).map((e) => e.rel))
@@ -442,7 +477,7 @@ export class Library {
       const { entries: stripped, prefix } = stripWrapper(entries)
       const contentSrc = prefix ? path.join(raw, ...prefix.replace(/\/$/, '').split('/')) : raw
       const presets = await findPresets(folderContent(contentSrc), stripped)
-      const analysis = analyzePack(stripped, { isPreset: (rel) => presets.has(rel) })
+      const analysis = analyzeFor(stripped, presets, options.kind)
 
       const packDir = this.packDir(id)
       await fs.mkdir(packDir, { recursive: true })
@@ -477,13 +512,14 @@ export class Library {
         userConfigCount: 0,
         insights: [],
         reshadeVersion: null,
-        files: stripped
+        files: stripped,
+        ...(mod ? { kind: 'mod' as const, category: null } : {})
       }
       onProgress({ phase: t('library.phases.checkCompat'), current: 0, total: 1 })
       await this.refreshInsights(manifest)
       if (fixedPaths) manifest.insights.push(insight('', 'info', 'ReShade.ini', RESHADE_FIXED))
       await this.save(manifest)
-      log.info(`Pack importé : ${manifest.name} (${manifest.fileCount} fichiers, ${formatBytes(manifest.contentSize)})`)
+      log.info(`${mod ? 'Mod' : 'Pack'} importé : ${manifest.name} (${manifest.fileCount} fichiers, ${formatBytes(manifest.contentSize)})`)
       return manifest
     } catch (err) {
       await fs.rm(this.packDir(id), { recursive: true, force: true }).catch(() => undefined)
@@ -548,7 +584,8 @@ export class Library {
     file: string,
     key: Buffer,
     source: { name: string; size: number },
-    onProgress: (p: ImportProgress) => void
+    onProgress: (p: ImportProgress) => void,
+    kind: MarketKind = 'pack'
   ): Promise<StoredManifest> {
     onProgress({ phase: t('library.phases.readPack'), current: 0, total: 1 })
     const index = await readPackageIndex(file, key)
@@ -568,7 +605,7 @@ export class Library {
     const { entries: stripped, prefix } = stripWrapper(entries)
     const content = packageContent(file, index, prefix)
     const presets = await findPresets(content, stripped)
-    const analysis = analyzePack(stripped, { isPreset: (rel) => presets.has(rel) })
+    const analysis = analyzeFor(stripped, presets, kind)
 
     const id = `${slugify(cleanName(source.name))}-${newId()}`
     const local = await this.localKey()
@@ -610,7 +647,8 @@ export class Library {
         insights: [],
         reshadeVersion: null,
         files: stripped,
-        protection
+        protection,
+        ...(kind === 'mod' ? { kind: 'mod' as const, category: null } : {})
       }
       onProgress({ phase: t('library.phases.checkCompat'), current: 0, total: 1 })
       await this.refreshInsights(manifest)
@@ -701,6 +739,16 @@ const CAPTURE_TOP: Record<RootId, string> = { fivem: 'FiveM Application Data', g
 const RESHADE_FIXED = textMsg('library.reshadeFixed')
 const REINSTALLED = textMsg('library.reinstalledInPlace')
 
+/** Analyse d'un pack, ou d'un mod (limité à FiveM.app : refusé s'il n'y reste rien à installer). */
+function analyzeFor(entries: PackFileEntry[], presets: Set<string>, kind: MarketKind | undefined): AnalysisResult {
+  const analysis = analyzePack(entries, { isPreset: (rel) => presets.has(rel) })
+  if (kind !== 'mod') return analysis
+  restrictToFiveM(analysis)
+  if (!resolveInstallMap(analysis.components).length)
+    throw new ImportError(t('library.errors.modNothing'))
+  return analysis
+}
+
 /** Presets ReShade parmi les .ini du pack (avant l'analyse, pour la guider). */
 async function findPresets(content: PackContent, entries: PackFileEntry[]): Promise<Set<string>> {
   const out = new Set<string>()
@@ -716,7 +764,7 @@ async function findPresets(content: PackContent, entries: PackFileEntry[]): Prom
 export function cleanName(fileName: string): string {
   return (
     fileName
-      .replace(/(\.part0*\d+)?\.(zip|rar|7z)$/i, '')
+      .replace(/(\.part0*\d+)?\.(zip|rar|7z|rpf)$/i, '')
       .replace(/[_]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim() || t('library.unnamed')

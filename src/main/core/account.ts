@@ -145,6 +145,7 @@ interface RemoteMe {
   role: string | null
   admin: boolean
   canPublish: boolean
+  canPublishMods?: boolean
   mustChangePassword?: boolean
   hasPassword: boolean
   googleLinked: boolean
@@ -176,6 +177,7 @@ function toMe(r: RemoteMe): AccountMe {
     role: r.role === 'admin' ? 'admin' : 'user',
     admin: !!r.admin,
     canPublish: !!r.canPublish,
+    canPublishMods: !!r.canPublishMods,
     mustChangePassword: !!r.mustChangePassword,
     hasPassword: !!r.hasPassword,
     googleLinked: !!r.googleLinked,

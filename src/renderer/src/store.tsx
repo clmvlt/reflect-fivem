@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { AccountMe, Overview, TaskProgress, UpdateState } from '@shared/types'
 import { readApiError } from '@shared/api'
 import i18next, { t } from 'i18next'
-import { q } from './lib/format'
+import { num, q } from './lib/format'
 
 export interface Message {
   kind: 'error' | 'info'
@@ -131,18 +131,41 @@ export function apiError(e: unknown): { message: string; status: number | null; 
 }
 
 function resultMessage(p: TaskProgress): Message | null {
+  if (p.kind === 'mod') {
+    const r = (p.result ?? {}) as { name?: string; enabled?: boolean; deleted?: boolean; disabled?: number; imported?: string[]; errors?: string[] }
+    if (r.disabled !== undefined) return { kind: 'info', text: r.disabled ? t('store.mod.disabledCount', { count: r.disabled }) : t('store.mod.noneEnabled') }
+    if (r.imported) {
+      const n = r.imported.length
+      let added = ''
+      if (n === 1) added = t('store.mod.importedOne', { name: q(r.imported[0]) })
+      else if (n > 1) added = t('store.mod.importedMany', { n: num(n) })
+      const text = [added, ...(r.errors ?? [])].filter(Boolean).join('\n')
+      return text ? { kind: r.errors?.length ? 'error' : 'info', text } : null
+    }
+    const name = q(r.name ?? t('store.theMod'))
+    if (r.deleted) return { kind: 'info', text: t('store.mod.deleted', { name }) }
+    if (r.enabled !== undefined) return { kind: 'info', text: r.enabled ? t('store.mod.enabled', { name }) : t('store.mod.disabled', { name }) }
+    return null
+  }
   if (p.kind === 'download') {
-    const d = (p.result ?? {}) as { name?: string; status?: string; note?: string }
+    const d = (p.result ?? {}) as { name?: string; status?: string; note?: string; kind?: string; enabled?: boolean }
     if (d.note) return { kind: 'info', text: d.note }
-    const name = q(d.name ?? t('store.thePack'))
+    if (d.kind === 'mod' && (d.status === 'added' || d.status === 'updated')) {
+      const name = q(d.name ?? t('store.theMod'))
+      if (d.status === 'updated') return { kind: 'info', text: d.enabled ? t('store.download.modUpdatedEnabled', { name }) : t('store.download.updated', { name }) }
+      return { kind: 'info', text: d.enabled ? t('store.download.modInstalledEnabled', { name }) : t('store.download.modAdded', { name }) }
+    }
+    const name = q(d.name ?? (d.kind === 'mod' ? t('store.theMod') : t('store.thePack')))
     if (d.status === 'updated') return { kind: 'info', text: t('store.download.updated', { name }) }
     if (d.status === 'linked') return { kind: 'info', text: t('store.download.linked', { name }) }
     if (d.status === 'up-to-date') return { kind: 'info', text: t('store.download.upToDate', { name }) }
     return { kind: 'info', text: t('store.download.added', { name }) }
   }
-  const r = (p.result ?? {}) as { captured?: string | null; errors?: string[] }
-  if (p.kind === 'clean')
-    return { kind: 'info', text: r.captured ? t('store.clean.restoredCaptured', { name: q(r.captured) }) : t('store.clean.restored') }
+  const r = (p.result ?? {}) as { captured?: string | null; errors?: string[]; mods?: number }
+  if (p.kind === 'clean') {
+    const restored = r.captured ? t('store.clean.restoredCaptured', { name: q(r.captured) }) : t('store.clean.restored')
+    return { kind: 'info', text: r.mods ? `${restored} ${t('store.clean.modsDisabled', { count: r.mods })}` : restored }
+  }
   if ((p.kind === 'apply' || p.kind === 'stash') && r.captured) return { kind: 'info', text: t('store.captured', { name: q(r.captured) }) }
   if (p.kind === 'import' && r.errors?.length) return { kind: 'error', text: r.errors.join('\n') }
   return null

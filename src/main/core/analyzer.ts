@@ -13,6 +13,7 @@ import {
   ext,
   isDocsDirName,
   isEnbFile,
+  isAllowedFiveMPath,
   isImage,
   isOptionalDirName,
   parent,
@@ -520,6 +521,41 @@ export function galleryOf(entries: PackFileEntry[], components: AnalyzedComponen
     })
     .slice(0, 24)
     .map((e) => e.rel)
+}
+
+/**
+ * Mod : seuls les dossiers mods, plugins, addons et citizen de FiveM.app peuvent recevoir ses fichiers. Les composants
+ * qui écriraient ailleurs (racine de GTA V : configuration ENB, DLL graphiques...) sont désactivés, avec un avertissement.
+ * Renvoie le nombre de composants écartés.
+ */
+export function restrictToFiveM(analysis: Pick<AnalysisResult, 'components' | 'warnings' | 'warningMsgs'>): number {
+  let dropped = 0
+  for (const c of analysis.components) {
+    if (!c.destination) continue
+    const outside = c.files.some((rel) => {
+      const d = fileDestination(c, rel)
+      return d !== null && (d.root !== 'fivem' || !isAllowedFiveMPath(d.path))
+    })
+    if (!outside) continue
+    c.destination = null
+    c.suggested = null
+    c.enabled = false
+    c.reasonMsg = c.kind === 'gta-root' ? textMsg('analyzer.reasons.modGtaRoot') : textMsg('analyzer.reasons.modOutside')
+    c.reason = tm(c.reasonMsg)
+    dropped++
+  }
+  // Avertissement global de l'analyse, inutile maintenant que ces composants sont écartés.
+  const installable = analysis.components.filter((c) => c.enabled && c.destination)
+  const keep = analysis.warningMsgs.map((m) => m.key !== NOTHING_INSTALLABLE)
+  analysis.warnings = analysis.warnings.filter((_, i) => keep[i])
+  analysis.warningMsgs = analysis.warningMsgs.filter((_, i) => keep[i])
+  const warn = (m: Msg): void => {
+    analysis.warningMsgs.push(m)
+    analysis.warnings.push(tmNested(m))
+  }
+  if (dropped) warn(textMsg('analyzer.warnings.modDropped', { count: dropped }))
+  if (!installable.length) warn(textMsg('analyzer.warnings.modNothingInstallable'))
+  return dropped
 }
 
 /** Calcule la liste finale (source → destination) des fichiers à installer. */

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { PackManagerApi } from '../shared/api'
-import type { AccountMe, TaskProgress, UpdateState } from '../shared/types'
+import type { AccountMe, MarketKind, TaskProgress, UpdateState } from '../shared/types'
 
 // Canaux dupliqués ici : un preload « sandbox » ne peut importer que le module electron.
 const IPC = {
@@ -45,6 +45,13 @@ const methods = [
   'trashScreenshots',
   'openScreenshots',
   'cleanGame',
+  'pickModFiles',
+  'importMods',
+  'modPreflight',
+  'setModEnabled',
+  'disableAllMods',
+  'deleteMod',
+  'openModFolder',
   'getGraphics',
   'saveGraphics',
   'restoreGraphics',
@@ -52,8 +59,10 @@ const methods = [
   'openPath',
   'packMenu',
   'confirm',
+  'popupMenu',
   'marketList',
   'marketTags',
+  'marketCategories',
   'marketFeatured',
   'marketDetail',
   'marketInstall',
@@ -112,17 +121,17 @@ api.onLanguage = (cb: (code: string) => void) => {
   return () => ipcRenderer.removeListener(IPC.language, h)
 }
 
-// Pack demandé par un lien du site : gardé s'il arrive avant que l'interface ne s'abonne (démarrage).
-const marketPackListeners = new Set<(id: string) => void>()
-let pendingMarketPack: string | null = null
-ipcRenderer.on(IPC.openMarketPack, (_e: unknown, id: string) => {
-  if (marketPackListeners.size) marketPackListeners.forEach((cb) => cb(id))
-  else pendingMarketPack = id
+// Pack ou mod demandé par un lien du site : gardé s'il arrive avant que l'interface ne s'abonne (démarrage).
+const marketPackListeners = new Set<(id: string, kind: MarketKind) => void>()
+let pendingMarketPack: { id: string; kind: MarketKind } | null = null
+ipcRenderer.on(IPC.openMarketPack, (_e: unknown, id: string, kind: MarketKind) => {
+  if (marketPackListeners.size) marketPackListeners.forEach((cb) => cb(id, kind))
+  else pendingMarketPack = { id, kind }
 })
-api.onOpenMarketPack = (cb: (id: string) => void) => {
+api.onOpenMarketPack = (cb: (id: string, kind: MarketKind) => void) => {
   marketPackListeners.add(cb)
   if (pendingMarketPack) {
-    cb(pendingMarketPack)
+    cb(pendingMarketPack.id, pendingMarketPack.kind)
     pendingMarketPack = null
   }
   return () => {

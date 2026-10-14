@@ -165,7 +165,7 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
           </dl>
 
           {gone && <p className="hint">{t('packDetail.gone')}</p>}
-          {pack.protected && <p className="hint">{t('common.protectedPack')}</p>}
+          {pack.protected && <p className="hint">{t(pack.kind === 'mod' ? 'common.protectedMod' : 'common.protectedPack')}</p>}
 
           <div className="side-links">
             {!pack.protected && <button onClick={() => void run(() => window.api.openPackFolder(pack.id))}>{t('packDetail.openFolder')}</button>}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { t } from 'i18next'
 import type { PackManifest, TaskProgress } from '@shared/types'
@@ -13,7 +13,8 @@ const isLabeled = (kind: TaskProgress['kind']): kind is LabeledTask => (TASK_LAB
 export function Progress({ task }: { task: TaskProgress }) {
   const { t } = useTranslation()
   const pct = task.total > 0 ? Math.min(100, Math.round((task.current / task.total) * 100)) : null
-  const label = isLabeled(task.kind) ? t(`progress.task.${task.kind}`) : null
+  // Mods : premier mot du titre, traduit par le processus principal (« Activation », « Désactivation »...).
+  const label = task.kind === 'mod' ? task.title.split(' ')[0] : isLabeled(task.kind) ? t(`progress.task.${task.kind}`) : null
   return (
     <div className="progress" title={task.phase}>
       {label && <span className="progress-label">{label}</span>}
@@ -34,7 +35,7 @@ export function Cover({ pack, rel }: { pack: PackManifest; rel?: string }) {
   const [failed, setFailed] = useState<string | null>(null)
   const src = rel ?? packImages(pack)[0]
   if (!src || failed === src) return <div className="cover-empty">{pack.name}</div>
-  return <img className="cover-img" src={mediaUrl(pack.id, src)} alt="" draggable={false} onError={() => setFailed(src)} />
+  return <img className="cover-img" src={mediaUrl(pack.id, src, pack.kind)} alt="" draggable={false} onError={() => setFailed(src)} />
 }
 
 /** Photo d'un compte (pm-media://avatar/...), ou son initiale s'il n'en a pas. */
@@ -83,5 +84,70 @@ export function RenameInput({ pack, onDone, className = 'rename' }: { pack: Pack
         if (e.key === 'Escape') onDone()
       }}
     />
+  )
+}
+
+/** Icônes des états vides (contour, 28 px). */
+const ICON_PATHS: Record<'pack' | 'mod' | 'search', ReactNode> = {
+  // Calques : un pack graphique.
+  pack: (
+    <>
+      <path d="M12 3 3 7.5 12 12l9-4.5z" />
+      <path d="m3 12 9 4.5 9-4.5" />
+      <path d="m3 16.5 9 4.5 9-4.5" />
+    </>
+  ),
+  // Pièce de puzzle : un mod.
+  mod: (
+    <path d="M9.5 3.5a2 2 0 0 1 4 0V5H17a1.5 1.5 0 0 1 1.5 1.5V10h1.5a2 2 0 0 1 0 4h-1.5v3.5A1.5 1.5 0 0 1 17 19h-3.5v-1.5a2 2 0 0 0-4 0V19H6a1.5 1.5 0 0 1-1.5-1.5V14H6a2 2 0 0 0 0-4H4.5V6.5A1.5 1.5 0 0 1 6 5h3.5z" />
+  ),
+  search: (
+    <>
+      <circle cx="10.5" cy="10.5" r="6" />
+      <path d="m15 15 5.5 5.5" />
+    </>
+  )
+}
+
+/**
+ * État vide d'une liste : icône, titre, explication courte et actions. `formats` : extensions acceptées, affichées en
+ * pastilles. `compact` : sans cadre (résultats de recherche).
+ */
+export function EmptyState({
+  icon,
+  title,
+  text,
+  formats,
+  compact = false,
+  children
+}: {
+  icon: keyof typeof ICON_PATHS
+  title: string
+  text?: ReactNode
+  formats?: string[]
+  compact?: boolean
+  children?: ReactNode
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className={`empty-panel ${compact ? 'is-compact' : ''}`}>
+      <div className="empty-icon" aria-hidden>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          {ICON_PATHS[icon]}
+        </svg>
+      </div>
+      <div className="empty-title">{title}</div>
+      {text && <p className="empty-text">{text}</p>}
+      {formats && (
+        <div className="empty-formats" aria-label={t('app.acceptedFormats')}>
+          {formats.map((f) => (
+            <span key={f} className="format-tag">
+              {f}
+            </span>
+          ))}
+        </div>
+      )}
+      {children && <div className="empty-actions">{children}</div>}
+    </div>
   )
 }

@@ -1,5 +1,5 @@
 import path from 'node:path'
-import type { AppState, HistoryEntry, Settings } from '@shared/types'
+import type { AppState, HistoryEntry, InstalledMod, Settings } from '@shared/types'
 import { tm } from '@shared/i18n'
 import { readJson, writeJsonAtomic } from '../util/fsx'
 
@@ -36,7 +36,28 @@ export function defaultSettings(dataDir: string): Settings {
   }
 }
 
-export const emptyState = (): AppState => ({ schema: 1, active: null, history: [] })
+export const emptyState = (): AppState => ({ schema: 1, active: null, mods: [], history: [] })
+
+/**
+ * État lu sur le disque, complété : un state.json d'avant les mods n'a pas de liste de mods, une entrée illisible est
+ * écartée (le mod reste dans la bibliothèque des mods, désactivé). Renvoie le même objet s'il n'y a rien à corriger.
+ */
+export function normalizeState(s: AppState): AppState {
+  const raw = (s as Partial<AppState>).mods
+  const valid = (m: InstalledMod): boolean => !!m && typeof m.id === 'string' && Array.isArray(m.files)
+  if (Array.isArray(raw) && raw.every(valid) && raw.every((m) => Array.isArray(m.shadowed) && Array.isArray(m.createdDirs)) && Array.isArray(s.history))
+    return s
+  const mods = (Array.isArray(raw) ? raw : []).filter(valid).map((m) => ({
+    ...m,
+    name: typeof m.name === 'string' ? m.name : m.id,
+    enabled: m.enabled === true,
+    appliedAt: m.appliedAt ?? null,
+    roots: m.roots ?? { fivem: '', gta: '' },
+    createdDirs: Array.isArray(m.createdDirs) ? m.createdDirs : [],
+    shadowed: Array.isArray(m.shadowed) ? m.shadowed : []
+  }))
+  return { ...s, active: s.active ?? null, mods, history: Array.isArray(s.history) ? s.history : [] }
+}
 
 /**
  * Ajoute une entrée à l'historique. Avec `msg`, le résumé est traduit à l'affichage ; `summary` (par défaut le texte

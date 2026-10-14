@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { MarketKind } from '@shared/types'
 import { useStore } from './store'
 import { Library } from './components/Library'
 import { PackDetail } from './components/PackDetail'
@@ -17,6 +18,12 @@ const SUPPORT_INVITE = 'rtBZAxqtsu'
 
 type Page = 'library' | 'market' | 'graphics' | 'cleanup' | 'account' | 'settings'
 
+/** Bibliothèque et Marketplace s'ouvrent sur les packs ; Packs et Mods s'affichent en dessous quand l'une est ouverte. */
+const SUB_NAV: { kind: MarketKind; label: 'packs' | 'mods' }[] = [
+  { kind: 'pack', label: 'packs' },
+  { kind: 'mod', label: 'mods' }
+]
+
 const NAV: Page[] = ['library', 'market', 'graphics', 'cleanup', 'settings']
 
 export function App() {
@@ -28,6 +35,10 @@ export function App() {
   const [marketStack, setMarketStack] = useState<MarketView[]>([])
   // Auteur choisi au-dessus de la liste des packs (null : tous les packs).
   const [marketAuthor, setMarketAuthor] = useState<string | null>(null)
+  // Packs graphiques ou mods : choisi dans la barre latérale, sous Bibliothèque et Marketplace.
+  const [catalog, setCatalog] = useState<MarketKind>('pack')
+  const where = useRef({ page, catalog })
+  where.current = { page, catalog }
   const [dragging, setDragging] = useState(false)
 
   // Glisser-déposer d'archives (ou de dossiers) n'importe où dans la fenêtre.
@@ -57,11 +68,17 @@ export function App() {
       const paths = Array.from(e.dataTransfer?.files ?? [])
         .map((f) => window.api.getPathForFile(f))
         .filter(Boolean)
-      if (paths.length) {
-        setPage('library')
-        setOpenPack(null)
-        void run(() => window.api.importPacks(paths))
-      }
+      if (!paths.length) return
+      // Un .rpf seul est un mod ; une archive déposée sur l'onglet Mods aussi.
+      const onMods = where.current.catalog === 'mod' && (where.current.page === 'library' || where.current.page === 'market')
+      const mods = paths.filter((p) => onMods || /\.rpf$/i.test(p))
+      const packs = paths.filter((p) => !mods.includes(p))
+      setPage('library')
+      setOpenPack(null)
+      setCatalog(packs.length ? 'pack' : 'mod')
+      // Une seule opération à la fois : les packs d'abord, sinon les mods.
+      if (packs.length) void run(() => window.api.importPacks(packs))
+      else void run(() => window.api.importMods(mods))
     }
     window.addEventListener('dragenter', onEnter)
     window.addEventListener('dragover', onOver)
@@ -75,13 +92,15 @@ export function App() {
     }
   }, [run])
 
-  // Lien « Installer via l'app » du site : fiche du pack dans la Marketplace, comme un clic sur sa carte.
+  // Lien « Installer via l'app » du site : fiche du pack (ou du mod) dans la Marketplace, comme un clic sur sa carte.
   useEffect(
     () =>
-      window.api.onOpenMarketPack((id) => {
+      window.api.onOpenMarketPack((id, kind) => {
         setPage('market')
         setOpenPack(null)
-        setMarketStack([{ kind: 'pack', id }])
+        setCatalog(kind)
+        setMarketAuthor(null)
+        setMarketStack([{ kind: 'pack', id, catalog: kind }])
       }),
     []
   )
@@ -89,6 +108,10 @@ export function App() {
   // Barre latérale affichée dès le premier rendu ; les pages attendent l'état de l'application.
   const detail = openPack ? overview?.library.find((p) => p.id === openPack) : null
   const games = overview?.games
+  const updates = overview?.market.updates.length ?? 0
+  // Mises à jour en ligne, par genre (sous la Bibliothèque).
+  const updatesOf = (kind: MarketKind): number =>
+    (kind === 'mod' ? (overview?.mods ?? []) : (overview?.library ?? [])).filter((p) => overview?.market.updates.includes(p.id)).length
   const gameProblem = !games ? null : !games.fivem.valid
       ? t('app.gameProblem.fivemMissing')
       : !games.gta.valid
@@ -96,8 +119,10 @@ export function App() {
         : games.gta.edition === 'enhanced'
           ? t('app.gameProblem.gtaEnhanced')
           : null
-  const go = (p: Page): void => {
+  const go = (p: Page, kind: MarketKind = 'pack'): void => {
     setPage(p)
+    setCatalog(kind)
+    setMarketAuthor(null)
     setOpenPack(null)
     setMarketStack([])
   }
@@ -108,6 +133,13 @@ export function App() {
   const openAuthor = (slug: string): void => {
     setPage('market')
     setMarketStack([{ kind: 'author', slug }])
+  }
+  /** Fiche Marketplace d'un pack (ou d'un mod) de la bibliothèque. */
+  const openMarketPack = (id: string, kind: MarketKind = 'pack'): void => {
+    setPage('market')
+    setOpenPack(null)
+    setCatalog(kind)
+    setMarketStack([{ kind: 'pack', id, catalog: kind }])
   }
 
   return (
@@ -120,11 +152,36 @@ export function App() {
           </span>
         </div>
         <nav>
-          {NAV.map((id) => (
-            <button key={id} className={`nav ${page === id ? 'is-selected' : ''}`} onClick={() => go(id)}>
-              {t(`app.nav.${id}`)}
-            </button>
-          ))}
+          {NAV.map((id) => {
+            const open = page === id && (id === 'library' || id === 'market')
+            return (
+              <div key={id} className="nav-group">
+                <button className={`nav ${open ? 'is-open' : page === id ? 'is-selected' : ''}`} aria-expanded={open || undefined} onClick={() => go(id)}>
+                  {t(`app.nav.${id}`)}
+                  {/* Packs et mods de la bibliothèque dont une nouvelle version est en ligne. */}
+                  {id === 'library' && !open && updates > 0 && (
+                    <span className="nav-badge" title={t('app.updatesAvailable', { count: updates })}>
+                      {updates}
+                    </span>
+                  )}
+                </button>
+                {open &&
+                  SUB_NAV.map((s) => {
+                    const count = id === 'library' ? updatesOf(s.kind) : 0
+                    return (
+                      <button key={s.kind} className={`nav nav-sub ${catalog === s.kind ? 'is-selected' : ''}`} onClick={() => go(id, s.kind)}>
+                        {t(`app.nav.${s.label}`)}
+                        {count > 0 && (
+                          <span className="nav-badge" title={t('app.updatesAvailable', { count })}>
+                            {count}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+              </div>
+            )
+          })}
         </nav>
         <div className="side-bottom">
           <UpdatePanel />
@@ -156,11 +213,17 @@ export function App() {
       <main className="layer">
         {overview && (
           <>
-            {page === 'library' && (detail ? <PackDetail pack={detail} onBack={() => setOpenPack(null)} /> : <Library onOpen={setOpenPack} />)}
+            {page === 'library' &&
+              (detail ? (
+                <PackDetail pack={detail} onBack={() => setOpenPack(null)} />
+              ) : (
+                <Library kind={catalog} onOpen={setOpenPack} onOpenMarket={openMarketPack} onBrowse={(k) => go('market', k)} />
+              ))}
             {page === 'market' && (
               <Marketplace
                 view={marketStack[marketStack.length - 1] ?? null}
                 depth={marketStack.length}
+                catalog={catalog}
                 onOpen={(v) => setMarketStack((s) => [...s, v])}
                 onBack={() => setMarketStack((s) => s.slice(0, -1))}
                 onOpenLocal={openLocal}
@@ -194,7 +257,7 @@ export function App() {
           </div>
         )}
       </main>
-      {dragging && <div className="drop">{t('app.drop.library')}</div>}
+      {dragging && <div className="drop">{catalog === 'mod' && (page === 'library' || page === 'market') ? t('app.drop.mods') : t('app.drop.library')}</div>}
     </div>
   )
 }

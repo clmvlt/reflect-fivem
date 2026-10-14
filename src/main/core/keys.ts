@@ -8,14 +8,15 @@
 import { randomBytes } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import type { MarketKind } from '@shared/types'
 import { KEY_SIZE } from './sealed'
 import { log } from '../util/log'
 
 export interface PackKeys {
   /** Clé locale (32 octets). */
   local(): Promise<Buffer>
-  /** Clé du paquet actuel d'un pack de la Marketplace, et l'identifiant de ce paquet. */
-  fetch(marketId: string): Promise<{ packageId: string; key: Buffer }>
+  /** Clé du paquet actuel d'un pack (ou d'un mod) de la Marketplace, et l'identifiant de ce paquet. */
+  fetch(marketId: string, kind: MarketKind): Promise<{ packageId: string; key: Buffer }>
 }
 
 /** Chiffrement propre au compte de l'utilisateur, fourni par le système (safeStorage d'Electron : DPAPI sous Windows). */
@@ -31,7 +32,7 @@ export class KeyRing implements PackKeys {
   constructor(
     private file: string,
     private system: SystemProtection,
-    private fetcher: (marketId: string) => Promise<{ packageId: string; key: Buffer }>
+    private fetcher: (marketId: string, kind: MarketKind) => Promise<{ packageId: string; key: Buffer }>
   ) {}
 
   local(): Promise<Buffer> {
@@ -43,8 +44,8 @@ export class KeyRing implements PackKeys {
     return this.key
   }
 
-  fetch(marketId: string): Promise<{ packageId: string; key: Buffer }> {
-    return this.fetcher(marketId)
+  fetch(marketId: string, kind: MarketKind): Promise<{ packageId: string; key: Buffer }> {
+    return this.fetcher(marketId, kind)
   }
 
   private async load(): Promise<Buffer> {

@@ -10,14 +10,30 @@
 // Pack protégé : chaque fichier est déchiffré directement à sa place dans le jeu (opération « unseal ») ; les réglages
 // modifiés en jeu et les fichiers générés sont chiffrés dans la bibliothèque. Retiré du jeu, il ne reste de lui aucun
 // fichier en clair sur le disque.
+//
+// Mods : plusieurs à la fois, en plus du pack actif et indépendants de lui (état : AppState.mods). Activer, désactiver
+// ou mettre à jour des mods est aussi une seule opération atomique (voir changeMods). Un mod ne remplace jamais le
+// fichier d'un autre mod ; il peut remplacer un fichier du pack actif, réinstallé depuis le pack quand le mod est retiré.
+// Changer de pack ne touche pas aux mods : leurs fichiers sont connus (ni rangés dans « Ajouts manuels », ni remplacés).
 
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { t } from 'i18next'
-import type { ActiveInstall, AppState, Destination, ForeignItem, GamesInfo, InstalledFile, RootId } from '@shared/types'
-import { msg, type Msg } from '@shared/i18n'
-import { formatBytes, formatNumber } from '@shared/intl'
+import type {
+  ActiveInstall,
+  AppState,
+  Destination,
+  ForeignItem,
+  GamesInfo,
+  InstalledFile,
+  InstalledMod,
+  ModPreflight,
+  RootId,
+  ShadowedFile
+} from '@shared/types'
+import { msg, tm, type Msg } from '@shared/i18n'
+import { formatBytes, formatNumber, quote } from '@shared/intl'
 import { resolveInstallMap } from './analyzer'
 import { parseVersion, reshadeAckLine, versionAtLeast } from './binary'
 import { executePlan, type ExecProgress, type Op, type Plan, type PlanResult } from './executor'
@@ -49,6 +65,8 @@ export type Report = (phase: string, current: number, total: number, detail?: st
 export interface InstallerCtx {
   jobsDir: string
   library: () => Library
+  /** Bibliothèque des mods (absente : mods indisponibles). */
+  modLibrary?: () => Library
   state: JsonStore<AppState>
   detectGames: () => Promise<GamesInfo>
   /** Enregistre une image (réduite) dans le dossier d'un pack ; renvoie son nom de fichier (cover-*.jpg). */
@@ -80,6 +98,30 @@ export interface SwitchResult {
   captured: string | null
   /** Pack retiré au passage. */
   removed: string | null
+  /** Nettoyage du jeu : nombre de mods désactivés. */
+  mods?: number
+}
+
+const isModified = (st: { size: number; mtimeMs: number }, f: InstalledFile): boolean => st.size !== f.size || Math.abs(st.mtimeMs - f.mtimeMs) > 1
+
+/** Dossiers parents de chaque fichier (du moins profond au plus profond). */
+function parentDirs(dests: Destination[]): Map<string, Destination> {
+  const out = new Map<string, Destination>()
+  for (const dest of dests) {
+    const parts = dest.path.split('/').slice(0, -1)
+    for (let i = 1; i <= parts.length; i++) {
+      const d: Destination = { root: dest.root, path: parts.slice(0, i).join('/') }
+      out.set(destKey(d), d)
+    }
+  }
+  return out
+}
+
+const byDepth = (a: Destination, b: Destination): number => a.path.split('/').length - b.path.split('/').length || a.path.localeCompare(b.path)
+
+function foreignMessage(paths: string[]): string {
+  const shown = paths.slice(0, 3).join(', ') + (paths.length > 3 ? '…' : '')
+  return t('installer.errors.modForeign', { count: paths.length, files: shown })
 }
 
 /** Erreur d'un plan qui a échoué ; {@link fallback} : message quand le plan n'en donne pas. */
@@ -122,9 +164,12 @@ export class Installer {
     if ((await runningGameProcesses()).length) throw new Error(t('installer.errors.gameRunning'))
   }
 
+  private get mods(): InstalledMod[] {
+    return this.state.mods ?? []
+  }
+
   /** Fichiers à installer ; un réglage modifié en jeu (dossier user/) remplace l'original. */
-  private async installItems(m: StoredManifest, content: PackContent): Promise<InstallItem[]> {
-    const lib = this.ctx.library()
+  private async installItems(m: StoredManifest, content: PackContent, lib = this.ctx.library()): Promise<InstallItem[]> {
     const sizes = new Map(m.files.map((f) => [f.rel, f.size]))
     const out: InstallItem[] = []
     for (const { rel, dest } of resolveInstallMap(m.components)) {
@@ -150,8 +195,7 @@ export class Installer {
    * Garde un réglage modifié en jeu. Pack protégé : chiffré tout de suite dans la bibliothèque (jamais en clair) ; sinon
    * copié par le plan.
    */
-  private async keepUserFile(pack: StoredManifest, dest: Destination, from: string, size: number, ops: Op[]): Promise<void> {
-    const lib = this.ctx.library()
+  private async keepUserFile(pack: StoredManifest, dest: Destination, from: string, size: number, ops: Op[], lib = this.ctx.library()): Promise<void> {
     if (pack.protection) await lib.sealUserFile(pack, dest, from)
     else ops.push({ t: 'copyOut', from, to: lib.userFile(pack.id, dest), size })
   }
@@ -184,7 +228,7 @@ export class Installer {
 
   /** Mods installés à la main, hors pack actif (pour la ligne « Installation actuelle »). `games` : détection déjà faite. */
   async foreignSummary(games?: GamesInfo): Promise<{ files: number; size: number } | null> {
-    const c = await collectForeign(games ?? (await this.ctx.detectGames()), this.state.active)
+    const c = await collectForeign(games ?? (await this.ctx.detectGames()), this.state.active, undefined, this.mods)
     return c.files.length ? { files: c.files.length, size: c.files.reduce((s, f) => s + f.size, 0) } : null
   }
 
@@ -221,9 +265,16 @@ export class Installer {
   /**
    * Remet le jeu d'origine en une seule opération : le pack installé est retiré et les mods installés
    * à la main sont rangés dans un pack « Ancienne installation » (réinstallable). Les captures d'écran restent.
+   * `withMods` : les mods de la bibliothèque des mods sont d'abord désactivés (sinon ils restent en place).
    */
-  async cleanGame(report: Report): Promise<SwitchResult> {
-    return this.switchTo(null, report)
+  async cleanGame(report: Report, withMods = false): Promise<SwitchResult> {
+    const enabled = this.mods.filter((m) => m.enabled)
+    if (!withMods || !enabled.length) return this.switchTo(null, report)
+    await this.changeMods({ remove: enabled, add: [] }, report, msg('removeMods'))
+    const games = await this.ctx.detectGames()
+    if (!this.state.active && !(await collectForeign(games, null, undefined, this.mods)).files.length)
+      return { installed: 0, captured: null, removed: null, mods: enabled.length }
+    return { ...(await this.switchTo(null, report)), mods: enabled.length }
   }
 
   /** Bascule vers un pack, ou vers le jeu d'origine (packId null), en une seule opération atomique. */
@@ -286,9 +337,29 @@ export class Installer {
     // Limite d'images par seconde choisie dans l'application : écrite dans l'enblocal.ini (ENB) du pack.
     if (manifest && content) items = await this.withFpsLimit(manifest, items, content)
 
+    // Fichiers déjà posés par un mod activé : le mod reste prioritaire. Le fichier du pack n'est pas installé ; il le sera
+    // quand le mod sera retiré.
+    const shadowed = new Map<string, ShadowedFile[]>()
+    if (manifest) {
+      const holders = this.modHolders()
+      const placed: InstallItem[] = []
+      for (const it of items) {
+        const mod = holders.get(destKey(it.dest))
+        if (!mod) {
+          placed.push(it)
+          continue
+        }
+        const file: InstalledFile = { root: it.dest.root, path: it.dest.path, size: it.size, mtimeMs: 0, linked: false, source: it.source }
+        shadowed.set(mod.id, [...(shadowed.get(mod.id) ?? []), { packId: manifest.id, file }])
+      }
+      items = placed
+    }
+    // Les notes de l'ancien pack sont oubliées : ses fichiers ne reviendront pas.
+    const modsAfter = (): InstalledMod[] => this.mods.map((m) => ({ ...m, shadowed: shadowed.get(m.id) ?? [] }))
+
     // 2) Mods installés à la main et fichiers qui seraient écrasés : rangés dans « Ancienne installation ».
-    const managed = managedSet(active)
-    const collection = await collectForeign(games, active)
+    const managed = managedSet(active, this.mods)
+    const collection = await collectForeign(games, active, undefined, this.mods)
     const overwritten: { root: RootId; rel: string; size: number }[] = []
     for (const it of items) {
       if (managed.has(managedKey(it.dest.root, it.dest.path))) continue
@@ -371,11 +442,11 @@ export class Installer {
             : captured
               ? msg('installer.history.cleanedCaptured', { captured })
               : msg('history.gameRestored')
-      await this.setState(pushHistory({ ...this.state, active: null }, { action: 'clean', ok: true, msg: summary }))
+      await this.setState(pushHistory({ ...this.state, active: null, mods: modsAfter() }, { action: 'clean', ok: true, msg: summary }))
       return { installed: 0, captured, removed: active?.packName ?? null }
     }
     const next: ActiveInstall = { id, packId: manifest.id, packName: manifest.name, appliedAt: new Date().toISOString(), roots, files, createdDirs, partial: false }
-    await this.setState(pushHistory({ ...this.state, active: next }, { action: 'apply', packName: manifest.name, ok: true, msg: countMsg('history.files', files.length) }))
+    await this.setState(pushHistory({ ...this.state, active: next, mods: modsAfter() }, { action: 'apply', packName: manifest.name, ok: true, msg: countMsg('history.files', files.length) }))
 
     if (manifest.reshadeVersion && versionAtLeast(parseVersion(manifest.reshadeVersion), [5]) && games.fivem.path) {
       await ensureReshadeAck(games.fivem.path).catch((e) => log.warn(`CitizenFX.ini non modifié : ${(e as Error).message}`))
@@ -418,8 +489,10 @@ export class Installer {
       await this.autoCover(pack.id, active.appliedAt, await this.ctx.detectGames())
     }
     const nextActive: ActiveInstall | null = failed.length ? { ...active, files: failed, partial: true } : null
+    // Pack retiré : les fichiers qu'il avait laissés aux mods ne reviendront pas.
+    const mods = nextActive ? this.mods : this.mods.map((m) => ({ ...m, shadowed: m.shadowed.filter((s) => s.packId !== active.packId) }))
     await this.setState(
-      pushHistory({ ...this.state, active: nextActive }, { action: 'remove', packName: active.packName, ok: !failed.length, ...(failed.length ? { summary: res.error ?? '' } : { msg: msg('history.removed') }) })
+      pushHistory({ ...this.state, active: nextActive, mods }, { action: 'remove', packName: active.packName, ok: !failed.length, ...(failed.length ? { summary: res.error ?? '' } : { msg: msg('history.removed') }) })
     )
     if (failed.length) throw new Error(t('installer.errors.removeFailed', { count: failed.length }))
     return { removed: fileOps.length }
@@ -427,7 +500,7 @@ export class Installer {
 
   /** Liste des éléments installés à la main (hors pack actif), captures d'écran et journaux compris. */
   async scanForeign(): Promise<ForeignItem[]> {
-    return scanForeign(await this.ctx.detectGames(), this.state.active)
+    return scanForeign(await this.ctx.detectGames(), this.state.active, this.mods)
   }
 
   /**
@@ -439,7 +512,7 @@ export class Installer {
     const lib = this.ctx.library()
     const games = await this.ctx.detectGames()
     const roots: Record<RootId, string> = { fivem: games.fivem.path ?? '', gta: games.gta.path ?? '' }
-    const collection = await collectForeign(games, this.state.active, selection)
+    const collection = await collectForeign(games, this.state.active, selection, this.mods)
     if (!collection.files.length) return { captured: null }
     const capId = lib.newCapturedId(PREVIOUS_INSTALL_NAME)
     const { ops, files } = this.captureOps(capId, roots, collection, [])
@@ -651,7 +724,7 @@ export class Installer {
       if (!save || !m || m.cover || m.gallery.length || !games.fivem.path) return
       const from = since ? Date.parse(since) : 0
       const shots: { file: string; t: number }[] = []
-      for (const s of await scanForeign(games, this.state.active)) {
+      for (const s of await scanForeign(games, this.state.active, this.mods)) {
         if (s.category !== 'screenshot' || s.isDir) continue
         const file = abs(games.fivem.path, s.path)
         const st = await fs.stat(file).catch(() => null)
@@ -667,6 +740,345 @@ export class Installer {
       }
     } catch (err) {
       log.warn(`Image automatique non définie : ${(err as Error).message}`)
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Mods
+
+  private modLib(): Library {
+    const lib = this.ctx.modLibrary?.()
+    if (!lib) throw new Error(t('installer.errors.modLibraryUnavailable'))
+    return lib
+  }
+
+  /** Fichiers posés par les mods activés (hors {@link except}) : destination → mod. */
+  private modHolders(except: Set<string> = new Set()): Map<string, InstalledMod> {
+    const out = new Map<string, InstalledMod>()
+    for (const m of this.mods) if (m.enabled && !except.has(m.id)) for (const f of m.files) out.set(destKey(f), m)
+    return out
+  }
+
+  private async modItems(m: StoredManifest): Promise<InstallItem[]> {
+    const lib = this.modLib()
+    return this.installItems(m, await lib.content(m), lib)
+  }
+
+  /** Raisons d'empêcher l'activation d'un mod : celles d'un pack, et un mod ne s'installe que dans FiveM.app. */
+  private async modBlockers(items: InstallItem[], games: GamesInfo): Promise<string[]> {
+    const out: string[] = []
+    if (!items.length) out.push(t('installer.errors.modEmpty'))
+    if (games.runningProcesses.length) out.push(t('installer.errors.gameRunning'))
+    if (!games.fivem.valid || !games.fivem.path) out.push(t('installer.errors.fivemMissing'))
+    if (games.gta.edition === 'enhanced') out.push(t('installer.errors.enhancedMod'))
+    if (items.some((i) => i.dest.root !== 'fivem' || !isAllowedFiveMPath(i.dest.path)))
+      out.push(t('installer.errors.modOutsideFolders'))
+    if (out.length) return out
+    const rp = games.fivem.path as string
+    const bytes = items.filter((it) => !this.canLink(it, rp)).reduce((s, it) => s + it.size, 0)
+    const free = bytes ? await freeSpace(rp) : null
+    if (free !== null && free < bytes + 200 * 1024 * 1024) out.push(t('installer.errors.noSpace', { size: formatBytes(bytes) }))
+    return out
+  }
+
+  /** Fichiers déjà présents dans le jeu que l'application ne connaît pas (installés à la main). */
+  private async foreignHits(items: InstallItem[], roots: Record<RootId, string>, known: Set<string>): Promise<string[]> {
+    const out: string[] = []
+    for (const it of items) {
+      if (known.has(destKey(it.dest))) continue
+      if (await fs.lstat(abs(roots[it.dest.root], it.dest.path)).catch(() => null)) out.push(it.dest.path)
+    }
+    return out
+  }
+
+  /** Ce que changerait l'activation d'un mod (rien n'est modifié). */
+  async modPreflight(modId: string): Promise<ModPreflight> {
+    const m = await this.modLib().get(modId)
+    const games = await this.ctx.detectGames()
+    const items = await this.modItems(m)
+    const blockers = await this.modBlockers(items, games)
+    const keys = new Set(items.map((it) => destKey(it.dest)))
+    const conflicts = new Map<string, { id: string; name: string; files: string[] }>()
+    const holders = this.modHolders(new Set([modId]))
+    for (const it of items) {
+      const other = holders.get(destKey(it.dest))
+      if (!other) continue
+      const c = conflicts.get(other.id) ?? { id: other.id, name: other.name, files: [] }
+      c.files.push(it.dest.path)
+      conflicts.set(other.id, c)
+    }
+    const active = this.state.active
+    const packFiles = (active?.files ?? []).filter((f) => keys.has(destKey(f))).map((f) => f.path)
+    if (!blockers.length) {
+      const roots: Record<RootId, string> = { fivem: games.fivem.path ?? '', gta: games.gta.path ?? '' }
+      const known = new Set([...holders.keys(), ...(active?.files ?? []).map(destKey), ...(this.mods.find((x) => x.id === modId)?.files ?? []).map(destKey)])
+      const foreign = await this.foreignHits(items, roots, known)
+      if (foreign.length) blockers.push(foreignMessage(foreign))
+    }
+    return { blockers, conflicts: [...conflicts.values()], pack: packFiles.length && active ? { name: active.packName, files: packFiles } : null }
+  }
+
+  /** Active (en désactivant au passage les mods de {@link disable}) ou désactive un mod. */
+  async setModEnabled(modId: string, enabled: boolean, report: Report, disable: string[] = []): Promise<{ name: string; enabled: boolean }> {
+    await this.assertGameClosed()
+    const entry = this.mods.find((m) => m.id === modId)
+    if (!enabled) {
+      if (entry?.enabled) await this.changeMods({ remove: [entry], add: [] }, report, msg('modDisable', { name: entry.name }))
+      return { name: entry?.name ?? modId, enabled: false }
+    }
+    const m = await this.modLib().get(modId)
+    if (entry?.enabled) return { name: m.name, enabled: true }
+    const remove = this.mods.filter((x) => x.enabled && disable.includes(x.id))
+    await this.changeMods({ remove, add: [m] }, report, msg('modEnable', { name: m.name }))
+    return { name: m.name, enabled: true }
+  }
+
+  /** Désactive tous les mods activés en une seule opération (serveurs en mode pur) : le pack actif reste en place. */
+  async disableAllMods(report: Report): Promise<{ disabled: number }> {
+    await this.assertGameClosed()
+    const enabled = this.mods.filter((m) => m.enabled)
+    if (enabled.length) await this.changeMods({ remove: enabled, add: [] }, report, msg('modDisableAll'))
+    return { disabled: enabled.length }
+  }
+
+  /**
+   * Nouvelle version d'un mod (déjà dans la bibliothèque des mods) : si l'ancienne était activée, ses fichiers sont
+   * remplacés en une seule opération et la nouvelle reste activée. L'ancienne quitte l'état (sa suppression de la
+   * bibliothèque revient à l'appelant).
+   */
+  async replaceMod(oldId: string, next: StoredManifest, report: Report): Promise<boolean> {
+    const entry = this.mods.find((m) => m.id === oldId)
+    const enabled = !!entry?.enabled
+    if (entry?.enabled) await this.changeMods({ remove: [entry], add: [next] }, report, msg('modUpdate', { name: next.name }))
+    await this.setState({ ...this.state, mods: this.mods.filter((m) => m.id !== oldId) })
+    return enabled
+  }
+
+  /** Retire le mod du jeu s'il est activé, puis l'oublie (sa suppression de la bibliothèque revient à l'appelant). */
+  async forgetMod(modId: string, report: Report): Promise<void> {
+    const entry = this.mods.find((m) => m.id === modId)
+    if (entry?.enabled) {
+      await this.assertGameClosed()
+      await this.changeMods({ remove: [entry], add: [] }, report, msg('remove', { name: entry.name }))
+    }
+    if (this.mods.some((m) => m.id === modId)) await this.setState({ ...this.state, mods: this.mods.filter((m) => m.id !== modId) })
+  }
+
+  /**
+   * Retire des mods du jeu et en installe d'autres en une seule opération atomique. Au moindre échec, tout est remis
+   * en place. Un mod n'écrase jamais le fichier d'un autre mod activé, ni un fichier installé à la main ; il peut
+   * remplacer un fichier du pack actif, noté dans `shadowed` et réinstallé depuis le pack quand plus aucun mod ne le
+   * remplace. {@link titleMsg} : titre de l'opération (clé sous installer.plan, avec ses paramètres).
+   */
+  private async changeMods(change: { remove: InstalledMod[]; add: StoredManifest[] }, report: Report, titleMsg: Msg): Promise<void> {
+    const titleKey = msg(`installer.plan.${titleMsg.key}`, titleMsg.params)
+    const title = tm(titleKey)
+    report(t('installer.phase.preparing'), 0, 1)
+    const lib = this.modLib()
+    const packLib = this.ctx.library()
+    const games = await this.ctx.detectGames()
+    if (games.runningProcesses.length) throw new Error(t('installer.errors.gameRunning'))
+    const roots: Record<RootId, string> = { fivem: games.fivem.path ?? '', gta: games.gta.path ?? '' }
+    const active = this.state.active
+    const pack = active ? await packLib.get(active.packId).catch(() => null) : null
+    const removing = new Set(change.remove.map((m) => m.id))
+
+    const adds: { m: StoredManifest; items: InstallItem[] }[] = []
+    for (const m of change.add) adds.push({ m, items: await this.modItems(m) })
+    const all = adds.flatMap((a) => a.items)
+    if (adds.length) {
+      const blockers = await this.modBlockers(all, games)
+      if (blockers.length) throw new Error(blockers[0])
+    }
+
+    // Conflits : un autre mod activé, ou un fichier installé à la main, au même endroit.
+    const holders = this.modHolders(removing)
+    const owner = new Map<string, string>()
+    for (const { m, items } of adds) {
+      for (const it of items) {
+        const k = destKey(it.dest)
+        const other = holders.get(k)?.name ?? (owner.get(k) !== m.name ? owner.get(k) : undefined)
+        if (other) throw new Error(t('installer.errors.modConflict', { name: quote(m.name), other: quote(other), path: it.dest.path }))
+        owner.set(k, m.name)
+      }
+    }
+    const activeFiles = new Map((active?.files ?? []).map((f) => [destKey(f), f]))
+    const known = new Set([...change.remove.flatMap((r) => r.files.map(destKey)), ...activeFiles.keys()])
+    const foreign = await this.foreignHits(all, roots, known)
+    if (foreign.length) throw new Error(foreignMessage(foreign))
+
+    const id = newId('mod-')
+    const ops: Op[] = []
+    const trashDirs = new Set<string>()
+    const toTrash = (rp: string, rel: string): void => {
+      const trash = path.join(rp, `${TRASH_PREFIX}${id}`)
+      trashDirs.add(trash)
+      ops.push({ t: 'stash', path: abs(rp, rel), to: abs(trash, rel), size: 0 })
+    }
+
+    // 1) Mods retirés : réglages modifiés en jeu gardés dans le mod, fichiers mis de côté.
+    const keptMods: StoredManifest[] = []
+    for (const r of change.remove) {
+      const m = await lib.get(r.id).catch(() => null)
+      for (const f of r.files) {
+        const target = abs(r.roots[f.root], f.path)
+        const st = await fs.stat(target).catch(() => null)
+        if (!st) continue
+        if (m && isModified(st, f)) {
+          await this.keepUserFile(m, f, target, st.size, ops, lib)
+          if (!keptMods.includes(m)) keptMods.push(m)
+        }
+        toTrash(r.roots[f.root], f.path)
+      }
+    }
+
+    // 2) Fichiers du pack actif : ceux que les mods retirés libèrent, ceux que les nouveaux mods remplacent.
+    const released = new Map<string, ShadowedFile>()
+    for (const r of change.remove) for (const s of r.shadowed) if (active && s.packId === active.packId) released.set(destKey(s.file), s)
+    const shadows = new Map<string, ShadowedFile[]>()
+    const pulled = new Set<string>()
+    let packKept = false
+    for (const { m, items } of adds) {
+      const list: ShadowedFile[] = []
+      for (const it of items) {
+        const k = destKey(it.dest)
+        const freed = released.get(k)
+        if (freed) {
+          // Déjà hors du jeu (mise à jour d'un mod) : reste noté pour la nouvelle version.
+          list.push(freed)
+          released.delete(k)
+          continue
+        }
+        const pf = activeFiles.get(k)
+        if (!pf || !active) continue
+        let file = pf
+        const target = abs(active.roots[pf.root], pf.path)
+        const st = await fs.stat(target).catch(() => null)
+        if (st) {
+          if (pack && isModified(st, pf)) {
+            await this.keepUserFile(pack, pf, target, st.size, ops)
+            packKept = true
+            file = { ...pf, source: path.relative(packLib.packDir(pack.id), packLib.userFile(pack.id, pf)) }
+          }
+          toTrash(active.roots[pf.root], pf.path)
+        }
+        list.push({ packId: active.packId, file })
+        pulled.add(k)
+      }
+      shadows.set(m.id, list)
+    }
+
+    // 3) Nouveaux mods : dossiers (du moins profond au plus profond), puis fichiers.
+    const dirKeys = parentDirs(all.map((it) => it.dest))
+    const mkdirIdx: { idx: number; dest: Destination }[] = []
+    for (const d of [...dirKeys.values()].sort(byDepth)) {
+      ops.push({ t: 'mkdir', path: abs(roots[d.root], d.path) })
+      mkdirIdx.push({ idx: ops.length - 1, dest: d })
+    }
+    const placeIdx: { idx: number; item: InstallItem; modId: string }[] = []
+    for (const { m, items } of adds) {
+      for (const it of items) {
+        ops.push(this.placeOp(it, roots[it.dest.root]))
+        placeIdx.push({ idx: ops.length - 1, item: it, modId: m.id })
+      }
+    }
+
+    // 4) Fichiers du pack que plus aucun mod ne remplace : réinstallés depuis le pack.
+    const restoreIdx: { idx: number; file: InstalledFile }[] = []
+    if (active) {
+      for (const s of released.values()) {
+        const src = pack ? await packLib.installSource(pack, s.file.source) : null
+        if (!src) {
+          log.warn(`Fichier de ${active.packName} non réinstallé (introuvable dans le pack) : ${s.file.path}`)
+          continue
+        }
+        const item: InstallItem = {
+          src: src.src,
+          sealed: src.sealed,
+          source: s.file.source,
+          dest: { root: s.file.root, path: s.file.path },
+          size: src.size,
+          fromUser: !/^content[\\/]/.test(s.file.source)
+        }
+        ops.push(this.placeOp(item, active.roots[s.file.root]))
+        restoreIdx.push({ idx: ops.length - 1, file: s.file })
+      }
+    }
+
+    // 5) Nettoyage : dossiers vidés des mods retirés, dossier temporaire (et ceux d'une opération interrompue).
+    const rmdirIdx: { idx: number; dest: Destination }[] = []
+    for (const r of change.remove) {
+      for (const d of [...r.createdDirs].sort((a, b) => byDepth(b, a))) {
+        ops.push({ t: 'rmdirIfEmpty', path: abs(r.roots[d.root], d.path) })
+        rmdirIdx.push({ idx: ops.length - 1, dest: d })
+      }
+    }
+    const allRoots = [...Object.values(roots), ...change.remove.flatMap((r) => Object.values(r.roots)), ...Object.values(active?.roots ?? {})].filter(Boolean)
+    for (const rp of new Set(allRoots))
+      for (const e of await fs.readdir(rp).catch(() => [] as string[])) if (e.startsWith(TRASH_PREFIX)) trashDirs.add(path.join(rp, e))
+    for (const t of trashDirs) ops.push({ t: 'rmTree', path: t, quiet: true })
+
+    const res = await this.runPlan({ id, title, mode: 'atomic', ops }, allRoots, report)
+    const names = [...change.remove.map((r) => r.name), ...change.add.map((m) => m.name)].join(', ')
+    if (!res.ok) {
+      await this.setState(pushHistory(this.state, { action: 'mod', packName: names, ok: false, ...failureSummary(res.error) }))
+      throw new Error(planError(res, t('installer.errors.operationFailed')))
+    }
+
+    // État : mods retirés désactivés, nouveaux mods activés avec leurs fichiers, fichiers du pack actif mis à jour.
+    const now = new Date().toISOString()
+    let mods: InstalledMod[] = this.mods.map((m) => (removing.has(m.id) ? { ...m, enabled: false, appliedAt: null, files: [], createdDirs: [], shadowed: [] } : m))
+    const leftDirs = rmdirIdx.filter((x) => res.results[x.idx]?.skipped).map((x) => x.dest)
+    for (const { m, items } of adds) {
+      const files: InstalledFile[] = placeIdx
+        .filter((p) => p.modId === m.id)
+        .map(({ idx, item }) => ({
+          root: item.dest.root,
+          path: item.dest.path,
+          size: res.results[idx]?.size ?? item.size,
+          mtimeMs: res.results[idx]?.mtimeMs ?? 0,
+          linked: !!res.results[idx]?.linked,
+          source: item.source
+        }))
+      const mine = parentDirs(items.map((it) => it.dest))
+      const createdDirs = mkdirIdx.filter((x) => res.results[x.idx]?.created && mine.has(destKey(x.dest))).map((x) => x.dest)
+      const entry: InstalledMod = { id: m.id, name: m.name, enabled: true, appliedAt: now, roots, files, createdDirs, shadowed: shadows.get(m.id) ?? [] }
+      mods = [...mods.filter((x) => x.id !== m.id), entry]
+    }
+    // Dossier créé par un mod retiré mais encore utilisé par un autre mod : supprimé quand celui-ci sera retiré.
+    for (const d of leftDirs) {
+      const heir = mods.find((m) => m.enabled && m.files.some((f) => f.root === d.root && f.path.toLowerCase().startsWith(`${d.path.toLowerCase()}/`)))
+      if (heir && !heir.createdDirs.some((x) => destKey(x) === destKey(d))) mods = mods.map((m) => (m === heir ? { ...m, createdDirs: [...m.createdDirs, d] } : m))
+    }
+    let nextActive = active
+    if (active && (pulled.size || restoreIdx.length)) {
+      const restored = restoreIdx.map(({ idx, file }) => ({
+        ...file,
+        size: res.results[idx]?.size ?? file.size,
+        mtimeMs: res.results[idx]?.mtimeMs ?? 0,
+        linked: !!res.results[idx]?.linked
+      }))
+      nextActive = { ...active, files: [...active.files.filter((f) => !pulled.has(destKey(f))), ...restored] }
+    }
+    // Titre (clé de installer.plan, imbriquée dans installer.history.mod* : retraduit à l'affichage) et fichiers du pack.
+    const counts = { ...titleMsg.params, title: titleMsg.key, pulled: pulled.size, restored: restoreIdx.length }
+    const summary =
+      pulled.size && restoreIdx.length
+        ? msg('installer.history.modBoth', counts)
+        : pulled.size
+          ? msg('installer.history.modPulled', counts)
+          : restoreIdx.length
+            ? msg('installer.history.modRestored', counts)
+            : titleKey
+    await this.setState(pushHistory({ ...this.state, active: nextActive, mods }, { action: 'mod', packName: names, ok: true, msg: summary }))
+
+    for (const m of keptMods) {
+      m.userConfigCount = await lib.countUserConfigs(m.id)
+      await lib.save(m)
+    }
+    if (pack && packKept) {
+      pack.userConfigCount = await packLib.countUserConfigs(pack.id)
+      await packLib.save(pack)
     }
   }
 
@@ -703,7 +1115,7 @@ export class Installer {
   async moveScreenshots(targetDir: string, report: Report): Promise<{ moved: number }> {
     const games = await this.ctx.detectGames()
     if (!games.fivem.valid || !games.fivem.path) throw new Error(t('installer.errors.fivemNotFound'))
-    const shots = (await scanForeign(games, this.state.active)).filter((i) => i.category === 'screenshot' && !i.isDir)
+    const shots = (await scanForeign(games, this.state.active, this.mods)).filter((i) => i.category === 'screenshot' && !i.isDir)
     if (!shots.length) return { moved: 0 }
     const taken = new Set((await fs.readdir(targetDir).catch(() => [] as string[])).map((n) => n.toLowerCase()))
     const ops: Op[] = []

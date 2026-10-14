@@ -129,3 +129,49 @@ describe('catalogue des mods', () => {
     expect(await market.status()).toEqual({ updates: [], gone: [] })
   })
 })
+
+describe('poids sur les performances', () => {
+  const library = { list: async () => [] } as unknown as Library
+  beforeEach(() => fetchMock.mockReset())
+  const summary = {
+    tier: 'heavy',
+    vramMb: 900,
+    effectsMs: 4,
+    worldMs: 1.5,
+    minVramMb: 3584,
+    recommendedVramMb: 5120,
+    minGpuClass: 2,
+    recommendedGpuClass: 4,
+    estimated: false
+  }
+
+  it('dans les cartes : analysé, pas encore analysé, ou API plus ancienne sans le champ', () => {
+    expect(toMarketPack(remote({ performance: summary }), undefined).performance).toMatchObject({ tier: 'heavy', effectsMs: 4 })
+    expect(toMarketPack(remote({ performance: null }), undefined).performance).toBeNull()
+    expect('performance' in toMarketPack(remote(), undefined)).toBe(false)
+  })
+
+  it('« Compatibles avec mon PC » : mémoire vidéo et classe envoyées seulement sur demande', async () => {
+    fetchMock.mockImplementation(async () => json(200, { items: [], page: 0, size: 24, total: 0, totalPages: 0 }))
+    const market = new Marketplace('https://api.test/api', 'cache', () => library)
+    await market.list({})
+    await market.list({ vram: 8192, gpuClass: 3 })
+    await market.list({ kind: 'mod', vram: 4096 })
+    const params = fetchMock.mock.calls.map((c) => new URL(c[0]).searchParams)
+    expect([params[0].get('vram'), params[0].get('gpuClass')]).toEqual([null, null])
+    expect([params[1].get('vram'), params[1].get('gpuClass')]).toEqual(['8192', '3'])
+    expect(new URL(fetchMock.mock.calls[2][0]).pathname).toBe('/api/mods')
+    expect([params[2].get('vram'), params[2].get('gpuClass')]).toEqual(['4096', null])
+  })
+
+  it('analyse détaillée ; null avec une API qui ne la fournit pas', async () => {
+    const id = 'aa665074-b72c-498a-b3b5-f90f78957a65'
+    const market = new Marketplace('https://api.test/api', 'cache', () => library)
+    fetchMock.mockResolvedValueOnce(json(200, { status: 'ready', tier: 'heavy', report: { summary, highlights: [{ impact: 'high', text: 'Lourd' }], options: [] } }))
+    const detail = await market.performance(id, 'mod')
+    expect(fetchMock.mock.calls[0][0]).toBe(`https://api.test/api/mods/${id}/performance`)
+    expect(detail?.report?.highlights).toEqual([{ impact: 'high', text: 'Lourd' }])
+    fetchMock.mockResolvedValueOnce(json(404, { detail: 'Introuvable' }))
+    expect(await market.performance(id)).toBeNull()
+  })
+})

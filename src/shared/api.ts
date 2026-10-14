@@ -21,6 +21,7 @@ import type {
   UpdateState
 } from './types'
 import type { GraphicsState, GraphicsTarget } from './graphics'
+import type { HardwareOverride, MachineProfile, PerformanceDetail } from './performance'
 
 export interface ComponentFile {
   rel: string
@@ -101,6 +102,16 @@ export interface PackManagerApi {
    */
   setFpsLimit(limit: number | null): Promise<number>
 
+  /**
+   * Configuration de la machine (carte graphique, mémoire, résolution) et modèle de comparaison de l'API : les packs y
+   * sont comparés dans l'interface, la configuration n'est jamais envoyée à l'API.
+   */
+  machineProfile(): Promise<MachineProfile>
+  /** Détecte de nouveau la carte graphique (sinon gardée en cache). */
+  refreshMachine(): Promise<MachineProfile>
+  /** Corrige à la main la classe de la carte ou sa mémoire vidéo (null : valeur détectée). */
+  setMachineOverride(override: HardwareOverride): Promise<MachineProfile>
+
   moveLibrary(newDir: string): Promise<string>
   openPath(p: string): Promise<void>
 
@@ -119,6 +130,8 @@ export interface PackManagerApi {
   /** Packs (ou mods) mis en avant (« du moment »), le plus récent en premier ; liste vide en cas d'erreur. */
   marketFeatured(kind?: MarketKind): Promise<MarketPack[]>
   marketDetail(idOrSlug: string, kind?: MarketKind): Promise<MarketPackDetail>
+  /** Analyse détaillée du poids d'un pack (ou d'un mod) sur les performances ; null si l'API ne la fournit pas. */
+  marketPerformance(id: string, kind?: MarketKind): Promise<PerformanceDetail | null>
   /**
    * Télécharge le pack (ou sa nouvelle version) et l'ajoute à la bibliothèque. Mod : ajouté à la bibliothèque des mods
    * puis activé s'il n'entre en conflit avec aucun autre mod (une mise à jour garde son état).
@@ -190,6 +203,12 @@ export interface MarketQuery {
   author?: string
   sort?: 'recent' | 'popular' | 'name'
   page?: number
+  /**
+   * « Compatibles avec mon PC » : packs dont les besoins minimaux en 1080p tiennent dans cette mémoire vidéo (Mo) et
+   * cette classe de carte (0 à 5), plus ceux pas encore analysés. Envoyés seulement quand l'utilisateur le demande.
+   */
+  vram?: number
+  gpuClass?: number
 }
 
 export interface MenuItem {

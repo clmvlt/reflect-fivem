@@ -22,6 +22,14 @@ export function parseGraphics(xml: string): { values: Record<string, string>; vi
   return { values, videoCard: card, resolution }
 }
 
+/** Résolution du jeu (ScreenWidth / ScreenHeight) ; null si elle manque ou n'est pas lisible. */
+export function screenSize(xml: string): { width: number; height: number } | null {
+  const value = (key: string): number => Number(new RegExp(`<${key}\\s+value="(\\d+)"\\s*/>`).exec(xml)?.[1] ?? NaN)
+  const width = value('ScreenWidth')
+  const height = value('ScreenHeight')
+  return width >= 320 && height >= 200 ? { width, height } : null
+}
+
 /** Valide et met au format du jeu (les nombres à virgule sont écrits avec 6 décimales). */
 export function normalizeValue(key: string, value: string): string {
   const def = GRAPHICS_SETTINGS.find((s) => s.key === key)

@@ -1,5 +1,6 @@
 // Types partagés entre le processus principal (Electron) et l'interface (React).
 
+import type { HardwareOverride, PackPerformance } from './performance'
 import type { Msg } from './i18n'
 
 /** Racines de destination gérées par l'application. */
@@ -204,6 +205,8 @@ export interface Settings {
   gtaPath: string | null
   /** Limite d'images par seconde, appliquée par l'ENB des packs : null ou absent = celle du pack, 0 = aucune limite. */
   fpsLimit?: number | null
+  /** Classe de carte graphique ou mémoire vidéo corrigées à la main (carte non reconnue). */
+  machine?: HardwareOverride
   /** Langue choisie dans les réglages de l'application sur ce poste (absent : jamais choisie). */
   locale?: string
 }
@@ -380,6 +383,11 @@ export interface MarketPack {
   authorProfile: AuthorRef | null
   /** « Pack du moment », mis en avant par l'admin du site (déjà en tête des listes de l'API). */
   featured: boolean
+  /**
+   * Poids sur les performances, estimé par l'API (null : pas encore analysé ; absent : API plus ancienne, rien à
+   * afficher).
+   */
+  performance?: PackPerformance | null
   /** Pack correspondant dans la bibliothèque (null s'il n'a pas été téléchargé). */
   localId: string | null
   /** La version en ligne diffère de celle de la bibliothèque. */

@@ -491,6 +491,36 @@
       "windowed": "Windowed"
     }
   },
+  "hardware": {
+    "auto": "Automatic detection",
+    "detecting": "Detecting graphics card…",
+    "gpu": {
+      "classLabel": "Graphics card class",
+      "classMobile": "{{label}} (laptop)",
+      "detectedAs": "Detected: {{label}}",
+      "detectedUnknown": "Detected: not recognized",
+      "notDetected": "Not detected",
+      "title": "Graphics card",
+      "unrecognized": "not recognized: choose its class"
+    },
+    "hint": "Used to estimate whether a pack will run well on your PC. This information stays on your PC: only the Marketplace’s “Compatible with my PC” filter sends the video memory and card class, when you turn it on.",
+    "manual": "set manually",
+    "ram": "System memory",
+    "redetect": "Detect again",
+    "resolution": {
+      "display": "Main display (game settings not found)",
+      "game": "Game settings",
+      "title": "Resolution",
+      "unknown": "Unknown: 1080p by default"
+    },
+    "title": "My setup",
+    "vram": {
+      "detected": "Detected: {{size}}",
+      "title": "Video memory",
+      "unknown": "Unknown",
+      "wmi": "read by WMI (capped at {{limit}})"
+    }
+  },
   "history": {
     "cacheFreed": "{{size}} freed",
     "captured_one": "{{n}} file stored",
@@ -767,6 +797,7 @@
   "marketplace": {
     "action": {
       "download": "Download",
+      "downloadAnyway": "Download anyway",
       "inLibrary": "In library",
       "newVersion": "New version",
       "update": "Update"
@@ -794,6 +825,11 @@
     "back": "‹ Back",
     "backToList": "‹ Marketplace",
     "by": "by <author></author>",
+    "compatible": {
+      "help": "Only what should run on your PC at your resolution (estimate). For this filter, your graphics card’s video memory and class are sent to the Marketplace.",
+      "label": "Compatible with my PC",
+      "undetected": "Your graphics card could not be detected: enter it in Graphics › My setup."
+    },
     "detail": {
       "category": "Category",
       "description": "Description",
@@ -811,6 +847,8 @@
     "empty": {
       "byAuthorMod": "This author hasn’t published any mods.",
       "byAuthorPack": "This author hasn’t published any packs.",
+      "compatibleMod": "No mods compatible with your PC yet.",
+      "compatiblePack": "No packs compatible with your PC yet.",
       "noMatchMod": "No mods match this search.",
       "noMatchPack": "No packs match this search.",
       "noneMod": "No mods published yet.",
@@ -825,6 +863,8 @@
       "packs_other": "Featured packs",
       "sub": "picked by the team"
     },
+    "hidden_one": "1 more is hidden on this page: too heavy for your PC at your resolution.",
+    "hidden_other": "{{n}} more are hidden on this page: too heavy for your PC at your resolution.",
     "mods_one": "{{n}} mod",
     "mods_other": "{{n}} mods",
     "packs_one": "{{n}} pack",
@@ -871,6 +911,7 @@
     "gone": "Removed from the Marketplace",
     "import": "Import a mod…",
     "install": "Install",
+    "installAnyway": "Install anyway",
     "menu": {
       "hideFiles": "Hide files",
       "market": "View page",
@@ -911,6 +952,7 @@
       "validSigned_other": "Valid, including {{n}} signed by Cfx."
     },
     "content": {
+      "costTitle": "Estimated extra cost on your PC if installed (frame time, video memory)",
       "dontInstall": "Don't install",
       "files_one": "{{n}} file",
       "files_other": "{{n}} files",
@@ -941,6 +983,7 @@
     },
     "gone": "This pack is no longer available on the Marketplace. Your copy remains usable.",
     "install": "Install",
+    "installAnyway": "Install anyway",
     "installed": "Installed",
     "media": {
       "choose": "Choose an image…",
@@ -956,6 +999,83 @@
     "updateAvailable": "New version on the Marketplace.",
     "userConfigs_one": "{{n}} setting changed in game, reinstalled with the pack.",
     "userConfigs_other": "{{n}} settings changed in game, reinstalled with the pack."
+  },
+  "performance": {
+    "confirm": {
+      "message": "{{reasons}}\n\nThis is an estimate: you can install it anyway and lower your graphics settings.",
+      "title": "{{name}} may be too heavy for your PC"
+    },
+    "details": {
+      "sourceMod": "Estimated from the mod’s files.",
+      "sourceModPartial": "Estimated from the mod’s files, some of them encrypted.",
+      "sourcePack": "Estimated from the pack’s files.",
+      "sourcePackPartial": "Estimated from the pack’s files, some of them encrypted.",
+      "summary": "Estimate details",
+      "vram": "Video memory: {{min}} minimum.",
+      "vramWithCard": "Video memory: {{min}} minimum, your card has {{card}}."
+    },
+    "facts": {
+      "onYourPc": "On your PC"
+    },
+    "fps": {
+      "about": "≈ {{value}} FPS",
+      "over": "over {{value}} FPS"
+    },
+    "gpuClass": {
+      "level0": {
+        "examples": "Intel UHD / Iris Xe, Radeon Vega 3 to 11",
+        "label": "Integrated graphics"
+      },
+      "level1": {
+        "label": "Entry level"
+      },
+      "level2": {
+        "label": "Older mid-range"
+      },
+      "level3": {
+        "label": "Mid-range"
+      },
+      "level4": {
+        "label": "High end"
+      },
+      "level5": {
+        "examples": "RTX 3080, RTX 4070 and up, RX 6800, RX 7800 XT, RX 9070",
+        "label": "Enthusiast"
+      }
+    },
+    "option": {
+      "negligible": "negligible cost"
+    },
+    "reasons": {
+      "belowPlayable": "Under {{fps}} frames per second estimated at {{resolution}}.",
+      "belowTarget": "Between {{min}} and {{max}} frames per second estimated at {{resolution}}.",
+      "gpuUnknown": "Graphics card not recognized: only video memory is compared.",
+      "notAnalyzed": "Not analyzed yet.",
+      "unknown": "Your graphics card couldn’t be detected: set it in Graphics › My setup.",
+      "vramShort": "Not enough video memory: {{needed}} required, your card has {{card}}.",
+      "vramTight": "Video memory is tight: {{needed}} recommended, your card has {{card}}.",
+      "vramUnknown": "Video memory unknown: only the card’s power is compared."
+    },
+    "tier": {
+      "extreme": "Very heavy",
+      "heavy": "Heavy",
+      "light": "Light",
+      "medium": "Medium"
+    },
+    "title": {
+      "fps": "{{fps}} (estimate)",
+      "tier": "Weight: {{tier}}"
+    },
+    "units": {
+      "ms": "{{value}} ms"
+    },
+    "verdict": {
+      "notAnalyzed": "Not analyzed",
+      "playable": "Playable",
+      "smooth": "Smooth",
+      "tooHeavy": "Too heavy",
+      "unknown": "PC not recognized"
+    }
   },
   "progress": {
     "percent": "{{value}}%",
@@ -1002,8 +1122,10 @@
       "graphicsFileMissingFirstRun": "Settings file not found. Launch the game once first.",
       "invalidAddress": "Invalid address.",
       "invalidFpsLimit": "Invalid limit: choose between {{min}} and {{max}} frames per second.",
+      "invalidGpuClass": "Invalid graphics card class.",
       "invalidInvite": "Invalid invite.",
       "invalidLink": "Invalid link.",
+      "invalidVram": "Invalid video memory: enter a value between {{min}} and {{max}}.",
       "libraryAlreadyThere": "The packs are already in this folder.",
       "libraryInsideCurrent": "Choose a folder outside the current folder.",
       "noActivePack": "No pack installed.",

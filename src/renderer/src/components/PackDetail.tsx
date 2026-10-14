@@ -9,6 +9,8 @@ import { asiBuildText, LEVEL_LABEL, levelOf, type Level } from '@shared/insights
 import { Cover, packMenuAction, Progress, RenameInput } from './common'
 import { Gallery } from './Gallery'
 import { Markdown } from './Markdown'
+import { msText, optionCostText, PerfFacts, usePerfConfirm, usePerformance, usePerformanceDetail } from './Performance'
+import { costOnMachine, installedPerformance, optionFor, presetFor } from '@shared/performance'
 
 /** Destinations proposées (évaluées à l'affichage : libellé « Ne pas installer » traduit). */
 const destinations = (): { key: string; label: string; dest: Destination | null }[] => [
@@ -27,6 +29,8 @@ const labelOf = (d: Destination): string => `${d.root === 'fivem' ? 'FiveM' : 'G
 export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () => void }) {
   const { t } = useTranslation()
   const { overview, task, run } = useStore()
+  const perfCtx = usePerformance()
+  const confirmHeavy = usePerfConfirm()
   const [renaming, setRenaming] = useState(false)
   const [fetched, setFetched] = useState<{ marketId: string; youtubeId: string | null } | null>(null)
   const marketId = pack.marketplace?.id
@@ -44,6 +48,8 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
     }
   }, [marketId, pack.youtubeId])
   const video = pack.youtubeId !== undefined ? pack.youtubeId : fetched && fetched.marketId === marketId ? fetched.youtubeId : null
+  // Pack de la Marketplace : son analyse, pour le comparer à la machine avec le preset et les options choisis.
+  const perfDetail = usePerformanceDetail(pack.marketplace && pack.marketplace.kind !== 'mod' ? pack.marketplace.id : null, 'pack')
 
   if (!overview) return null
   const active = overview.state.active?.packId === pack.id
@@ -57,6 +63,23 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
   const updateAvailable = overview.market.updates.includes(pack.id)
   const gone = overview.market.gone.includes(pack.id)
   const downloading = task?.kind === 'download' && market && task.detail === market.id ? task : null
+  const report = perfDetail?.report ?? null
+  // undefined : rien à montrer (pas de fiche, API plus ancienne, analyse en cours de chargement) ; null : pas analysé.
+  const installedPerf =
+    perfDetail === undefined || perfDetail === null
+      ? undefined
+      : report
+        ? installedPerformance(report, { preset: pack.reshadePreset, components: installable.map((c) => c.source) })
+        : null
+  /** Coût d'un preset ReShade sur la machine (null s'il n'est pas dans l'analyse). */
+  const presetCost = (rel: string): string => {
+    const preset = report && perfCtx ? presetFor(report, rel) : null
+    return preset && perfCtx ? ` (+${msText(costOnMachine(perfCtx.profile.model, perfCtx.machine, preset.costMs))})` : ''
+  }
+  const install = async (): Promise<void> => {
+    if (!(await confirmHeavy({ name: pack.name, kind: 'pack', performance: installedPerf }, t('packDetail.installAnyway')))) return
+    await run(() => window.api.applyPack(pack.id))
+  }
 
   return (
     <div className="page">
@@ -119,7 +142,7 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
                 </button>
               </>
             ) : (
-              <button className="primary wide" onClick={() => void run(() => window.api.applyPack(pack.id))} disabled={!!task || !installable.length}>
+              <button className="primary wide" onClick={() => void install()} disabled={!!task || !installable.length}>
                 {t('packDetail.install')}
               </button>
             )}
@@ -151,17 +174,20 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
                       {pack.reshadePresets!.map((p) => (
                         <option key={p} value={p}>
                           {p.split('/').pop()!.replace(/\.ini$/i, '')}
+                          {presetCost(p)}
                         </option>
                       ))}
                     </select>
                   ) : (
                     <span className="ellipsis" title={t('packDetail.facts.presetAuto')}>
                       {pack.reshadePresets![0].split('/').pop()!.replace(/\.ini$/i, '')}
+                      {presetCost(pack.reshadePresets![0])}
                     </span>
                   )}
                 </dd>
               </>
             )}
+            <PerfFacts perf={installedPerf} />
           </dl>
 
           {gone && <p className="hint">{t('packDetail.gone')}</p>}
@@ -204,7 +230,17 @@ export function PackDetail({ pack, onBack }: { pack: PackManifest; onBack: () =>
       </div>
       <ul className="list">
         {pack.components.map((c) => (
-          <ComponentRow key={c.id} packId={pack.id} c={c} locked={active || !!task} />
+          <ComponentRow
+            key={c.id}
+            packId={pack.id}
+            c={c}
+            locked={active || !!task}
+            cost={(() => {
+              // Dossier optionnel analysé : son surcoût, compté dans le verdict quand il est activé.
+              const o = report && perfCtx ? optionFor(report, c.source) : null
+              return o && perfCtx ? optionCostText(perfCtx, o.summary) : null
+            })()}
+          />
         ))}
       </ul>
       {active && <p className="hint">{t('packDetail.content.lockedHint')}</p>}
@@ -259,7 +295,7 @@ function Compatibility({ insights, build }: { insights: Insight[]; build: number
   )
 }
 
-function ComponentRow({ packId, c, locked }: { packId: string; c: PackComponent; locked: boolean }) {
+function ComponentRow({ packId, c, locked, cost }: { packId: string; c: PackComponent; locked: boolean; cost: string | null }) {
   const { t } = useTranslation()
   const { run } = useStore()
   const [files, setFiles] = useState<ComponentFile[] | null>(null)
@@ -305,6 +341,7 @@ function ComponentRow({ packId, c, locked }: { packId: string; c: PackComponent;
                   : c.optional
                     ? ` · ${t('packDetail.content.optional')}`
                     : ''}
+              {cost && <span title={t('packDetail.content.costTitle')}> · {cost}</span>}
             </span>
           </span>
         </button>

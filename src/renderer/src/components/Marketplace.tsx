@@ -8,6 +8,8 @@ import { Gallery } from './Gallery'
 import { Markdown } from './Markdown'
 import { Avatar, EmptyState, Progress } from './common'
 import { categoryLabel, localMod, ModMarketAction, useModCategories } from './Mods'
+import { PerfBadge, PerfDetails, PerfFacts, usePerfConfirm, usePerformance, type PerfContext } from './Performance'
+import { estimate, type PackPerformance } from '@shared/performance'
 
 /** Vue ouverte dans la Marketplace : fiche d'un pack (ou d'un mod, catalog) ou page d'un auteur. */
 export type MarketView = { kind: 'pack'; id: string; catalog?: MarketKind } | { kind: 'author'; slug: string }
@@ -99,6 +101,44 @@ function AuthorStrip({ authors, author, catalog, onAuthor }: { authors: AuthorSu
   )
 }
 
+const COMPATIBLE_KEY = 'market.compatible'
+
+/** « Compatibles avec mon PC » : choix gardé d'un lancement à l'autre (sur ce poste seulement). */
+function useCompatibleFilter(): [boolean, (on: boolean) => void] {
+  const [on, setOn] = useState(() => {
+    try {
+      return localStorage.getItem(COMPATIBLE_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const set = useCallback((next: boolean) => {
+    setOn(next)
+    try {
+      localStorage.setItem(COMPATIBLE_KEY, next ? '1' : '0')
+    } catch {
+      /* stockage indisponible : choix gardé jusqu'à la fermeture */
+    }
+  }, [])
+  return [on, set]
+}
+
+/**
+ * Filtre « Compatibles avec mon PC » : l'API garde les packs dont les besoins minimaux en 1080p tiennent sur la machine
+ * (mémoire vidéo et classe de la carte, envoyées seulement dans ce cas), puis ceux qui restent trop lourds à la
+ * résolution de l'utilisateur sont masqués ici. Null si la machine n'est pas connue.
+ */
+function compatibleQuery(ctx: PerfContext | null): { vram?: number; gpuClass?: number; keep: (item: MarketPack) => boolean } | null {
+  if (!ctx) return null
+  const m = ctx.machine
+  if (m.gpuClass === null && m.vramMb === null) return null
+  return {
+    vram: m.vramMb ?? undefined,
+    gpuClass: m.gpuClass ?? undefined,
+    keep: (item) => estimate(ctx.profile.model, m, item.performance).verdict !== 'too-heavy'
+  }
+}
+
 /** Recherche lancée 300 ms après la dernière frappe. */
 function useSearch(current: string | undefined, apply: (q: string) => void): [string, (q: string) => void] {
   const [search, setSearch] = useState(current ?? '')
@@ -153,7 +193,15 @@ function MarketList({
   const [categories, setCategories] = useState<MarketCategory[]>([])
   const [authors, setAuthors] = useState<AuthorSummary[]>([])
   const [featured, setFeatured] = useState<MarketPack[]>([])
-  const { page, error, loading, reload } = useMarketPage({ ...query, author: author ?? undefined })
+  const perf = usePerformance()
+  const [compatible, setCompatible] = useCompatibleFilter()
+  const compat = compatibleQuery(perf)
+  const filter = compatible && compat ? compat : null
+  const { page, error, loading, reload } = useMarketPage({
+    ...query,
+    author: author ?? undefined,
+    ...(filter ? { vram: filter.vram, gpuClass: filter.gpuClass } : {})
+  })
   const [search, setSearch] = useSearch(
     query.q,
     useCallback((q: string) => setQuery((old) => ({ ...old, q, page: 0 })), [])
@@ -178,6 +226,7 @@ function MarketList({
     onAuthor(slug)
   }
   const searched = !!(query.q || query.tag || query.category)
+  const filtered = searched || !!filter
   const total = page ? t(mods ? 'marketplace.mods' : 'marketplace.packs', { count: page.total, n: num(page.total) }) : ''
 
   return (
@@ -192,9 +241,22 @@ function MarketList({
           <option value="popular">{t('marketplace.sort.popular')}</option>
           <option value="name">{t('marketplace.sort.name')}</option>
         </select>
+        <label className="switch compat-switch" title={compat ? t('marketplace.compatible.help') : t('marketplace.compatible.undetected')}>
+          <input
+            type="checkbox"
+            checked={!!filter}
+            disabled={!compat}
+            onChange={(e) => {
+              setCompatible(e.target.checked)
+              setQuery((old) => ({ ...old, page: 0 }))
+            }}
+          />
+          <span className="switch-track" />
+          <span className="switch-text">{t('marketplace.compatible.label')}</span>
+        </label>
       </header>
       {/* Du moment : seulement sur la liste complète, sans recherche ni filtre. */}
-      {featured.length > 0 && !searched && !author && <FeaturedBanner items={featured} library={overview.library} onOpen={onOpen} onOpenLocal={onOpenLocal} />}
+      {featured.length > 0 && !filtered && !author && <FeaturedBanner items={featured} library={overview.library} onOpen={onOpen} onOpenLocal={onOpenLocal} />}
       <AuthorStrip authors={authors} author={author} catalog={catalog} onAuthor={chooseAuthor} />
       {selected && (
         <div className="author-filter">
@@ -243,8 +305,11 @@ function MarketList({
         reload={reload}
         current={query.page ?? 0}
         onPage={(p) => setQuery({ ...query, page: p })}
+        keep={filter?.keep}
         empty={
-          searched
+          filter && !searched
+            ? t(mods ? 'marketplace.empty.compatibleMod' : 'marketplace.empty.compatiblePack')
+            : filtered
             ? t(mods ? 'marketplace.empty.noMatchMod' : 'marketplace.empty.noMatchPack')
             : author
               ? t(mods ? 'marketplace.empty.byAuthorMod' : 'marketplace.empty.byAuthorPack')
@@ -266,6 +331,7 @@ function PackGrid({
   current,
   onPage,
   empty,
+  keep,
   onOpen,
   onOpenLocal
 }: Nav & {
@@ -276,6 +342,8 @@ function PackGrid({
   current: number
   onPage: (page: number) => void
   empty: string
+  /** Filtre local (« Compatibles avec mon PC ») : les autres éléments de la page sont masqués. */
+  keep?: (item: MarketPack) => boolean
 }) {
   const { overview, task } = useStore()
   const { t } = useTranslation()
@@ -290,11 +358,20 @@ function PackGrid({
       </div>
     )
   if (!page) return loading ? <p className="muted">{t('common.loading')}</p> : null
-  if (page.items.length === 0) return <EmptyState icon="search" title={empty} compact />
+  const items = keep ? page.items.filter(keep) : page.items
+  const hidden = page.items.length - items.length
+  const hiddenNote = hidden > 0 && <p className="hint hidden-note">{t('marketplace.hidden', { count: hidden, n: num(hidden) })}</p>
+  if (items.length === 0 && page.totalPages <= 1)
+    return (
+      <EmptyState icon="search" title={empty} compact>
+        {hiddenNote}
+      </EmptyState>
+    )
   return (
     <>
+      {hiddenNote}
       <div className="grid">
-        {page.items.map((item) => (
+        {items.map((item) => (
           <MarketCard key={item.id} item={item} library={overview.library} task={task} onOpen={onOpen} onOpenLocal={onOpenLocal} />
         ))}
       </div>
@@ -439,6 +516,9 @@ function MarketCard({
           {item.author && others && ' · '}
           {others}
         </div>
+        <div className="meta meta-row">
+          <PerfBadge perf={item.performance} />
+        </div>
         <div className="card-foot" onClick={(e) => e.stopPropagation()}>
           {mine ? (
             <Progress task={mine} />
@@ -471,7 +551,7 @@ function MarketAction({
   onOpenLocal,
   wide = false
 }: {
-  item: { id: string; sha256: string; kind: MarketKind; name: string }
+  item: { id: string; sha256: string; kind: MarketKind; name: string; performance?: PackPerformance | null }
   library: PackManifest[]
   task: TaskProgress | null
   onOpenLocal: (id: string) => void
@@ -479,9 +559,14 @@ function MarketAction({
 }) {
   const { run } = useStore()
   const { t } = useTranslation()
+  const confirmHeavy = usePerfConfirm()
   if (item.kind === 'mod') return <ModMarketAction item={item} wide={wide} />
   const { local, update } = localState(item, library)
-  const install = (): void => void run(() => window.api.marketInstall(item.id))
+  const install = async (): Promise<void> => {
+    // Nouvelle version d'un pack déjà choisi : pas de nouvelle confirmation.
+    if (!update && !(await confirmHeavy(item, t('marketplace.action.downloadAnyway')))) return
+    await run(() => window.api.marketInstall(item.id))
+  }
   if (local && !update)
     return (
       <>
@@ -496,7 +581,7 @@ function MarketAction({
     <>
       {update && !wide && <span className="accent-text small">{t('marketplace.action.newVersion')}</span>}
       <div className="spacer" />
-      <button className={`primary ${wide ? 'wide' : ''}`} onClick={install} disabled={!!task}>
+      <button className={`primary ${wide ? 'wide' : ''}`} onClick={() => void install()} disabled={!!task}>
         {update ? t('marketplace.action.update') : t('marketplace.action.download')}
       </button>
     </>
@@ -609,7 +694,9 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal }: Nav & { id: st
                 <dd>{pack.tags.join(', ')}</dd>
               </>
             )}
+            <PerfFacts perf={pack.performance} />
           </dl>
+          <PerfDetails id={pack.id} kind={pack.kind} perf={pack.performance} />
           {/* Le site n'a pas encore de page pour les mods. */}
           {!mod && (
             <div className="side-links">

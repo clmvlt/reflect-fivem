@@ -15,6 +15,7 @@ import {
 import { formatNumber } from '@shared/intl'
 import { useStore } from '../store'
 import { num, q } from '../lib/format'
+import { MachinePanel } from './Performance'
 
 function displayRange(def: GraphicsSettingDef, v: string): string {
   const n = Number(v)
@@ -65,6 +66,7 @@ export function Graphics() {
         </header>
         <p className="empty">{t('graphics.notFound')}</p>
         <FpsLimit />
+        <MachinePanel />
       </div>
     )
 
@@ -131,6 +133,7 @@ export function Graphics() {
       </div>
 
       <FpsLimit />
+      <MachinePanel />
 
       {GRAPHICS_GROUPS.map((group) => {
         const defs = GRAPHICS_SETTINGS.filter((d) => d.group === group && draft[d.key] !== undefined)

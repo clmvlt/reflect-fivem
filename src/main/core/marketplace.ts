@@ -32,6 +32,7 @@ import type {
 } from '@shared/types'
 import { MOD_GONE, PACK_GONE, type AuthorQuery, type MarketQuery } from '@shared/api'
 import { formatBytes as displayBytes } from '@shared/intl'
+import { parsePackPerformance, parsePerformanceDetail, type PerformanceDetail } from '@shared/performance'
 import { ApiError, toAuthorRef } from './account'
 import { languageFetch } from './http'
 import type { Report } from './installer'
@@ -73,6 +74,8 @@ export interface RemoteSummary {
   /** Pack chiffré : installable seulement avec l'application, qui télécharge {@link encryptedPackage}. */
   encrypted?: boolean
   encryptedPackage?: { size?: number | null; sha256?: string | null } | null
+  /** Poids sur les performances (null : pas encore analysé ; absent avec une API plus ancienne). */
+  performance?: unknown
 }
 
 interface RemoteAuthorRef {
@@ -149,6 +152,7 @@ const catalogPath = (kind: MarketKind): string => (kind === 'mod' ? '/mods' : '/
 /** Pack ou mod inconnu (ou retiré) de l'API : code PACK_GONE ou MOD_GONE, message dans la langue affichée. */
 const goneError = (kind: MarketKind): ApiError =>
   kind === 'mod' ? new ApiError(t('market.modGone'), 404, MOD_GONE) : new ApiError(t('market.packGone'), 404, PACK_GONE)
+const isGone = (err: unknown): boolean => err instanceof ApiError && (err.code === PACK_GONE || err.code === MOD_GONE)
 /** Requêtes vers l'API, avec la langue affichée (Accept-Language). */
 const apiFetch = languageFetch((url, init) => net.fetch(url, init))
 const kindOf = (r: { kind?: string }): MarketKind => (r.kind === 'mod' ? 'mod' : 'pack')
@@ -192,6 +196,8 @@ export function toMarketPack(r: RemoteSummary, local: StoredManifest | undefined
     cover: r.cover,
     authorProfile: r.authorProfile ? toAuthorRef(r.authorProfile) : null,
     featured: r.featured === true,
+    // API plus ancienne, sans le champ : rien à afficher (et non « pas encore analysé »).
+    ...('performance' in r ? { performance: parsePackPerformance(r.performance) } : {}),
     localId: local?.id ?? null,
     updateAvailable: !!local && local.marketplace!.sha256 !== r.sha256
   }
@@ -272,6 +278,9 @@ export class Marketplace {
     if (query.tag) params.set('tag', query.tag)
     if (query.author) params.set('author', query.author)
     if (kind === 'mod' && query.category) params.set('category', query.category)
+    // « Compatibles avec mon PC » seulement : sinon, rien de la machine ne part vers l'API.
+    if (Number.isInteger(query.vram) && query.vram! > 0) params.set('vram', String(query.vram))
+    if (Number.isInteger(query.gpuClass) && query.gpuClass! >= 0) params.set('gpuClass', String(query.gpuClass))
     const [page, index] = await Promise.all([this.get<RemotePage>(`${catalogPath(kind)}?${params}`), this.localIndex(kind)])
     for (const r of page.items) this.catalog.set(r.id, r)
     return { items: page.items.map((r) => this.toMarket(r, index)), page: page.page, total: page.total, totalPages: page.totalPages }
@@ -305,6 +314,20 @@ export class Marketplace {
   async detail(idOrSlug: string, kind: MarketKind = 'pack'): Promise<MarketPackDetail> {
     const [r, index] = await Promise.all([this.remoteDetail(idOrSlug, kind), this.localIndex(kind)])
     return { ...this.toMarket(r, index), description: r.description, archiveName: r.archiveName ?? '', images: r.images, youtubeId: youtubeId(r) }
+  }
+
+  /**
+   * Analyse détaillée du poids d'un pack sur les performances. Null si l'API ne la fournit pas (version plus ancienne)
+   * ou si sa réponse est inutilisable ; les autres erreurs remontent.
+   */
+  async performance(id: string, kind: MarketKind = 'pack'): Promise<PerformanceDetail | null> {
+    if (!UUID.test(id)) return null
+    try {
+      return parsePerformanceDetail(await this.get<unknown>(`${catalogPath(kind)}/${id}/performance`, () => goneError(kind)))
+    } catch (err) {
+      if (isGone(err)) return null
+      throw err
+    }
   }
 
   private async remoteDetail(idOrSlug: string, kind: MarketKind): Promise<RemoteDetail> {

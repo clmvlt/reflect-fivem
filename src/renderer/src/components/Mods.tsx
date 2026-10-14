@@ -8,6 +8,8 @@ import type { MenuItem } from '@shared/api'
 import { useStore } from '../store'
 import { bytes, num, q } from '../lib/format'
 import { Cover, EmptyState, Progress } from './common'
+import { usePerfConfirm } from './Performance'
+import type { PackPerformance } from '@shared/performance'
 
 // Catégories de l'API (libellés et nombre de mods), lues une fois par lancement et par langue (libellés traduits par
 // l'API).
@@ -322,22 +324,27 @@ function ModFiles({ mod }: { mod: PackManifest }) {
 }
 
 /** Actions d'un mod de la Marketplace : Installer, Mettre à jour, Activer / Désactiver, Supprimer. */
-export function ModMarketAction({ item, wide = false }: { item: { id: string; sha256: string; name: string }; wide?: boolean }) {
+export function ModMarketAction({ item, wide = false }: { item: { id: string; sha256: string; name: string; performance?: PackPerformance | null }; wide?: boolean }) {
   const { t } = useTranslation()
   const { overview, task, run } = useStore()
   const actions = useModActions()
+  const confirmHeavy = usePerfConfirm()
   if (!overview) return null
   const local = localMod(item.id, overview.mods)
   const update = !!local && !!item.sha256 && local.marketplace!.sha256 !== item.sha256
   const enabled = !!local && !!modState(local.id, overview.state.mods)?.enabled
   const cls = (primary: boolean): string => [primary && 'primary', wide && 'wide'].filter(Boolean).join(' ')
   const install = (): void => void run(() => window.api.marketInstall(item.id, 'mod'))
+  // Premier téléchargement d'un mod trop lourd pour la machine : confirmation (qui n'empêche pas de l'installer).
+  const installNew = async (): Promise<void> => {
+    if (await confirmHeavy({ ...item, kind: 'mod' }, t('modsView.installAnyway'))) install()
+  }
 
   if (!local)
     return (
       <>
         <div className="spacer" />
-        <button className={cls(true)} onClick={install} disabled={!!task}>
+        <button className={cls(true)} onClick={() => void installNew()} disabled={!!task}>
           {t('modsView.install')}
         </button>
       </>

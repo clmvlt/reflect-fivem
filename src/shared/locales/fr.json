@@ -491,6 +491,36 @@
       "windowed": "Fenêtré"
     }
   },
+  "hardware": {
+    "auto": "Détection automatique",
+    "detecting": "Détection de la carte graphique…",
+    "gpu": {
+      "classLabel": "Classe de la carte graphique",
+      "classMobile": "{{label}} (portable)",
+      "detectedAs": "Détectée : {{label}}",
+      "detectedUnknown": "Détectée : non reconnue",
+      "notDetected": "Non détectée",
+      "title": "Carte graphique",
+      "unrecognized": "non reconnue : choisissez sa classe"
+    },
+    "hint": "Sert à estimer si un pack tournera bien sur votre PC. Ces informations restent sur votre PC : seul le filtre « Compatibles avec mon PC » de la Marketplace envoie la mémoire vidéo et la classe de la carte, quand vous l’activez.",
+    "manual": "corrigée à la main",
+    "ram": "Mémoire vive",
+    "redetect": "Détecter à nouveau",
+    "resolution": {
+      "display": "Écran principal (réglages du jeu introuvables)",
+      "game": "Réglages du jeu",
+      "title": "Résolution",
+      "unknown": "Inconnue : 1080p par défaut"
+    },
+    "title": "Ma configuration",
+    "vram": {
+      "detected": "Détectée : {{size}}",
+      "title": "Mémoire vidéo",
+      "unknown": "Inconnue",
+      "wmi": "lue par WMI (limitée à {{limit}})"
+    }
+  },
   "history": {
     "cacheFreed": "{{size}} libérés",
     "captured_one": "{{n}} fichier rangé",
@@ -767,6 +797,7 @@
   "marketplace": {
     "action": {
       "download": "Télécharger",
+      "downloadAnyway": "Télécharger quand même",
       "inLibrary": "Dans la bibliothèque",
       "newVersion": "Nouvelle version",
       "update": "Mettre à jour"
@@ -794,6 +825,11 @@
     "back": "‹ Retour",
     "backToList": "‹ Marketplace",
     "by": "par <author></author>",
+    "compatible": {
+      "help": "Seulement ce qui devrait tourner sur votre PC, à votre résolution (estimation). Pour ce filtre, la mémoire vidéo et la classe de votre carte graphique sont envoyées à la Marketplace.",
+      "label": "Compatibles avec mon PC",
+      "undetected": "Votre carte graphique n’a pas pu être détectée : indiquez-la dans Graphismes › Ma configuration."
+    },
     "detail": {
       "category": "Catégorie",
       "description": "Description",
@@ -811,6 +847,8 @@
     "empty": {
       "byAuthorMod": "Aucun mod publié par cet auteur.",
       "byAuthorPack": "Aucun pack publié par cet auteur.",
+      "compatibleMod": "Aucun mod compatible avec votre PC pour le moment.",
+      "compatiblePack": "Aucun pack compatible avec votre PC pour le moment.",
       "noMatchMod": "Aucun mod ne correspond à cette recherche.",
       "noMatchPack": "Aucun pack ne correspond à cette recherche.",
       "noneMod": "Aucun mod publié pour le moment.",
@@ -825,6 +863,8 @@
       "packs_other": "Packs du moment",
       "sub": "sélectionnés par l’équipe"
     },
+    "hidden_one": "1 autre est masqué sur cette page : trop lourd pour votre PC à votre résolution.",
+    "hidden_other": "{{n}} autres sont masqués sur cette page : trop lourds pour votre PC à votre résolution.",
     "mods_one": "{{n}} mod",
     "mods_other": "{{n}} mods",
     "packs_one": "{{n}} pack",
@@ -871,6 +911,7 @@
     "gone": "Retiré de la Marketplace",
     "import": "Importer un mod…",
     "install": "Installer",
+    "installAnyway": "Installer quand même",
     "menu": {
       "hideFiles": "Masquer les fichiers",
       "market": "Voir la fiche",
@@ -911,6 +952,7 @@
       "validSigned_other": "Valides, dont {{n}} signés Cfx."
     },
     "content": {
+      "costTitle": "Surcoût estimé sur votre PC s’il est installé (temps par image, mémoire vidéo)",
       "dontInstall": "Ne pas installer",
       "files_one": "{{n}} fichier",
       "files_other": "{{n}} fichiers",
@@ -941,6 +983,7 @@
     },
     "gone": "Ce pack n’est plus proposé sur la Marketplace. Votre copie reste utilisable.",
     "install": "Installer",
+    "installAnyway": "Installer quand même",
     "installed": "Installé",
     "media": {
       "choose": "Choisir une image…",
@@ -956,6 +999,83 @@
     "updateAvailable": "Nouvelle version sur la Marketplace.",
     "userConfigs_one": "{{n}} réglage modifié en jeu, réinstallé avec le pack.",
     "userConfigs_other": "{{n}} réglages modifiés en jeu, réinstallés avec le pack."
+  },
+  "performance": {
+    "confirm": {
+      "message": "{{reasons}}\n\nC’est une estimation : vous pouvez l’installer quand même et baisser vos réglages graphiques.",
+      "title": "{{name}} risque d’être trop lourd pour votre PC"
+    },
+    "details": {
+      "sourceMod": "Estimation à partir des fichiers du mod.",
+      "sourceModPartial": "Estimation à partir des fichiers du mod, en partie chiffrés.",
+      "sourcePack": "Estimation à partir des fichiers du pack.",
+      "sourcePackPartial": "Estimation à partir des fichiers du pack, en partie chiffrés.",
+      "summary": "Détail de l’estimation",
+      "vram": "Mémoire vidéo : {{min}} au minimum.",
+      "vramWithCard": "Mémoire vidéo : {{min}} au minimum, votre carte en a {{card}}."
+    },
+    "facts": {
+      "onYourPc": "Sur votre PC"
+    },
+    "fps": {
+      "about": "≈ {{value}} FPS",
+      "over": "plus de {{value}} FPS"
+    },
+    "gpuClass": {
+      "level0": {
+        "examples": "Intel UHD / Iris Xe, Radeon Vega 3 à 11",
+        "label": "Graphiques intégrés"
+      },
+      "level1": {
+        "label": "Entrée de gamme"
+      },
+      "level2": {
+        "label": "Milieu de gamme ancien"
+      },
+      "level3": {
+        "label": "Milieu de gamme"
+      },
+      "level4": {
+        "label": "Haut de gamme"
+      },
+      "level5": {
+        "examples": "RTX 3080, RTX 4070 et plus, RX 6800, RX 7800 XT, RX 9070",
+        "label": "Très haut de gamme"
+      }
+    },
+    "option": {
+      "negligible": "coût négligeable"
+    },
+    "reasons": {
+      "belowPlayable": "Moins de {{fps}} images par seconde estimées en {{resolution}}.",
+      "belowTarget": "Entre {{min}} et {{max}} images par seconde estimées en {{resolution}}.",
+      "gpuUnknown": "Carte graphique non reconnue : seule la mémoire vidéo est comparée.",
+      "notAnalyzed": "Pas encore analysé.",
+      "unknown": "Votre carte graphique n’a pas pu être détectée : indiquez-la dans Graphismes › Ma configuration.",
+      "vramShort": "Mémoire vidéo insuffisante : {{needed}} nécessaires, votre carte en a {{card}}.",
+      "vramTight": "Mémoire vidéo juste : {{needed}} recommandés, votre carte en a {{card}}.",
+      "vramUnknown": "Mémoire vidéo inconnue : seule la puissance de la carte est comparée."
+    },
+    "tier": {
+      "extreme": "Très lourd",
+      "heavy": "Lourd",
+      "light": "Léger",
+      "medium": "Moyen"
+    },
+    "title": {
+      "fps": "{{fps}} (estimation)",
+      "tier": "Poids : {{tier}}"
+    },
+    "units": {
+      "ms": "{{value}} ms"
+    },
+    "verdict": {
+      "notAnalyzed": "Non analysé",
+      "playable": "Jouable",
+      "smooth": "Fluide",
+      "tooHeavy": "Trop lourd",
+      "unknown": "PC non reconnu"
+    }
   },
   "progress": {
     "percent": "{{value}} %",
@@ -1002,8 +1122,10 @@
       "graphicsFileMissingFirstRun": "Fichier de réglages introuvable. Lancez le jeu une première fois.",
       "invalidAddress": "Adresse invalide.",
       "invalidFpsLimit": "Limite invalide : choisissez entre {{min}} et {{max}} images par seconde.",
+      "invalidGpuClass": "Classe de carte graphique invalide.",
       "invalidInvite": "Invitation invalide.",
       "invalidLink": "Lien invalide.",
+      "invalidVram": "Mémoire vidéo invalide : indiquez une valeur entre {{min}} et {{max}}.",
       "libraryAlreadyThere": "Les packs sont déjà dans ce dossier.",
       "libraryInsideCurrent": "Choisis un dossier en dehors du dossier actuel.",
       "noActivePack": "Aucun pack installé.",

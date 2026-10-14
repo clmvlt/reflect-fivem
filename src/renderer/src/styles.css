@@ -1776,6 +1776,63 @@ button.google {
   gap: 8px;
 }
 
+/* ------------------------------------------------------------ Performances (poids des packs comparé au PC) */
+
+/* Verdict discret : un point de couleur et un mot. */
+.perf-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.perf-tag::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.perf-tag.v-smooth {
+  color: var(--ok-text);
+}
+.perf-tag.v-playable {
+  color: var(--warn-text);
+}
+.perf-tag.v-too-heavy {
+  color: var(--bad);
+}
+.meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.perf-more {
+  margin-top: 8px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.perf-more summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.perf-more p {
+  margin: 6px 0 0;
+}
+.perf-more ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.switch.compat-switch {
+  width: auto;
+  flex: none;
+}
+.hidden-note {
+  margin: -8px 0 12px;
+}
+
 /* ------------------------------------------------------------ États vides */
 
 .empty-panel {

@@ -100,6 +100,62 @@ $r | ConvertTo-Json -Depth 4 -Compress
   }
 }
 
+/** Carte graphique lue par Windows : nom et mémoire vidéo dédiée en octets (null si elle n'est pas indiquée). */
+export interface VideoAdapter {
+  name: string
+  memory: number | null
+}
+
+/**
+ * Cartes graphiques de la machine. `registry` : clés des pilotes d'affichage (DriverDesc, mémoire dédiée exacte dans
+ * HardwareInformation.qwMemorySize). `wmi` : Win32_VideoController, lu seulement si aucune carte du registre n'indique sa
+ * mémoire (AdapterRAM y est plafonné à 4 Go).
+ */
+export async function readVideoAdapters(): Promise<{ registry: VideoAdapter[]; wmi: VideoAdapter[] }> {
+  const script = String.raw`
+$LM = [Microsoft.Win32.Registry]::LocalMachine
+$reg = @()
+$root = $LM.OpenSubKey('SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}')
+if ($root) {
+  foreach ($name in $root.GetSubKeyNames()) {
+    if ($name -notmatch '^\d{4}$') { continue }
+    $k = $null
+    try { $k = $root.OpenSubKey($name) } catch { continue }
+    if (-not $k) { continue }
+    $mem = $k.GetValue('HardwareInformation.qwMemorySize')
+    if ($mem -eq $null) { $mem = $k.GetValue('HardwareInformation.MemorySize') }
+    if ($mem -is [byte[]]) {
+      if ($mem.Length -ge 8) { $mem = [BitConverter]::ToUInt64($mem, 0) } elseif ($mem.Length -ge 4) { $mem = [BitConverter]::ToUInt32($mem, 0) } else { $mem = $null }
+    } elseif ($mem -is [int]) { $mem = [BitConverter]::ToUInt32([BitConverter]::GetBytes($mem), 0) }
+    $m = $null
+    if ($mem -ne $null) { $m = [string]$mem }
+    $reg += @{ name = [string]$k.GetValue('DriverDesc'); memory = $m }
+    $k.Close()
+  }
+  $root.Close()
+}
+$wmi = @()
+if (-not ($reg | Where-Object { $_.memory -and $_.memory -ne '0' })) {
+  foreach ($v in Get-CimInstance Win32_VideoController) {
+    $m = $null
+    if ($v.AdapterRAM) { $m = [string]$v.AdapterRAM }
+    $wmi += @{ name = [string]$v.Name; memory = $m }
+  }
+}
+ConvertTo-Json -InputObject @{ registry = @($reg); wmi = @($wmi) } -Depth 4 -Compress
+`
+  const arr = <T>(x: T | T[] | undefined | null): T[] => (Array.isArray(x) ? x : x ? [x] : [])
+  const adapters = (x: unknown): VideoAdapter[] =>
+    arr(x as { name?: unknown; memory?: unknown }[])
+      .filter((a) => a && typeof a.name === 'string' && a.name.trim())
+      .map((a) => {
+        const memory = typeof a.memory === 'string' || typeof a.memory === 'number' ? Number(a.memory) : NaN
+        return { name: (a.name as string).trim(), memory: Number.isFinite(memory) && memory > 0 ? memory : null }
+      })
+  const json = JSON.parse((await runPowerShell(script)).trim() || '{}') as { registry?: unknown; wmi?: unknown }
+  return { registry: adapters(json.registry), wmi: adapters(json.wmi) }
+}
+
 /** Liste des processus en cours (noms d'exécutables). */
 export function listProcesses(): Promise<string[]> {
   return new Promise((resolve) => {

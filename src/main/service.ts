@@ -2,27 +2,30 @@
 
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { app, BrowserWindow, dialog, Menu, nativeImage, net, safeStorage, shell, systemPreferences } from 'electron'
+import { app, BrowserWindow, dialog, Menu, nativeImage, net, safeStorage, screen, shell, systemPreferences } from 'electron'
 import type { AppState, GamesInfo, MarketKind, Overview, PackPatch, RootId, Settings, TaskProgress } from '@shared/types'
 import type { AccountMe, ProfileInput } from '@shared/types'
 import type { AuthorQuery, ComponentFile, ForeignSelection, MarketQuery, MenuItem, PackManagerApi } from '@shared/api'
 import { IPC } from '@shared/api'
 import i18next, { t } from 'i18next'
 import { currentLocale, initI18n, msg, supportedLocale } from '@shared/i18n'
-import { formatNumber, quote } from '@shared/intl'
+import { formatMegabytes, formatNumber, quote } from '@shared/intl'
 import { detectGames, inspectFiveM, inspectGta, normalizeFiveMPath } from './core/games'
 import { Installer, type Report } from './core/installer'
 import { FPS_LIMIT_MAX, FPS_LIMIT_MIN } from './core/enb'
 import { Account, AVATAR_EXTENSIONS, TokenFile } from './core/account'
 import { KeyRing, type SystemProtection } from './core/keys'
 import { Library, toPublic, type StoredManifest } from './core/library'
-import { GraphicsManager } from './core/graphics'
+import { GraphicsManager, screenSize } from './core/graphics'
+import { Hardware } from './core/hardware'
+import { PerformanceModels } from './core/performance'
 import { languageFetch } from './core/http'
 import { accountLanguageAction, fetchLanguages, startupLocale } from './core/language'
 import { Marketplace } from './core/marketplace'
 import { AppUpdater } from './core/updater'
-import { runningGameProcesses } from './util/win'
+import { readVideoAdapters, runningGameProcesses } from './util/win'
 import type { GraphicsTarget } from '@shared/graphics'
+import type { HardwareOverride, MachineProfile } from '@shared/performance'
 import { fileDestination } from './core/analyzer'
 import { defaultSettings, emptyState, JsonStore, normalizeState, pushHistory } from './core/stores'
 import { exists, isInside, moveDir, readJson, writeJsonAtomic } from './util/fsx'
@@ -71,6 +74,10 @@ export class Service {
   private keys: KeyRing
   /** Compte reflect-fivem.com (facultatif) : jeton gardé chiffré par Windows. */
   account: Account
+  /** Configuration de la machine (carte graphique en cache), comparée aux packs dans l'interface. */
+  hardware: Hardware
+  /** Modèle de comparaison des performances de l'API. */
+  perfModels: PerformanceModels
   /** Compte connecté au dernier changement (une connexion se reconnaît à un compte différent). */
   private accountId: number | null = null
 
@@ -94,6 +101,29 @@ export class Service {
     this.state = new JsonStore(path.join(dataDir, 'state.json'), emptyState())
     this.graphics = new GraphicsManager(path.join(dataDir, 'Graphismes'))
     this.updater = new AppUpdater(apiUrl, (s) => this.emit(IPC.update, s))
+    this.hardware = new Hardware(path.join(dataDir, 'hardware.json'), {
+      adapters: readVideoAdapters,
+      gameScreen: async () => {
+        // Résolution de FiveM (gta5_settings.xml), sinon celle de GTA V solo.
+        const targets = await this.graphics.targets(app.getPath('documents'))
+        for (const t of targets) {
+          const size = screenSize(await fs.readFile(t.path, 'utf8').catch(() => ''))
+          if (size) return size
+        }
+        return null
+      },
+      displayScreen: () => {
+        const d = screen.getPrimaryDisplay()
+        return { width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor) }
+      }
+    })
+    this.perfModels = new PerformanceModels(apiUrl, path.join(dataDir, 'performance-model.json'), apiFetch)
+  }
+
+  /** Machine et modèle de comparaison ; `refresh` : nouvelle détection de la carte graphique. */
+  private async machineProfile(refresh = false): Promise<MachineProfile> {
+    const [model, hardware] = await Promise.all([this.perfModels.get(), this.hardware.info(refresh)])
+    return { model, hardware, override: this.settings.get().machine ?? {} }
   }
 
   private async graphicsTarget(id?: GraphicsTarget['id']): Promise<{ target: GraphicsTarget; targets: GraphicsTarget[] } | null> {
@@ -150,11 +180,13 @@ export class Service {
     this.marketplace = new Marketplace(this.apiUrl, path.join(this.dataDir, 'Marketplace', 'images'), () => this.library, () => this.modLibrary)
   }
 
-  /** Langue changée : processus principal (menus, textes produits ici) et toutes les fenêtres. */
+  /** Langue changée : processus principal (menus, textes produits ici), toutes les fenêtres, caches des textes de l'API. */
   private async applyLanguage(code: string): Promise<void> {
     if (code === currentLocale()) return
     await i18next.changeLanguage(code)
     log.info(`Langue : ${code}`)
+    // Libellés traduits par l'API (niveaux, classes de cartes) : redemandés dans la nouvelle langue.
+    this.perfModels.clear()
     for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send(IPC.language, code)
     // Vérifications des dossiers du jeu : libellés produits par la détection.
     void this.refreshGames().then(
@@ -191,6 +223,8 @@ export class Service {
       void refreshMarket()
       void this.marketplace.pruneImageCache()
       void this.marketplace.pruneDownloads()
+      // Carte graphique (détectée une fois, puis en cache) et modèle de comparaison, prêts pour la Marketplace.
+      void this.machineProfile().catch(() => undefined)
     }, 5000)
     setInterval(() => void refreshMarket(), MARKET_REFRESH)
     this.updater.start()
@@ -630,6 +664,20 @@ export class Service {
       return this.graphics.read(gt.target, gt.targets)
     },
 
+    machineProfile: () => this.machineProfile(),
+
+    refreshMachine: () => this.machineProfile(true),
+
+    setMachineOverride: async (override: HardwareOverride) => {
+      const next: HardwareOverride = { ...this.settings.get().machine, ...override }
+      const { gpuClass, vramMb } = next
+      if (gpuClass != null && !(Number.isInteger(gpuClass) && gpuClass >= 0 && gpuClass <= 9)) throw this.toError(t('service.errors.invalidGpuClass'))
+      if (vramMb != null && !(Number.isInteger(vramMb) && vramMb >= 256 && vramMb <= 256 * 1024))
+        throw this.toError(t('service.errors.invalidVram', { min: formatMegabytes(256), max: formatMegabytes(256 * 1024) }))
+      await this.settings.patch({ machine: { gpuClass: gpuClass ?? null, vramMb: vramMb ?? null } })
+      return this.machineProfile()
+    },
+
     moveLibrary: async (newDir: string) => {
       const oldDir = this.settings.get().libraryDir
       const target = path.resolve(newDir)
@@ -709,6 +757,8 @@ export class Service {
     marketFeatured: (kind?: MarketKind) => this.marketplace.featured(kind),
 
     marketDetail: (idOrSlug: string, kind?: MarketKind) => this.marketplace.detail(idOrSlug, kind),
+
+    marketPerformance: (id: string, kind?: MarketKind) => this.marketplace.performance(id, kind),
 
     marketInstall: async (id: string, kind: MarketKind = 'pack') => {
       const remote = await this.marketplace.detail(id, kind)

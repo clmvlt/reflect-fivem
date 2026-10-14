@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { PackManagerApi } from '../shared/api'
 import type { AccountMe, MarketKind, TaskProgress, UpdateState } from '../shared/types'
 import type { MaintenanceState } from '../shared/maintenance'
+import type { AppLinks } from '../shared/links'
 
 // Canaux dupliqués ici : un preload « sandbox » ne peut importer que le module electron.
 const IPC = {
@@ -12,6 +13,7 @@ const IPC = {
   account: 'pm:account',
   language: 'pm:language',
   maintenance: 'pm:maintenance',
+  links: 'pm:links',
   openMarketPack: 'pm:open-market-pack'
 }
 
@@ -82,7 +84,8 @@ const methods = [
   'marketAuthor',
   'openSite',
   'openLink',
-  'openDiscordInvite',
+  'linksGet',
+  'openAppLink',
   'packRatings',
   'packRate',
   'packComments',
@@ -151,6 +154,12 @@ api.onMaintenance = (cb: (state: MaintenanceState) => void) => {
   const h = (_e: unknown, state: MaintenanceState): void => cb(state)
   ipcRenderer.on(IPC.maintenance, h)
   return () => ipcRenderer.removeListener(IPC.maintenance, h)
+}
+
+api.onLinks = (cb: (links: AppLinks) => void) => {
+  const h = (_e: unknown, links: AppLinks): void => cb(links)
+  ipcRenderer.on(IPC.links, h)
+  return () => ipcRenderer.removeListener(IPC.links, h)
 }
 
 // Pack ou mod demandé par un lien du site : gardé s'il arrive avant que l'interface ne s'abonne (démarrage).

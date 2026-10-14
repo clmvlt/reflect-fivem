@@ -173,6 +173,8 @@ function startApp(): void {
       sendPendingPack()
     })
     service.startBackground()
+    // Liens modifiables depuis le site : relus quand la fenêtre reprend le focus (au plus une fois par minute).
+    win.on('focus', () => void service.links.refresh())
     nativeTheme.on('updated', () => win?.setBackgroundColor(windowBackground()))
   })
 }

@@ -16,6 +16,7 @@ import {
 import { formatDate, formatDateTime, formatList } from '@shared/intl'
 import { useStore } from '../store'
 import { q } from '../lib/format'
+import { DiscordIcon } from './DiscordView'
 
 // Maintenances prévues par l'admin (état envoyé par le processus principal, voir @shared/maintenance) :
 //  - annonce en haut de l'application dans les 7 jours qui précèdent, avec un compte à rebours dans la dernière heure ;
@@ -188,7 +189,7 @@ function SoonTitle({ m, state }: { m: Maintenance; state: MaintenanceState }) {
 /** Écran de maintenance, à la place d'une page qui passe par le serveur. Disparaît tout seul à la fin. */
 export function MaintenanceScreen({ ongoing, state }: { ongoing: Ongoing; state: MaintenanceState }) {
   const { t } = useTranslation()
-  const { checkMaintenance } = useStore()
+  const { checkMaintenance, links, openLink } = useStore()
   const [checking, setChecking] = useState(false)
   const now = useNow()
   const m = ongoing.maintenance
@@ -226,6 +227,13 @@ export function MaintenanceScreen({ ongoing, state }: { ongoing: Ongoing; state:
           <button className="primary" onClick={() => void retry()} disabled={checking}>
             {checking ? t('maintenance.screen.checking') : t('common.retry')}
           </button>
+          {/* Avancement de la maintenance annoncé sur le serveur Discord. */}
+          {links.discord && (
+            <button className="maint-discord" onClick={() => openLink('discord')}>
+              <DiscordIcon size={14} />
+              {t('maintenance.screen.discord')}
+            </button>
+          )}
         </div>
       </div>
     </div>

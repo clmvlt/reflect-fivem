@@ -28,7 +28,7 @@ const NAV: Page[] = ['library', 'market', 'graphics', 'cleanup', 'settings']
 
 export function App() {
   const { t } = useTranslation()
-  const { overview, account, message, setMessage, run } = useStore()
+  const { overview, account, links, message, setMessage, run } = useStore()
   const [page, setPage] = useState<Page>('library')
   const [openPack, setOpenPack] = useState<string | null>(null)
   // Vues ouvertes dans la Marketplace (fiche, auteur...), la dernière affichée.
@@ -107,6 +107,11 @@ export function App() {
       }),
     []
   )
+
+  // Lien Discord retiré depuis le site : sa page n'a plus de bouton pour rejoindre le serveur.
+  useEffect(() => {
+    if (page === 'discord' && !links.discord) setPage('library')
+  }, [page, links.discord])
 
   useEffect(() => {
     if (!account || !signInFromMarket) return
@@ -209,14 +214,16 @@ export function App() {
               {gameProblem}
             </button>
           )}
-          <button className={`nav side-discord ${page === 'discord' ? 'is-selected' : ''}`} onClick={() => go('discord')}>
-            <span className="nav-account">
-              <span className="avatar discord-nav-icon" style={{ width: 24, height: 24 }} aria-hidden>
-                <DiscordIcon size={14} />
+          {links.discord && (
+            <button className={`nav side-discord ${page === 'discord' ? 'is-selected' : ''}`} onClick={() => go('discord')}>
+              <span className="nav-account">
+                <span className="avatar discord-nav-icon" style={{ width: 24, height: 24 }} aria-hidden>
+                  <DiscordIcon size={14} />
+                </span>
+                <span className="ellipsis">{t('app.nav.discord')}</span>
               </span>
-              <span className="ellipsis">{t('app.nav.discord')}</span>
-            </span>
-          </button>
+            </button>
+          )}
           {/* Compte : tout en bas de la barre latérale. */}
           <button className={`nav side-account ${page === 'account' ? 'is-selected' : ''}`} onClick={() => go('account')}>
             <span className="nav-account">

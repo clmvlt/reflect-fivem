@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { AccountMe, Overview, TaskProgress, UpdateState } from '@shared/types'
 import { MAINTENANCE, PENDING, readApiError } from '@shared/api'
 import type { MaintenanceState } from '@shared/maintenance'
+import { emptyLinks, type AppLinks } from '@shared/links'
 import i18next, { t } from 'i18next'
 import { num, q } from './lib/format'
 
@@ -23,6 +24,10 @@ interface Store {
   maintenance: MaintenanceState | null
   /** Interroge l'API tout de suite (« Réessayer »). */
   checkMaintenance: () => Promise<void>
+  /** Liens modifiables depuis le site (null : bouton masqué). */
+  links: AppLinks
+  /** Ouvre un de ces liens dans le navigateur. */
+  openLink: (name: keyof AppLinks & string) => void
   message: Message | null
   setMessage: (m: Message | null) => void
   /** Appelle l'API ; une erreur s'affiche dans la barre de message. */
@@ -43,6 +48,7 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
   const [update, setUpdate] = useState<UpdateState | null>(null)
   const [account, setAccount] = useState<AccountMe | null | undefined>(undefined)
   const [maintenance, setMaintenance] = useState<MaintenanceState | null>(null)
+  const [links, setLinks] = useState<AppLinks>(emptyLinks)
   const lastTask = useRef<string | null>(null)
   // Changement fait pendant une partie (à sa fermeture) : il prendra effet au prochain lancement.
   const relaunchRef = useRef(false)
@@ -77,6 +83,8 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
     }
   }, [])
 
+  const openLink = useCallback((name: keyof AppLinks & string): void => void run(() => window.api.openAppLink(name)), [run])
+
   const changeGame = useCallback(
     async (fn: () => Promise<string>): Promise<void> => {
       if ((await run(fn)) === PENDING)
@@ -99,6 +107,8 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
     window.api.accountGet().then(setAccount, () => setAccount(null))
     const offMaintenance = window.api.onMaintenance(setMaintenance)
     window.api.maintenanceGet().then(setMaintenance, () => undefined)
+    const offLinks = window.api.onLinks(setLinks)
+    window.api.linksGet().then(setLinks, () => undefined)
     const offTask = window.api.onTask((p) => {
       if (!p.done) {
         // Nouvelle action : l'ancien message n'a plus lieu d'être.
@@ -129,6 +139,7 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
       offAccount()
       offLanguage()
       offMaintenance()
+      offLinks()
       window.removeEventListener('keydown', onKey)
     }
   }, [refresh])
@@ -146,8 +157,8 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
   }, [overview?.accent])
 
   const value = useMemo<Store>(
-    () => ({ overview, refresh, task, update, account, setAccount, maintenance, checkMaintenance, message, setMessage, run, changeGame }),
-    [overview, refresh, task, update, account, maintenance, checkMaintenance, message, run, changeGame]
+    () => ({ overview, refresh, task, update, account, setAccount, maintenance, checkMaintenance, links, openLink, message, setMessage, run, changeGame }),
+    [overview, refresh, task, update, account, maintenance, checkMaintenance, links, openLink, message, run, changeGame]
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

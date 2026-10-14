@@ -24,6 +24,8 @@ import { PerformanceModels } from './core/performance'
 import { languageFetch, MaintenanceError, onMaintenanceError, serverFetch } from './core/http'
 import { accountLanguageAction, fetchLanguages, startupLocale } from './core/language'
 import { MaintenanceWatch, PausedDownloads } from './core/maintenance'
+import { LinksWatch } from './core/links'
+import { httpsUrl } from '@shared/links'
 import { Marketplace } from './core/marketplace'
 import { AppUpdater } from './core/updater'
 import { killProcesses, launchDetached, readVideoAdapters, runningGameProcesses } from './util/win'
@@ -34,7 +36,7 @@ import { defaultSettings, emptyState, JsonStore, normalizeState, pushHistory } f
 import { exists, isInside, moveDir, readJson, writeJsonAtomic } from './util/fsx'
 import { log } from './util/log'
 
-type ServerApi = Omit<PackManagerApi, 'onTask' | 'onChanged' | 'onUpdate' | 'onAccount' | 'onLanguage' | 'onMaintenance' | 'onOpenMarketPack' | 'getPathForFile'>
+type ServerApi = Omit<PackManagerApi, 'onTask' | 'onChanged' | 'onUpdate' | 'onAccount' | 'onLanguage' | 'onMaintenance' | 'onLinks' | 'onOpenMarketPack' | 'getPathForFile'>
 
 const MARKET_REFRESH = 6 * 60 * 60 * 1000
 /** Bibliothèque des mods : sous-dossier de la bibliothèque des packs (ignoré par celle-ci, comme tout dossier « . »). */
@@ -89,6 +91,8 @@ export class Service {
   maintenance: MaintenanceWatch
   /** Téléchargements arrêtés par une maintenance, repris à sa fin. */
   private paused: PausedDownloads
+  /** Liens publics modifiables depuis le site (GET /links), envoyés à l'interface. */
+  links: LinksWatch
   private resumingPaused = false
   private resumeTimer: NodeJS.Timeout | null = null
   /** État de l'application changé (zone de notification : jeu lancé, changement en attente). */
@@ -155,6 +159,13 @@ export class Service {
     this.paused = new PausedDownloads(path.join(dataDir, 'paused-downloads.json'), (d) =>
       d.claim ? this.api.marketClaim(d.id, d.kind) : this.api.marketInstall(d.id, d.kind)
     )
+    this.links = new LinksWatch({
+      apiUrl,
+      // GET /links n'est jamais refusé pour maintenance.
+      fetch: languageFetch((url, init) => net.fetch(url, init)),
+      file: path.join(dataDir, 'links.json'),
+      onChange: (links) => this.emit(IPC.links, links)
+    })
   }
 
   /** Notification de Windows 15 minutes avant le début d'une maintenance. */
@@ -245,6 +256,8 @@ export class Service {
     // Maintenances : dernier état connu (écran de maintenance tout de suite, même hors ligne), vérifié au démarrage.
     await this.maintenance.load()
     await this.paused.load()
+    // Liens : derniers connus (hors ligne aussi), relus au démarrage.
+    await this.links.load()
     onMaintenanceError((err) => this.maintenance.report(err))
     this.maintenance.onOver(() => this.resumePaused())
     // Téléchargements faits avec le jeton du compte connecté : comptés pour lui (et nécessaires pour noter).
@@ -283,6 +296,7 @@ export class Service {
   startBackground(): void {
     // Maintenances : vérifiées tout de suite (l'écran de maintenance ne doit pas attendre), puis à leur rythme.
     void this.maintenance.start().then(() => this.resumePaused())
+    void this.links.refresh()
     const refreshMarket = async (): Promise<void> => {
       try {
         await this.marketplace.refreshCatalog()
@@ -1022,10 +1036,12 @@ export class Service {
       await shell.openExternal(parsed.toString())
     },
 
-    openDiscordInvite: async (code: string) => {
-      if (!/^[a-z0-9-]+$/i.test(code)) throw this.toError(t('service.errors.invalidInvite'))
-      // Application Discord installée : l'invitation s'ouvre directement dedans, sinon dans le navigateur.
-      const url = app.getApplicationNameForProtocol('discord://') ? `discord://-/invite/${code}` : `https://discord.gg/${code}`
+    linksGet: async () => this.links.current,
+
+    openAppLink: async (name: string) => {
+      // Adresse lue ici, jamais reçue de l'interface ; ouverte dans le navigateur par défaut, en https seulement.
+      const url = httpsUrl(this.links.current[name])
+      if (!url) throw this.toError(t('service.errors.linkUnavailable'))
       await shell.openExternal(url)
     },
 

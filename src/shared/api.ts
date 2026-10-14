@@ -28,6 +28,7 @@ import type {
 import type { GraphicsState, GraphicsTarget } from './graphics'
 import type { HardwareOverride, MachineProfile, PerformanceDetail } from './performance'
 import type { MaintenanceState } from './maintenance'
+import type { AppLinks } from './links'
 
 export interface ComponentFile {
   rel: string
@@ -168,8 +169,10 @@ export interface PackManagerApi {
   openSite(path: string): Promise<void>
   /** Ouvre un lien (http ou https seulement) dans le navigateur. */
   openLink(url: string): Promise<void>
-  /** Ouvre une invitation Discord dans l'application Discord si elle est installée, sinon dans le navigateur. */
-  openDiscordInvite(code: string): Promise<void>
+  /** Liens publics modifiables depuis le site (invitation Discord...) : derniers connus (sans réseau). */
+  linksGet(): Promise<AppLinks>
+  /** Ouvre un de ces liens (« discord ») dans le navigateur par défaut ; erreur s'il n'y en a pas. */
+  openAppLink(name: string): Promise<void>
 
   // Notes et commentaires : `kind` (pack par défaut) choisit le catalogue de l'API (/packs ou /mods).
 
@@ -241,6 +244,8 @@ export interface PackManagerApi {
   onLanguage(cb: (code: string) => void): () => void
   /** Maintenances : état changé (vérification, requête refusée pour maintenance, maintenance terminée). */
   onMaintenance(cb: (state: MaintenanceState) => void): () => void
+  /** Liens changés depuis le site (GET /links relu au démarrage et quand la fenêtre reprend le focus). */
+  onLinks(cb: (links: AppLinks) => void): () => void
   /** Lien « fivem-pack-manager://pack/<id> » ou « …://mod/<id> » reçu du site : ouvrir cette fiche dans la Marketplace. */
   onOpenMarketPack(cb: (id: string, kind: MarketKind) => void): () => void
 }
@@ -300,6 +305,7 @@ export const IPC = {
   account: 'pm:account',
   language: 'pm:language',
   maintenance: 'pm:maintenance',
+  links: 'pm:links',
   openMarketPack: 'pm:open-market-pack'
 } as const
 

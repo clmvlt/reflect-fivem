@@ -298,7 +298,7 @@
   "discord": {
     "intro": "Join the Reflect FiveM community: players, pack creators and the app team all meet there.",
     "join": "Join the server",
-    "joinHint": "Opens in the Discord app if it is installed, otherwise in your browser.",
+    "joinHint": "Opens in your browser.",
     "title": "Our Discord server",
     "topics": {
       "help": {
@@ -845,6 +845,7 @@
     },
     "screen": {
       "checking": "Checking…",
+      "discord": "Follow the progress on Discord",
       "local": "Your installed packs remain usable: the library, installing and uninstalling don’t depend on the server.",
       "overdue": "The maintenance is taking a little longer than expected. The app will reopen on its own as soon as it is over.",
       "remaining": "Time remaining",
@@ -1362,11 +1363,11 @@
       "invalidAddress": "Invalid address.",
       "invalidFpsLimit": "Invalid limit: choose between {{min}} and {{max}} frames per second.",
       "invalidGpuClass": "Invalid graphics card class.",
-      "invalidInvite": "Invalid invite.",
       "invalidLink": "Invalid link.",
       "invalidVram": "Invalid video memory: enter a value between {{min}} and {{max}}.",
       "libraryAlreadyThere": "The packs are already in this folder.",
       "libraryInsideCurrent": "Choose a folder outside the current folder.",
+      "linkUnavailable": "This link isn’t available right now.",
       "noActivePack": "No pack installed.",
       "noFiles": "No files.",
       "notFiveMDir": "This folder is not a FiveM folder.",

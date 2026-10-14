@@ -2413,3 +2413,8 @@ button.google {
   background: var(--surface);
   text-align: left;
 }
+.maint-discord {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

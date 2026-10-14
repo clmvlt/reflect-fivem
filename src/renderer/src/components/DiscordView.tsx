@@ -1,8 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useStore } from '../store'
 
-// Invitation du serveur Discord (discord.gg/rtBZAxqtsu).
-const INVITE = 'rtBZAxqtsu'
+// Invitation du serveur Discord : celle de GET /links (modifiable depuis le site), jamais écrite dans l'application.
 
 export function DiscordIcon({ size = 16 }: { size?: number }) {
   return (
@@ -18,8 +17,7 @@ const TOPICS = ['help', 'packs', 'ideas', 'news'] as const
 /** Présentation du serveur Discord de Reflect FiveM, avec le lien d'invitation. */
 export function DiscordView() {
   const { t } = useTranslation()
-  const { run } = useStore()
-  const join = (): void => void run(() => window.api.openDiscordInvite(INVITE))
+  const { links, openLink } = useStore()
   return (
     <div className="page">
       <header className="page-head">
@@ -32,12 +30,14 @@ export function DiscordView() {
           </span>
           <div className="discord-intro">
             <p>{t('discord.intro')}</p>
-            <div className="discord-join">
-              <button className="primary" onClick={join}>
-                {t('discord.join')}
-              </button>
-              <span className="hint">{t('discord.joinHint')}</span>
-            </div>
+            {links.discord && (
+              <div className="discord-join">
+                <button className="primary" onClick={() => openLink('discord')}>
+                  {t('discord.join')}
+                </button>
+                <span className="hint">{t('discord.joinHint')}</span>
+              </div>
+            )}
           </div>
         </div>
         <div className="discord-topics">

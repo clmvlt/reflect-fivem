@@ -11,6 +11,7 @@ import { Marketplace, type MarketView } from './components/Marketplace'
 import { AccountView } from './components/AccountView'
 import { Avatar } from './components/common'
 import { UpdatePanel } from './components/UpdatePanel'
+import { GameControl } from './components/GameControl'
 import icon from './assets/icon.png'
 
 // Invitation du serveur Discord de support (discord.gg/rtBZAxqtsu).
@@ -197,6 +198,7 @@ export function App() {
           })}
         </nav>
         <div className="side-bottom">
+          <GameControl />
           <UpdatePanel />
           {gameProblem && (
             <button className="side-status" onClick={() => go('settings')}>

@@ -2014,7 +2014,7 @@ button.google {
   }
 }
 
-/* ------------------------------------------------------------ Mises à jour à faire */
+/* ------------------------------------------------------------ Lancer / fermer FiveM, mises à jour à faire */
 
 .nav-badge {
   position: absolute;
@@ -2031,6 +2031,49 @@ button.google {
   line-height: 18px;
   text-align: center;
   transform: translateY(-50%);
+}
+.game-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.game-panel.is-running,
+.game-panel.is-relaunch {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.game-panel.is-relaunch {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.game-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 16px;
+}
+.game-links {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.game-dot {
+  flex: none;
+  margin-top: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok-text);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok-text) 25%, transparent);
+}
+.game-launch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
 }
 
 /* ------------------------------------------------------------ Mods */

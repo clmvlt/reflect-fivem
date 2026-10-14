@@ -345,6 +345,26 @@
     "videoTitle": "Pack video",
     "youtube": "YouTube video"
   },
+  "game": {
+    "cancelChange": "Cancel the change",
+    "close": "Close FiveM",
+    "closeDetail": "The game will be closed: any session in progress will be left.",
+    "closeDetailPending": "The game will be closed (any session in progress will be left), then {{title}} will be done.",
+    "closeOnly": "Close only",
+    "closeTitle": "Close FiveM?",
+    "closing": "Closing…",
+    "launch": "Launch FiveM",
+    "launching": "Launching…",
+    "relaunch": "Restart FiveM",
+    "relaunchHint": "Pack changed: restart FiveM for it to take effect.",
+    "restart": "Restart FiveM",
+    "restartDetail": "The game will be closed (any session in progress will be left), the pack changed, then FiveM restarted.",
+    "restartTitle": "Restart FiveM?",
+    "restartToApply": "Restart FiveM for the change to take effect: <b>{{title}}</b>.",
+    "restarting": "Restarting FiveM…",
+    "running": "FiveM is running",
+    "waitSwitch": "Wait for the pack change to finish"
+  },
   "games": {
     "checks": {
       "citizenIni": "CitizenFX.ini (FiveM launched before)",
@@ -733,6 +753,8 @@
       "install": "Install",
       "installed": "Installed",
       "partial": "Removal incomplete",
+      "pending": "On game restart",
+      "pendingTitle": "Installed as soon as FiveM closes",
       "problems_one": "{{n}} issue to check",
       "problems_other": "{{n}} issues to check",
       "update": "New version"
@@ -1016,6 +1038,8 @@
     },
     "moreOptions": "More options",
     "openFolder": "Open folder",
+    "pending": "Installed on game restart",
+    "pendingHint": "FiveM is running: the pack will be installed as soon as it closes. Restart the game for it to take effect.",
     "rate": "Rate and review",
     "rateTitle": "Ratings and reviews on the Marketplace",
     "removeFromGame": "Remove from game",
@@ -1272,7 +1296,10 @@
       "disableModsFirst": "Disable your mods first.",
       "fileError": "{{file}}: {{message}}",
       "fivemFolderNotFound": "FiveM folder not found.",
+      "fivemNotFound": "FiveM not found. Set its folder in Settings.",
       "folderExists": "The folder {{path}} already exists.",
+      "gameAlreadyRunning": "FiveM is already running.",
+      "gameDidNotClose": "FiveM didn’t close. Close it manually, then try again.",
       "graphicsFileMissing": "Settings file not found.",
       "graphicsFileMissingFirstRun": "Settings file not found. Launch the game once first.",
       "invalidAddress": "Invalid address.",
@@ -1293,6 +1320,7 @@
       "removePackFirst": "Remove this pack from the game first.",
       "signInToClaim": "Sign in so the download counts for your account.",
       "unreadableImage": "Unreadable image.",
+      "waitForSwitch": "Wait for the pack change to finish before launching FiveM.",
       "waitForTask": "Wait for the current operation to finish."
     },
     "modConflict": "it replaces files from {{names}}. Enable it from your mods to choose which one to keep.",
@@ -1395,6 +1423,7 @@
       "restored": "Game restored to its original state.",
       "restoredCaptured": "Game restored to its original state. Your manually installed mods were stashed in {{name}}."
     },
+    "doneNextLaunch": "Done: the change will take effect the next time FiveM starts.",
     "download": {
       "added": "{{name}} is in the library.",
       "claimed": "Download of {{name}} confirmed: you can now rate it.",
@@ -1415,11 +1444,20 @@
       "importedOne": "{{name}} is in your mods: enable it with its switch.",
       "noneEnabled": "No mods were enabled."
     },
+    "pendingChange": "FiveM is running: the change will be made as soon as the game closes. Restart FiveM for it to take effect.",
     "theMod": "The mod",
     "thePack": "The pack"
   },
   "system": {
     "rockstarRegistry": "Rockstar registry ({{value}})"
+  },
+  "tray": {
+    "close": "Close FiveM",
+    "launch": "Launch FiveM",
+    "open": "Open Reflect FiveM",
+    "quit": "Quit",
+    "restart": "Restart FiveM (switch pack)",
+    "running": "Reflect FiveM · FiveM is running"
   },
   "updatePanel": {
     "availableSite": "Version {{version}} available on the website.",

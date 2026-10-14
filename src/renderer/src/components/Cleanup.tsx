@@ -15,7 +15,7 @@ function groupOf(i: ForeignItem): string {
 
 export function Cleanup() {
   const { t } = useTranslation()
-  const { overview, task, run } = useStore()
+  const { overview, task, run, changeGame } = useStore()
   const [items, setItems] = useState<ForeignItem[] | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [cache, setCache] = useState<{ size: number } | null | undefined>(undefined)
@@ -103,7 +103,7 @@ export function Cleanup() {
       .filter(Boolean)
       .join(' ')
     const ok = await window.api.confirm(t('cleanup.game.confirm.title'), detail, t('cleanup.game.action'))
-    if (ok) await run(() => window.api.cleanGame(removeMods))
+    if (ok) await changeGame(() => window.api.cleanGame(removeMods))
   }
 
   return (
@@ -178,7 +178,7 @@ export function Cleanup() {
             ) : (
               <>
                 <span className="meta">{t('cleanup.foreign.selected', { count: sel.length, size: bytes(sel.reduce((s, i) => s + i.size, 0)) })}</span>
-                <button onClick={() => void run(() => window.api.stashForeign(sel.map((i) => ({ root: i.root, path: i.path, isDir: i.isDir }))))} disabled={!sel.length || !!task}>
+                <button onClick={() => void changeGame(() => window.api.stashForeign(sel.map((i) => ({ root: i.root, path: i.path, isDir: i.isDir }))))} disabled={!sel.length || !!task}>
                   {t('cleanup.foreign.stash')}
                 </button>
               </>

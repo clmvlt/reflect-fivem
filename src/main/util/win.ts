@@ -1,4 +1,5 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
+import path from 'node:path'
 import { t } from 'i18next'
 
 /** Exécute un script PowerShell (sortie forcée en UTF-8 pour les chemins accentués). */
@@ -174,4 +175,24 @@ const GAME_PROCESS = /^(fivem(_.*)?|gta5(_enhanced)?|gta5_be|playgtav|gtavlaunch
 
 export async function runningGameProcesses(): Promise<string[]> {
   return (await listProcesses()).filter((n) => GAME_PROCESS.test(n))
+}
+
+/** Demande la fermeture de processus (taskkill), avec leurs processus enfants ; `force` : arrêt immédiat. */
+export function killProcesses(names: string[], force: boolean): Promise<void> {
+  return new Promise((resolve) => {
+    const args = [...(force ? ['/F'] : []), '/T', ...names.flatMap((n) => ['/IM', n])]
+    execFile('taskkill.exe', args, { windowsHide: true }, () => resolve())
+  })
+}
+
+/** Lance un programme indépendant de l'application (il continue si elle est fermée). */
+export function launchDetached(exe: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(exe, [], { cwd: path.dirname(exe), detached: true, stdio: 'ignore' })
+    child.once('error', reject)
+    child.once('spawn', () => {
+      child.unref()
+      resolve()
+    })
+  })
 }

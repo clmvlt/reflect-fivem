@@ -345,6 +345,26 @@
     "videoTitle": "Vidéo du pack",
     "youtube": "Vidéo YouTube"
   },
+  "game": {
+    "cancelChange": "Annuler le changement",
+    "close": "Fermer FiveM",
+    "closeDetail": "Le jeu va être fermé : une partie en cours sera quittée.",
+    "closeDetailPending": "Le jeu va être fermé (une partie en cours sera quittée), puis {{title}} sera fait.",
+    "closeOnly": "Fermer seulement",
+    "closeTitle": "Fermer FiveM ?",
+    "closing": "Fermeture…",
+    "launch": "Lancer FiveM",
+    "launching": "Lancement…",
+    "relaunch": "Relancer FiveM",
+    "relaunchHint": "Pack changé : relancez FiveM pour qu’il prenne effet.",
+    "restart": "Redémarrer FiveM",
+    "restartDetail": "Le jeu va être fermé (une partie en cours sera quittée), le pack changé, puis FiveM relancé.",
+    "restartTitle": "Redémarrer FiveM ?",
+    "restartToApply": "Redémarrez FiveM pour que le changement prenne effet : <b>{{title}}</b>.",
+    "restarting": "Redémarrage de FiveM…",
+    "running": "FiveM est lancé",
+    "waitSwitch": "Attendez la fin du changement de pack"
+  },
   "games": {
     "checks": {
       "citizenIni": "CitizenFX.ini (FiveM déjà lancé)",
@@ -733,6 +753,8 @@
       "install": "Installer",
       "installed": "Installé",
       "partial": "Retrait incomplet",
+      "pending": "Au redémarrage du jeu",
+      "pendingTitle": "Installé dès la fermeture de FiveM",
       "problems_one": "{{n}} point à vérifier",
       "problems_other": "{{n}} points à vérifier",
       "update": "Nouvelle version"
@@ -1016,6 +1038,8 @@
     },
     "moreOptions": "Plus d’options",
     "openFolder": "Ouvrir le dossier",
+    "pending": "Installé au redémarrage du jeu",
+    "pendingHint": "FiveM est lancé : le pack sera installé dès sa fermeture. Redémarrez le jeu pour qu’il prenne effet.",
     "rate": "Noter et commenter",
     "rateTitle": "Notes et commentaires sur la Marketplace",
     "removeFromGame": "Retirer du jeu",
@@ -1272,7 +1296,10 @@
       "disableModsFirst": "Désactive d'abord tes mods.",
       "fileError": "{{file}} : {{message}}",
       "fivemFolderNotFound": "Dossier FiveM introuvable.",
+      "fivemNotFound": "FiveM introuvable. Indiquez son dossier dans les réglages.",
       "folderExists": "Le dossier {{path}} existe déjà.",
+      "gameAlreadyRunning": "FiveM est déjà lancé.",
+      "gameDidNotClose": "FiveM ne s’est pas fermé. Fermez-le à la main, puis réessayez.",
       "graphicsFileMissing": "Fichier de réglages introuvable.",
       "graphicsFileMissingFirstRun": "Fichier de réglages introuvable. Lancez le jeu une première fois.",
       "invalidAddress": "Adresse invalide.",
@@ -1293,6 +1320,7 @@
       "removePackFirst": "Retire d'abord ce pack du jeu.",
       "signInToClaim": "Connectez-vous pour que le téléchargement soit compté pour votre compte.",
       "unreadableImage": "Image illisible.",
+      "waitForSwitch": "Attendez la fin du changement de pack avant de lancer FiveM.",
       "waitForTask": "Attendez la fin de l’opération en cours."
     },
     "modConflict": "il remplace des fichiers de {{names}}. Activez-le depuis vos mods pour choisir lequel garder.",
@@ -1395,6 +1423,7 @@
       "restored": "Jeu remis d’origine.",
       "restoredCaptured": "Jeu remis d’origine. Vos mods installés à la main sont rangés dans {{name}}."
     },
+    "doneNextLaunch": "C’est fait : le changement prendra effet au prochain lancement de FiveM.",
     "download": {
       "added": "{{name}} est dans la bibliothèque.",
       "claimed": "Téléchargement de {{name}} validé : vous pouvez maintenant le noter.",
@@ -1415,11 +1444,20 @@
       "importedOne": "{{name}} est dans vos mods : activez-le avec son interrupteur.",
       "noneEnabled": "Aucun mod n’était activé."
     },
+    "pendingChange": "FiveM est lancé : le changement sera fait dès la fermeture du jeu. Redémarrez FiveM pour qu’il prenne effet.",
     "theMod": "Le mod",
     "thePack": "Le pack"
   },
   "system": {
     "rockstarRegistry": "Registre Rockstar ({{value}})"
+  },
+  "tray": {
+    "close": "Fermer FiveM",
+    "launch": "Lancer FiveM",
+    "open": "Ouvrir Reflect FiveM",
+    "quit": "Quitter",
+    "restart": "Redémarrer FiveM (changer de pack)",
+    "running": "Reflect FiveM · FiveM est lancé"
   },
   "updatePanel": {
     "availableSite": "Version {{version}} disponible sur le site.",

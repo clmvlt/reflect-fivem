@@ -8,6 +8,8 @@ directories:
 files:
   - out/**
   - package.json
+  # Icône de la zone de notification (resources/ n'est pas emballé par défaut : dossier des ressources de construction).
+  - resources/icon.png
   - '!packs/**'
   - '!node_modules/7zip-bin/{mac,linux}/**'
   - '!node_modules/7zip-bin/win/{ia32,arm64}/**'

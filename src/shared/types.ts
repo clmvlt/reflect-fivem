@@ -205,6 +205,8 @@ export interface Settings {
   gtaPath: string | null
   /** Limite d'images par seconde, appliquée par l'ENB des packs : null ou absent = celle du pack, 0 = aucune limite. */
   fpsLimit?: number | null
+  /** Fermer la fenêtre garde l'application dans la zone de notification (absent : oui). */
+  closeToTray?: boolean
   /** Classe de carte graphique ou mémoire vidéo corrigées à la main (carte non reconnue). */
   machine?: HardwareOverride
   /** Langue choisie dans les réglages de l'application sur ce poste (absent : jamais choisie). */
@@ -323,7 +325,21 @@ export interface Overview {
   apiUrl: string
   /** Packs et mods de la bibliothèque dont une nouvelle version est en ligne, et ceux retirés de la Marketplace. */
   market: { updates: string[]; gone: string[] }
+  game: GameState
   update: UpdateState
+}
+
+/** Changement de pack demandé pendant que FiveM tourne : fait dès que le jeu est fermé. */
+export interface PendingChange {
+  title: string
+  /** Pack qui sera installé (null pour un retrait ou un nettoyage). */
+  packId: string | null
+}
+
+export interface GameState {
+  pending: PendingChange | null
+  /** Pack changé depuis la dernière partie : relancer FiveM pour qu'il prenne effet. */
+  relaunch: boolean
 }
 
 /** Ce que changerait l'activation d'un mod (rien n'est modifié). */

@@ -148,6 +148,17 @@ export function SettingsView() {
         <LanguageSelect />
         <li className="row">
           <div className="row-main">
+            <div className="name">{t('settings.app.trayTitle')}</div>
+            <div className="meta">{t('settings.app.trayHelp')}</div>
+          </div>
+          <label className="switch">
+            <input type="checkbox" checked={settings.closeToTray !== false} onChange={(e) => void run(() => window.api.setCloseToTray(e.target.checked))} />
+            <span className="switch-track" />
+            <span className="switch-text">{settings.closeToTray !== false ? t('common.enabled') : t('common.disabled')}</span>
+          </label>
+        </li>
+        <li className="row">
+          <div className="row-main">
             <div className="name">{t('settings.app.marketplace')}</div>
             <div className="meta path">{overview.apiUrl.replace(/\/api$/, '')}</div>
           </div>

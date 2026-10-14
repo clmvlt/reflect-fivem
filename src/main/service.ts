@@ -6,7 +6,7 @@ import { app, BrowserWindow, dialog, Menu, nativeImage, net, safeStorage, screen
 import type { AppState, GamesInfo, MarketKind, Overview, PackPatch, RootId, Settings, TaskProgress } from '@shared/types'
 import type { AccountMe, ProfileInput } from '@shared/types'
 import type { AuthorQuery, CommentQuery, ComponentFile, ForeignSelection, MarketQuery, MenuItem, PackManagerApi } from '@shared/api'
-import { IPC } from '@shared/api'
+import { IPC, PENDING } from '@shared/api'
 import i18next, { t } from 'i18next'
 import { currentLocale, initI18n, msg, supportedLocale } from '@shared/i18n'
 import { formatMegabytes, formatNumber, quote } from '@shared/intl'
@@ -24,7 +24,7 @@ import { languageFetch } from './core/http'
 import { accountLanguageAction, fetchLanguages, startupLocale } from './core/language'
 import { Marketplace } from './core/marketplace'
 import { AppUpdater } from './core/updater'
-import { readVideoAdapters, runningGameProcesses } from './util/win'
+import { killProcesses, launchDetached, readVideoAdapters, runningGameProcesses } from './util/win'
 import type { GraphicsTarget } from '@shared/graphics'
 import type { HardwareOverride, MachineProfile } from '@shared/performance'
 import { fileDestination } from './core/analyzer'
@@ -37,6 +37,8 @@ type ServerApi = Omit<PackManagerApi, 'onTask' | 'onChanged' | 'onUpdate' | 'onA
 const MARKET_REFRESH = 6 * 60 * 60 * 1000
 /** Bibliothèque des mods : sous-dossier de la bibliothèque des packs (ignoré par celle-ci, comme tout dossier « . »). */
 const modsDir = (libraryDir: string): string => path.join(libraryDir, '.mods')
+/** FiveM lancé ou fermé : vérifié toutes les 4 secondes (liste des processus). */
+const GAME_WATCH = 4000
 /** Requêtes vers l'API, avec la langue affichée (Accept-Language). */
 const apiFetch = languageFetch((url, init) => net.fetch(url, init))
 
@@ -81,6 +83,19 @@ export class Service {
   hardware: Hardware
   /** Modèle de comparaison des performances de l'API. */
   perfModels: PerformanceModels
+  /** État de l'application changé (zone de notification : jeu lancé, changement en attente). */
+  onStateChange: (() => void) | null = null
+  private gameWasRunning = false
+  private watching = false
+  /**
+   * Changement de pack demandé pendant que FiveM tourne : fait dès que le jeu est fermé. Le jeu garde les fichiers du
+   * pack ouverts et réécrit ses réglages (ReShade, ENB) en quittant : changer de pack pendant qu'il tourne mélangerait
+   * les fichiers des deux packs.
+   */
+  private pending: { title: string; packId: string | null; start: () => string } | null = null
+  /** Tâche lancée pour le changement en attente. */
+  private pendingTask: string | null = null
+  private relaunchHint = false
   /** Compte connecté au dernier changement (une connexion se reconnaît à un compte différent). */
   private accountId: number | null = null
 
@@ -232,7 +247,29 @@ export class Service {
       void this.machineProfile().catch(() => undefined)
     }, 5000)
     setInterval(() => void refreshMarket(), MARKET_REFRESH)
+    setInterval(() => void this.watchGame(), GAME_WATCH)
     this.updater.start()
+  }
+
+  /** FiveM (ou GTA V) en cours d'exécution, d'après la dernière vérification. */
+  get gameRunning(): boolean {
+    return (this.gamesCache?.runningProcesses.length ?? 0) > 0
+  }
+
+  /** Processus du jeu relus : l'interface est prévenue quand FiveM est lancé ou fermé. */
+  private async watchGame(): Promise<void> {
+    if (this.watching || !this.gamesCache) return
+    this.watching = true
+    try {
+      const running = (await runningGameProcesses()).sort()
+      if (!this.gamesCache) return
+      const differs = running.join() !== [...this.gamesCache.runningProcesses].sort().join()
+      if (differs) this.gamesCache = { ...this.gamesCache, runningProcesses: running }
+      // Aussi quand une détection complète l'a déjà vu, sans prévenir la zone de notification.
+      if (differs || this.gameRunning !== this.gameWasRunning) this.changed()
+    } finally {
+      this.watching = false
+    }
   }
 
   private emit(channel: string, payload?: unknown): void {
@@ -242,7 +279,48 @@ export class Service {
 
   private changed(): void {
     this.foreign = null
+    if (this.gameRunning !== this.gameWasRunning) {
+      this.gameWasRunning = this.gameRunning
+      log.info(this.gameRunning ? 'Jeu lancé' : 'Jeu fermé')
+      if (this.gameRunning) this.relaunchHint = false
+    }
     this.emit(IPC.changed)
+    this.onStateChange?.()
+    // FiveM fermé (ou opération précédente terminée) : le changement en attente est fait.
+    if (this.pending && !this.gameRunning && !this.running) setTimeout(() => this.startPending(), 0)
+  }
+
+  /** Changement de pack : tout de suite, ou à la fermeture du jeu s'il est lancé (le dernier demandé remplace l'autre). */
+  private async whenGameClosed(title: string, packId: string | null, start: () => string): Promise<string> {
+    if (!(await runningGameProcesses()).length) return start()
+    this.pending = { title, packId, start }
+    log.info(`Jeu lancé : « ${title} » fait à sa fermeture`)
+    // Liste des processus à jour, pour que l'interface affiche le jeu lancé.
+    await this.watchGame()
+    this.changed()
+    return PENDING
+  }
+
+  private startPending(): void {
+    const p = this.pending
+    if (!p || this.gameRunning || this.running) return
+    this.pending = null
+    try {
+      this.pendingTask = p.start()
+      this.relaunchHint = true
+    } catch (err) {
+      log.warn(`Changement en attente non fait : ${(err as Error).message}`)
+    }
+    this.changed()
+  }
+
+  get hasPending(): boolean {
+    return !!this.pending
+  }
+
+  /** Une tâche « longue » qui modifie le jeu est en cours (installation, retrait...) : pas de lancement de FiveM. */
+  private get switching(): boolean {
+    return !!this.running && /^(apply|remove|clean|stash|mod)-/.test(this.running.id)
   }
 
   private get gamesFile(): string {
@@ -317,6 +395,7 @@ export class Service {
       } catch (err) {
         const message = (err as Error)?.message ?? String(err)
         log.error(`Tâche en échec : ${title} : ${message}`)
+        if (id === this.pendingTask) this.relaunchHint = false
         this.emit(IPC.task, { ...base, done: true, ok: false, error: message } satisfies TaskProgress)
       } finally {
         this.running = null
@@ -349,7 +428,8 @@ export class Service {
         dataDir: this.dataDir,
         apiUrl: this.apiUrl,
         market,
-        update: this.updater.state
+        update: this.updater.state,
+        game: { pending: this.pending && { title: this.pending.title, packId: this.pending.packId }, relaunch: this.relaunchHint }
       }
     },
 
@@ -499,17 +579,21 @@ export class Service {
 
     applyPack: async (id: string) => {
       const m = await this.library.get(id)
-      return this.startTask('apply', t('service.tasks.apply', { name: m.name }), id, (report) => this.installer.apply(id, report))
+      const title = t('service.tasks.apply', { name: m.name })
+      return this.whenGameClosed(title, id, () => this.startTask('apply', title, id, (report) => this.installer.apply(id, report)))
     },
 
     removeActive: async () => {
       const a = this.state.get().active
       if (!a) throw this.toError(t('service.errors.noActivePack'))
-      return this.startTask('remove', t('service.tasks.remove', { name: a.packName }), a.packId, (report) => this.installer.removeActive(report))
+      const title = t('service.tasks.remove', { name: a.packName })
+      return this.whenGameClosed(title, null, () => this.startTask('remove', title, a.packId, (report) => this.installer.removeActive(report)))
     },
 
-    stashForeign: async (selection?: ForeignSelection[]) =>
-      this.startTask('stash', t('service.tasks.stash'), 'foreign', (report) => this.installer.stashForeign(report, selection)),
+    stashForeign: async (selection?: ForeignSelection[]) => {
+      const title = t('service.tasks.stash')
+      return this.whenGameClosed(title, null, () => this.startTask('stash', title, 'foreign', (report) => this.installer.stashForeign(report, selection)))
+    },
 
     scanForeign: () => this.installer.scanForeign(),
 
@@ -545,8 +629,10 @@ export class Service {
         return { trashed: done }
       }),
 
-    cleanGame: async (withMods?: boolean) =>
-      this.startTask('clean', t('service.tasks.clean'), 'game', (report) => this.installer.cleanGame(report, withMods === true)),
+    cleanGame: async (withMods?: boolean) => {
+      const title = t('service.tasks.clean')
+      return this.whenGameClosed(title, null, () => this.startTask('clean', title, 'game', (report) => this.installer.cleanGame(report, withMods === true)))
+    },
 
     pickModFiles: async () => {
       const w = this.getWindow()
@@ -667,6 +753,55 @@ export class Service {
       await this.state.set(pushHistory(this.state.get(), { action: 'graphics', ok: true, msg: msg('history.graphicsRestored', { target: gt.target.label }) }))
       this.changed()
       return this.graphics.read(gt.target, gt.targets)
+    },
+
+    launchGame: async () => {
+      if ((await runningGameProcesses()).length) throw this.toError(t('service.errors.gameAlreadyRunning'))
+      if (this.switching) throw this.toError(t('service.errors.waitForSwitch'))
+      const games = this.gamesCache ?? (await this.refreshGames())
+      if (!games.fivem.valid || !games.fivem.path) throw this.toError(t('service.errors.fivemNotFound'))
+      // FiveM.exe est à côté du dossier FiveM.app ; sinon le lien fivem:// (enregistré par FiveM à chaque lancement).
+      const exe = path.join(path.dirname(games.fivem.path), 'FiveM.exe')
+      if (await exists(exe)) await launchDetached(exe)
+      else await shell.openExternal('fivem://')
+      log.info('FiveM lancé depuis l’application')
+      setTimeout(() => void this.watchGame(), 2500)
+    },
+
+    closeGame: async () => {
+      let running = await runningGameProcesses()
+      if (!running.length) return true
+      // Fermeture demandée (le jeu enregistre ses réglages en quittant), puis arrêt forcé au bout de 6 secondes.
+      await killProcesses(running, false)
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 500))
+        running = await runningGameProcesses()
+        if (!running.length) break
+        if (i === 11) await killProcesses(running, true)
+      }
+      await this.watchGame()
+      if (running.length) throw this.toError(t('service.errors.gameDidNotClose'))
+      log.info('FiveM fermé depuis l’application')
+      return true
+    },
+
+    restartGame: async () => {
+      await this.api.closeGame()
+      // Le changement en attente part à la fermeture : attendu avant de relancer le jeu (30 minutes au plus).
+      this.startPending()
+      for (let i = 0; this.switching && i < 3600; i++) await new Promise((r) => setTimeout(r, 500))
+      await this.api.launchGame()
+    },
+
+    cancelPending: async () => {
+      if (this.pending) log.info(`Changement en attente abandonné : ${this.pending.title}`)
+      this.pending = null
+      this.changed()
+    },
+
+    setCloseToTray: async (on: boolean) => {
+      await this.settings.patch({ closeToTray: on })
+      this.changed()
     },
 
     machineProfile: () => this.machineProfile(),

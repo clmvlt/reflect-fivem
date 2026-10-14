@@ -2,7 +2,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { app, BrowserWindow, ipcMain, Menu, nativeTheme, net, protocol, screen, session, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, screen, session, shell, Tray } from 'electron'
 import { IPC, tagApiError } from '@shared/api'
 import { t } from 'i18next'
 import { initI18n } from '@shared/i18n'
@@ -13,6 +13,7 @@ import { EXEC_FLAG, LOCALE_FLAG, runElevatedWorker } from './core/elevation'
 import { Service } from './service'
 import { isInside } from './util/fsx'
 import { log } from './util/log'
+import trayIconFile from '../../resources/icon.png?asset'
 
 const isElevatedWorker = process.argv.some((a) => a.startsWith(EXEC_FLAG))
 
@@ -82,6 +83,12 @@ function startApp(): void {
   })
 
   app.on('window-all-closed', () => app.quit())
+  // Vraie fermeture (Quitter, mise à jour) : la fenêtre n'est plus seulement cachée.
+  let quitting = false
+  app.on('before-quit', () => {
+    quitting = true
+  })
+  let tray: Tray | null = null
 
   void app.whenReady().then(async () => {
     await service.init()
@@ -148,6 +155,13 @@ function startApp(): void {
 
     Menu.setApplicationMenu(null)
     win = createWindow(path.join(dataDir, 'window.json'))
+    tray = createTray(service, () => win)
+    // Fermer la fenêtre la cache : l'application reste dans la zone de notification (sauf si désactivé dans les réglages).
+    win.on('close', (e) => {
+      if (quitting || service.settings.get().closeToTray === false || !tray) return
+      e.preventDefault()
+      win?.hide()
+    })
     // Lancée par un lien : au premier plan dès son affichage (après le show() de createWindow).
     if (pendingPack) win.once('ready-to-show', () => win && bringToFront(win))
     // isLoading() est encore vrai pendant did-finish-load : d'où l'indicateur.
@@ -158,6 +172,41 @@ function startApp(): void {
     service.startBackground()
     nativeTheme.on('updated', () => win?.setBackgroundColor(windowBackground()))
   })
+}
+
+/** Icône de la zone de notification : ouvrir la fenêtre, lancer ou fermer FiveM, quitter. */
+function createTray(service: Service, getWindow: () => BrowserWindow | null): Tray {
+  const tray = new Tray(nativeImage.createFromPath(trayIconFile).resize({ width: 16, height: 16, quality: 'best' }))
+  tray.setToolTip('Reflect FiveM')
+  const show = (): void => {
+    const w = getWindow()
+    if (w && !w.isDestroyed()) bringToFront(w)
+  }
+  const attempt = (fn: () => Promise<unknown>): void => {
+    fn().catch((err: unknown) => tray.displayBalloon({ iconType: 'warning', title: 'Reflect FiveM', content: (err as Error).message }))
+  }
+  const update = (): void => {
+    const running = service.gameRunning
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: t('tray.open'), click: show },
+        { type: 'separator' },
+        ...(running
+          ? [
+              ...(service.hasPending ? [{ label: t('tray.restart'), click: () => attempt(() => service.api.restartGame()) }] : []),
+              { label: t('tray.close'), click: () => attempt(() => service.api.closeGame()) }
+            ]
+          : [{ label: t('tray.launch'), click: () => attempt(() => service.api.launchGame()) }]),
+        { type: 'separator' },
+        { label: t('tray.quit'), click: () => app.quit() }
+      ])
+    )
+    tray.setToolTip(running ? t('tray.running') : 'Reflect FiveM')
+  }
+  tray.on('click', show)
+  service.onStateChange = update
+  update()
+  return tray
 }
 
 /**

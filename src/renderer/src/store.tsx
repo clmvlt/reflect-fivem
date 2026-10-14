@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import type { AccountMe, Overview, TaskProgress, UpdateState } from '@shared/types'
-import { readApiError } from '@shared/api'
+import { PENDING, readApiError } from '@shared/api'
 import i18next, { t } from 'i18next'
 import { num, q } from './lib/format'
 
@@ -22,6 +22,11 @@ interface Store {
   setMessage: (m: Message | null) => void
   /** Appelle l'API ; une erreur s'affiche dans la barre de message. */
   run: <T>(fn: () => Promise<T>) => Promise<T | undefined>
+  /**
+   * Change ce qui est installé dans le jeu (installer, retirer, nettoyer...). FiveM lancé : le changement est fait à
+   * la fermeture du jeu, et un message demande de le redémarrer.
+   */
+  changeGame: (fn: () => Promise<string>) => Promise<void>
 }
 
 const Ctx = createContext<Store | null>(null)
@@ -33,6 +38,9 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
   const [update, setUpdate] = useState<UpdateState | null>(null)
   const [account, setAccount] = useState<AccountMe | null | undefined>(undefined)
   const lastTask = useRef<string | null>(null)
+  // Changement fait pendant une partie (à sa fermeture) : il prendra effet au prochain lancement.
+  const relaunchRef = useRef(false)
+  relaunchRef.current = !!overview?.game.relaunch
 
   const refresh = useCallback(async () => {
     try {
@@ -52,6 +60,14 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
       return undefined
     }
   }, [])
+
+  const changeGame = useCallback(
+    async (fn: () => Promise<string>): Promise<void> => {
+      if ((await run(fn)) === PENDING)
+        setMessage({ kind: 'info', text: t('store.pendingChange') })
+    },
+    [run]
+  )
 
   useEffect(() => {
     void refresh()
@@ -77,7 +93,11 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
       if (!p.ok) setMessage({ kind: 'error', text: p.error ?? t('common.failed') })
       else {
         const info = resultMessage(p)
-        if (info) setMessage(info)
+        // Changement fait à la fermeture du jeu : le rappeler.
+        const restart = relaunchRef.current && ['apply', 'remove', 'clean', 'stash'].includes(p.kind)
+        const text = t('store.doneNextLaunch')
+        if (restart) setMessage({ kind: 'info', text: info ? `${info.text}\n${text}` : text })
+        else if (info) setMessage(info)
       }
     })
     const onKey = (e: KeyboardEvent): void => {
@@ -107,8 +127,8 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
   }, [overview?.accent])
 
   const value = useMemo<Store>(
-    () => ({ overview, refresh, task, update, account, setAccount, message, setMessage, run }),
-    [overview, refresh, task, update, account, message, run]
+    () => ({ overview, refresh, task, update, account, setAccount, message, setMessage, run, changeGame }),
+    [overview, refresh, task, update, account, message, run, changeGame]
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

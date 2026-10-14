@@ -28,7 +28,7 @@ const labelOf = (d: Destination): string => `${d.root === 'fivem' ? 'FiveM' : 'G
 
 export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest; onBack: () => void; onOpenMarket: (marketId: string) => void }) {
   const { t } = useTranslation()
-  const { overview, task, run } = useStore()
+  const { overview, task, run, changeGame } = useStore()
   const perfCtx = usePerformance()
   const confirmHeavy = usePerfConfirm()
   const [renaming, setRenaming] = useState(false)
@@ -78,7 +78,7 @@ export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest;
   }
   const install = async (): Promise<void> => {
     if (!(await confirmHeavy({ name: pack.name, kind: 'pack', performance: installedPerf }, t('packDetail.installAnyway')))) return
-    await run(() => window.api.applyPack(pack.id))
+    await changeGame(() => window.api.applyPack(pack.id))
   }
 
   return (
@@ -137,8 +137,16 @@ export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest;
             ) : active ? (
               <>
                 <div className="state big">{t('packDetail.installed')}</div>
-                <button className="wide" onClick={() => void run(() => window.api.removeActive())} disabled={!!task}>
+                <button className="wide" onClick={() => void changeGame(() => window.api.removeActive())} disabled={!!task}>
                   {t('packDetail.removeFromGame')}
+                </button>
+              </>
+            ) : overview.game.pending?.packId === pack.id ? (
+              <>
+                <div className="state big">{t('packDetail.pending')}</div>
+                <p className="hint">{t('packDetail.pendingHint')}</p>
+                <button className="wide" onClick={() => void run(() => window.api.cancelPending())}>
+                  {t('common.cancel')}
                 </button>
               </>
             ) : (

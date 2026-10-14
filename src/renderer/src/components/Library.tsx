@@ -133,6 +133,7 @@ export function Library({
               active={p.id === activeId}
               partial={p.id === activeId && !!state.active?.partial}
               problems={problemCount(p, build)}
+              pending={overview.game.pending?.packId === p.id}
               update={overview.market.updates.includes(p.id)}
               task={task}
               onOpen={() => onOpen(p.id)}
@@ -149,6 +150,7 @@ function PackCard({
   active,
   partial,
   problems,
+  pending,
   update,
   task,
   onOpen
@@ -157,12 +159,14 @@ function PackCard({
   active: boolean
   partial: boolean
   problems: number
+  /** Sera installé à la fermeture de FiveM. */
+  pending: boolean
   update: boolean
   task: TaskProgress | null
   onOpen: () => void
 }) {
   const { t } = useTranslation()
-  const { run } = useStore()
+  const { run, changeGame } = useStore()
   const [renaming, setRenaming] = useState(false)
   const mine = task && task.detail === pack.id ? task : null
 
@@ -187,6 +191,10 @@ function PackCard({
             <>
               {active ? (
                 <span className="state">{partial ? t('libraryView.card.partial') : t('libraryView.card.installed')}</span>
+              ) : pending ? (
+                <span className="state" title={t('libraryView.card.pendingTitle')}>
+                  {t('libraryView.card.pending')}
+                </span>
               ) : update ? (
                 <span className="accent-text small">{t('libraryView.card.update')}</span>
               ) : problems > 0 ? (
@@ -194,11 +202,13 @@ function PackCard({
               ) : null}
               <div className="spacer" />
               {active ? (
-                <button onClick={() => void run(() => window.api.removeActive())} disabled={!!task}>
+                <button onClick={() => void changeGame(() => window.api.removeActive())} disabled={!!task}>
                   {t('common.remove')}
                 </button>
+              ) : pending ? (
+                <button onClick={() => void run(() => window.api.cancelPending())}>{t('common.cancel')}</button>
               ) : (
-                <button onClick={() => void run(() => window.api.applyPack(pack.id))} disabled={!!task}>
+                <button onClick={() => void changeGame(() => window.api.applyPack(pack.id))} disabled={!!task}>
                   {t('libraryView.card.install')}
                 </button>
               )}
@@ -215,7 +225,7 @@ function PackCard({
 
 function ForeignCard({ files, size, task }: { files: number; size: number; task: TaskProgress | null }) {
   const { t } = useTranslation()
-  const { run } = useStore()
+  const { changeGame } = useStore()
   const mine = task && task.detail === 'foreign' ? task : null
   return (
     <article className="card is-active">
@@ -234,7 +244,7 @@ function ForeignCard({ files, size, task }: { files: number; size: number; task:
             <>
               <span className="state">{t('libraryView.card.installed')}</span>
               <div className="spacer" />
-              <button onClick={() => void run(() => window.api.stashForeign())} disabled={!!task} title={t('libraryView.foreign.removeTitle')}>
+              <button onClick={() => void changeGame(() => window.api.stashForeign())} disabled={!!task} title={t('libraryView.foreign.removeTitle')}>
                 {t('common.remove')}
               </button>
             </>

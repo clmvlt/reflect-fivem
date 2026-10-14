@@ -63,6 +63,7 @@ export interface PackManagerApi {
   deletePack(id: string): Promise<string>
   openPackFolder(id: string): Promise<void>
 
+  /** Identifiant de la tâche, ou PENDING si FiveM est lancé : le changement est fait dès sa fermeture. */
   applyPack(id: string): Promise<string>
   removeActive(): Promise<string>
   stashForeign(selection?: ForeignSelection[]): Promise<string>
@@ -106,6 +107,17 @@ export interface PackManagerApi {
    * et appliquée tout de suite au pack installé. Renvoie le nombre de fichiers du jeu mis à jour.
    */
   setFpsLimit(limit: number | null): Promise<number>
+
+  /** Lance FiveM (FiveM.exe à côté du dossier FiveM.app, sinon par le lien fivem://). */
+  launchGame(): Promise<void>
+  /** Ferme FiveM et GTA V : demande de fermeture, puis arrêt forcé au bout de quelques secondes. */
+  closeGame(): Promise<boolean>
+  /** Ferme FiveM, attend le changement de pack en attente, puis relance le jeu. */
+  restartGame(): Promise<void>
+  /** Abandonne le changement de pack en attente de la fermeture du jeu. */
+  cancelPending(): Promise<void>
+  /** Fermer la fenêtre garde l'application dans la zone de notification. */
+  setCloseToTray(on: boolean): Promise<void>
 
   /**
    * Configuration de la machine (carte graphique, mémoire, résolution) et modèle de comparaison de l'API : les packs y
@@ -281,6 +293,9 @@ export const IPC = {
   language: 'pm:language',
   openMarketPack: 'pm:open-market-pack'
 } as const
+
+/** Renvoyé à la place d'un identifiant de tâche quand le changement attend la fermeture de FiveM. */
+export const PENDING = 'pending'
 
 /** Codes d'erreur de marketDetail quand l'API ne connaît pas (ou plus) le pack ou le mod : inutile de réessayer. */
 export const PACK_GONE = 'pack-gone'

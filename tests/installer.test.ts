@@ -239,12 +239,56 @@ describe('parcours complet', () => {
     expect(await installer.foreignSummary()).toBeNull()
   })
 
-  it("refuse d'écraser un fichier d'origine de GTA V", async () => {
+  it("garde les fichiers d'origine du jeu remplacés par un pack et les remet en place", async () => {
     const m = await library.get(packB)
     const comp = m.components.find((c) => c.source === 'enb')!
     await library.update(packB, { components: [{ id: comp.id, destination: { root: 'gta', path: 'update' } }] })
-    await expect(installer.apply(packB, report)).rejects.toThrow(/fichiers du jeu/)
+    const game = path.join(gta, 'update', 'enbseries.ini')
+    const kept = path.join(gta, '.fpm-originaux', 'update', 'enbseries.ini')
+    await write(game, 'original')
+
+    // Installation : l'original est mis de côté (et non rangé dans « Ancienne installation »).
+    const res = await installer.apply(packB, report)
+    expect(res.captured).toBeNull()
+    expect(await read(game)).toBe('[Pack B]')
+    expect(await read(kept)).toBe('original')
+    expect(state.get().active?.originals).toEqual([{ root: 'gta', path: 'update/enbseries.ini' }])
+    expect(state.get().active?.files.find((f) => f.path === 'update/d3dcompiler_46e.dll')?.linked).toBe(false)
+
+    // Réinstaller le même pack : l'original reste de côté.
+    await installer.apply(packB, report)
+    expect(await read(game)).toBe('[Pack B]')
+    expect(await read(kept)).toBe('original')
+
+    // Bascule vers un pack qui ne remplace pas ce fichier : l'original revient.
+    await installer.apply(packA, report)
+    expect(await read(game)).toBe('original')
+    expect(existsSync(path.join(gta, '.fpm-originaux'))).toBe(false)
+    expect(state.get().active?.originals).toEqual([])
+
+    // Retrait du pack : l'original revient, les fichiers ajoutés par le pack disparaissent.
+    await installer.apply(packB, report)
+    expect(await read(kept)).toBe('original')
+    await installer.removeActive(report)
+    expect(await read(game)).toBe('original')
+    expect(existsSync(path.join(gta, 'update', 'enblocal.ini'))).toBe(false)
+    expect(existsSync(path.join(gta, 'update', 'update.rpf'))).toBe(true)
+    expect(existsSync(path.join(gta, '.fpm-originaux'))).toBe(false)
+    expect(state.get().active).toBeNull()
+
+    // Fichier remplacé par une mise à jour du jeu pendant que le pack est installé : laissé en place, l'ancien original est jeté.
+    await installer.apply(packB, report)
+    await fs.writeFile(game, 'mis à jour par le jeu')
+    const later = new Date(Date.now() + 5000)
+    await fs.utimes(game, later, later)
+    await installer.removeActive(report)
+    expect(await read(game)).toBe('mis à jour par le jeu')
+    expect(existsSync(path.join(gta, '.fpm-originaux'))).toBe(false)
+    expect(existsSync(path.join(library.userDir(packB), 'gta', 'update', 'enbseries.ini'))).toBe(false)
+
+    await fs.rm(game)
     await library.update(packB, { resetComponents: true })
+    expect(await trashLeft()).toEqual([])
   })
 })
 

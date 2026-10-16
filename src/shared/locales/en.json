@@ -644,7 +644,6 @@
       "fivemMissing": "FiveM folder not found. Set it in Settings.",
       "fivemNotFound": "FiveM folder not found.",
       "fpsFailed": "The limit couldn't be applied.",
-      "gameFiles": "This pack would replace game files. Installation canceled.",
       "gameRunning": "Close FiveM before continuing.",
       "gtaMissing": "GTA V folder not found. Set it in Settings.",
       "installFailed": "Installation failed.",
@@ -658,6 +657,8 @@
       "nothingChanged": "{{error}} Nothing was changed.",
       "operationFailed": "The operation failed.",
       "packEmpty": "This pack has nothing to install.",
+      "originalsFailed_one": "{{count}} original game file couldn't be put back. Close FiveM and try again.",
+      "originalsFailed_other": "{{count}} original game files couldn't be put back. Close FiveM and try again.",
       "removeFailed_one": "{{count}} file couldn't be removed. Close FiveM and try again.",
       "removeFailed_other": "{{count}} files couldn't be removed. Close FiveM and try again."
     },

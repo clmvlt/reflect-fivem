@@ -644,7 +644,6 @@
       "fivemMissing": "Dossier FiveM introuvable. Indiquez-le dans les réglages.",
       "fivemNotFound": "Dossier FiveM introuvable.",
       "fpsFailed": "La limite n'a pas pu être appliquée.",
-      "gameFiles": "Ce pack remplacerait des fichiers du jeu. Installation annulée.",
       "gameRunning": "Fermez FiveM avant de continuer.",
       "gtaMissing": "Dossier GTA V introuvable. Indiquez-le dans les réglages.",
       "installFailed": "L'installation a échoué.",
@@ -658,6 +657,8 @@
       "nothingChanged": "{{error}} Rien n'a été modifié.",
       "operationFailed": "L’opération a échoué.",
       "packEmpty": "Ce pack ne contient rien à installer.",
+      "originalsFailed_one": "{{count}} fichier d'origine du jeu n'a pas pu être remis en place. Fermez FiveM et réessayez.",
+      "originalsFailed_other": "{{count}} fichiers d'origine du jeu n'ont pas pu être remis en place. Fermez FiveM et réessayez.",
       "removeFailed_one": "{{count}} fichier(s) n'ont pas pu être retirés. Fermez FiveM et réessayez.",
       "removeFailed_other": "{{count}} fichier(s) n'ont pas pu être retirés. Fermez FiveM et réessayez."
     },

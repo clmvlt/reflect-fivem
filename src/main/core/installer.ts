@@ -7,6 +7,10 @@
 //   4. le dossier temporaire est supprimé.
 // Au moindre échec, tout est remis en place. Une seule demande d'autorisation administrateur au plus.
 //
+// Fichiers du jeu (archives .rpf de GTA V, dossiers update/ et x64/, fichiers de FiveM hors mods, plugins, addons et
+// citizen) : l'original remplacé par un pack est déplacé dans le dossier .fpm-originaux de sa racine (même disque, donc
+// instantané) et remis en place quand le pack est retiré, ou à la bascule vers un pack qui ne le remplace pas.
+//
 // Pack protégé : chaque fichier est déchiffré directement à sa place dans le jeu (opération « unseal ») ; les réglages
 // modifiés en jeu et les fichiers générés sont chiffrés dans la bibliothèque. Retiré du jeu, il ne reste de lui aucun
 // fichier en clair sur le disque.
@@ -88,6 +92,12 @@ interface InstallItem {
 const abs = (rootPath: string, rel: string): string => path.join(rootPath, ...rel.split('/'))
 const destKey = (d: Destination): string => `${d.root}:${d.path.toLowerCase()}`
 const TRASH_PREFIX = '.fpm-trash-'
+/** Dossier (à la racine de FiveM.app ou de GTA V) des fichiers d'origine du jeu remplacés par le pack installé. */
+export const ORIGINALS_DIR = '.fpm-originaux'
+const originalFile = (rootPath: string, rel: string): string => abs(path.join(rootPath, ORIGINALS_DIR), rel)
+
+/** Fichier du jeu : son original est gardé tant qu'un pack le remplace (voir l'en-tête). */
+const isGameFile = (d: Destination): boolean => (d.root === 'gta' ? isProtectedGtaPath(d.path) : !isAllowedFiveMPath(d.path))
 
 /** Nom français du pack des mods rangés : sert à son identifiant (dossier) ; le nom donné au pack suit la langue. */
 export const PREVIOUS_INSTALL_NAME = 'Ancienne installation'
@@ -118,6 +128,13 @@ function parentDirs(dests: Destination[]): Map<string, Destination> {
 }
 
 const byDepth = (a: Destination, b: Destination): number => a.path.split('/').length - b.path.split('/').length || a.path.localeCompare(b.path)
+
+/** Dossiers de .fpm-originaux vidés par la remise en place (ou l'abandon) de ces originaux, du plus profond au moins profond. */
+function originalsCleanup(list: Destination[], roots: Record<RootId, string>): Op[] {
+  const dirs = [...parentDirs(list).values()].sort((a, b) => byDepth(b, a)).map((d) => originalFile(roots[d.root], d.path))
+  const tops = [...new Set(list.map((d) => path.join(roots[d.root], ORIGINALS_DIR)))]
+  return [...dirs, ...tops].map((p): Op => ({ t: 'rmdirIfEmpty', path: p }))
+}
 
 function foreignMessage(paths: string[]): string {
   const shown = paths.slice(0, 3).join(', ') + (paths.length > 3 ? '…' : '')
@@ -181,7 +198,8 @@ export class Installer {
   }
 
   private canLink(it: InstallItem, rootPath: string): boolean {
-    return !it.fromUser && !it.sealed && !CONFIG_EXT.has(ext(it.dest.path)) && sameVolume(it.src, rootPath)
+    // Fichier du jeu : copié, une mise à jour du jeu écrivant dedans modifierait sinon le fichier de la bibliothèque.
+    return !it.fromUser && !it.sealed && !isGameFile(it.dest) && !CONFIG_EXT.has(ext(it.dest.path)) && sameVolume(it.src, rootPath)
   }
 
   /** Copie, lien physique, ou déchiffrement (pack protégé) du fichier à sa place dans le jeu. */
@@ -209,8 +227,6 @@ export class Installer {
     if (needs.has('fivem') && !games.fivem.valid) out.push(t('installer.errors.fivemMissing'))
     if (needs.has('gta') && !games.gta.valid) out.push(t('installer.errors.gtaMissing'))
     if (needs.has('gta') && games.gta.edition === 'enhanced') out.push(t('installer.errors.enhancedPack'))
-    if (items.some((i) => (i.dest.root === 'gta' && isProtectedGtaPath(i.dest.path)) || (i.dest.root === 'fivem' && !isAllowedFiveMPath(i.dest.path))))
-      out.push(t('installer.errors.gameFiles'))
     if (out.length) return out
     const need = new Map<string, number>()
     for (const it of items) {
@@ -297,6 +313,8 @@ export class Installer {
     // 1) Ancien pack : réglages modifiés conservés, puis fichiers déplacés dans un dossier temporaire.
     const oldPack = active ? await lib.get(active.packId).catch(() => null) : null
     const saved = new Set<string>()
+    // Fichiers du jeu remplacés depuis l'installation (mise à jour du jeu) : ce sont les nouveaux originaux, laissés en place.
+    const updated = new Set<string>()
     if (active) {
       for (const f of active.files) {
         const rp = active.roots[f.root]
@@ -304,6 +322,10 @@ export class Installer {
         const st = await fs.stat(target).catch(() => null)
         if (!st) continue
         const modified = st.size !== f.size || Math.abs(st.mtimeMs - f.mtimeMs) > 1
+        if (modified && isGameFile(f)) {
+          updated.add(destKey(f))
+          continue
+        }
         if (modified && oldPack) {
           await this.keepUserFile(oldPack, { root: f.root, path: f.path }, target, st.size, ops)
           saved.add(destKey({ root: f.root, path: f.path }))
@@ -357,19 +379,50 @@ export class Installer {
     // Les notes de l'ancien pack sont oubliées : ses fichiers ne reviendront pas.
     const modsAfter = (): InstalledMod[] => this.mods.map((m) => ({ ...m, shadowed: shadowed.get(m.id) ?? [] }))
 
-    // 2) Mods installés à la main et fichiers qui seraient écrasés : rangés dans « Ancienne installation ».
+    // Originaux gardés pour l'ancien pack : conservés tels quels si le nouveau pack remplace le même fichier, jetés si le
+    // jeu l'a remplacé entre-temps, remis en place sinon.
+    const itemKeys = new Set(items.map((it) => destKey(it.dest)))
+    const kept: Destination[] = []
+    const released: Destination[] = []
+    for (const o of active?.originals ?? []) {
+      const k = destKey(o)
+      const rp = active!.roots[o.root]
+      const from = originalFile(rp, o.path)
+      if (!(await exists(from))) {
+        log.warn(`Fichier d'origine introuvable dans ${ORIGINALS_DIR}, non remis en place : ${o.path}`)
+        continue
+      }
+      if (itemKeys.has(k) && !updated.has(k) && rp === roots[o.root]) {
+        kept.push(o)
+        continue
+      }
+      released.push(o)
+      if (updated.has(k)) {
+        const trash = path.join(rp, `${TRASH_PREFIX}${id}`)
+        trashDirs.add(trash)
+        ops.push({ t: 'stash', path: from, to: abs(path.join(trash, ORIGINALS_DIR), o.path), size: 0 })
+      } else ops.push({ t: 'unstash', from, to: abs(rp, o.path), size: 0 })
+    }
+
+    // 2) Mods installés à la main et fichiers qui seraient écrasés : rangés dans « Ancienne installation ». Fichiers du
+    // jeu : gardés dans .fpm-originaux, remis en place au retrait du pack.
     const managed = managedSet(active, this.mods)
     const collection = await collectForeign(games, active, undefined, this.mods)
     const overwritten: { root: RootId; rel: string; size: number }[] = []
+    const replaced: Destination[] = []
     for (const it of items) {
-      if (managed.has(managedKey(it.dest.root, it.dest.path))) continue
+      if (managed.has(managedKey(it.dest.root, it.dest.path)) && !updated.has(destKey(it.dest))) continue
       const st = await fs.lstat(abs(roots[it.dest.root], it.dest.path)).catch(() => null)
-      if (st && !st.isDirectory()) overwritten.push({ root: it.dest.root, rel: it.dest.path, size: st.size })
+      if (!st || st.isDirectory()) continue
+      if (isGameFile(it.dest)) replaced.push(it.dest)
+      else overwritten.push({ root: it.dest.root, rel: it.dest.path, size: st.size })
     }
     if (!manifest && !active && !collection.files.length) throw new Error(t('installer.errors.alreadyClean'))
     const capId = lib.newCapturedId(PREVIOUS_INSTALL_NAME)
     const capture = this.captureOps(capId, roots, collection, overwritten)
     ops.push(...capture.ops)
+    for (const d of replaced) ops.push({ t: 'stash', path: abs(roots[d.root], d.path), to: originalFile(roots[d.root], d.path), size: 0 })
+    if (replaced.length) log.info(`${replaced.length} fichier(s) du jeu remplacé(s), originaux gardés dans ${ORIGINALS_DIR}`)
 
     // 3) Nouveau pack : dossiers (du moins profond au plus profond), puis fichiers.
     const dirKeys = new Map<string, Destination>()
@@ -395,6 +448,7 @@ export class Installer {
     // 4) Nettoyage : dossiers vidés de l'ancien pack, dossier temporaire (et ceux d'une opération interrompue).
     for (const d of [...(active?.createdDirs ?? [])].sort((a, b) => b.path.split('/').length - a.path.split('/').length))
       ops.push({ t: 'rmdirIfEmpty', path: abs(active!.roots[d.root], d.path) })
+    if (active) ops.push(...originalsCleanup(released, active.roots))
     for (const rp of new Set([...Object.values(roots), ...Object.values(active?.roots ?? {})].filter(Boolean)))
       for (const e of await fs.readdir(rp).catch(() => [] as string[])) if (e.startsWith(TRASH_PREFIX)) trashDirs.add(path.join(rp, e))
     for (const t of trashDirs) ops.push({ t: 'rmTree', path: t, quiet: true })
@@ -445,7 +499,17 @@ export class Installer {
       await this.setState(pushHistory({ ...this.state, active: null, mods: modsAfter() }, { action: 'clean', ok: true, msg: summary }))
       return { installed: 0, captured, removed: active?.packName ?? null }
     }
-    const next: ActiveInstall = { id, packId: manifest.id, packName: manifest.name, appliedAt: new Date().toISOString(), roots, files, createdDirs, partial: false }
+    const next: ActiveInstall = {
+      id,
+      packId: manifest.id,
+      packName: manifest.name,
+      appliedAt: new Date().toISOString(),
+      roots,
+      files,
+      createdDirs,
+      originals: [...kept, ...replaced],
+      partial: false
+    }
     await this.setState(pushHistory({ ...this.state, active: next, mods: modsAfter() }, { action: 'apply', packName: manifest.name, ok: true, msg: countMsg('history.files', files.length) }))
 
     if (manifest.reshadeVersion && versionAtLeast(parseVersion(manifest.reshadeVersion), [5]) && games.fivem.path) {
@@ -466,35 +530,55 @@ export class Installer {
     const ops: Op[] = []
     const fileOps: { file: InstalledFile; idx: number }[] = []
 
+    const updated = new Set<string>()
     for (const f of [...active.files].sort((a, b) => b.path.localeCompare(a.path))) {
       const target = abs(active.roots[f.root], f.path)
       const st = await fs.stat(target).catch(() => null)
       if (!st) continue
+      const modified = st.size !== f.size || Math.abs(st.mtimeMs - f.mtimeMs) > 1
+      // Fichier du jeu remplacé depuis l'installation (mise à jour du jeu) : c'est le nouvel original, laissé en place.
+      if (modified && isGameFile(f)) {
+        updated.add(destKey(f))
+        continue
+      }
       // Fichier modifié en jeu (preset ReShade...) : gardé dans le pack pour la prochaine fois.
-      if ((st.size !== f.size || Math.abs(st.mtimeMs - f.mtimeMs) > 1) && pack)
-        await this.keepUserFile(pack, { root: f.root, path: f.path }, target, st.size, ops)
+      if (modified && pack) await this.keepUserFile(pack, { root: f.root, path: f.path }, target, st.size, ops)
       ops.push({ t: 'remove', path: target })
       fileOps.push({ file: f, idx: ops.length - 1 })
     }
+    // Fichiers d'origine du jeu remis en place (celui qu'une mise à jour du jeu a rendu obsolète est jeté).
+    const restoreOps: { original: Destination; idx: number }[] = []
+    for (const o of active.originals ?? []) {
+      const from = originalFile(active.roots[o.root], o.path)
+      if (!(await exists(from))) {
+        log.warn(`Fichier d'origine introuvable dans ${ORIGINALS_DIR}, non remis en place : ${o.path}`)
+        continue
+      }
+      ops.push(updated.has(destKey(o)) ? { t: 'remove', path: from } : { t: 'unstash', from, to: abs(active.roots[o.root], o.path), size: 0 })
+      restoreOps.push({ original: o, idx: ops.length - 1 })
+    }
     for (const d of [...active.createdDirs].sort((a, b) => b.path.split('/').length - a.path.split('/').length || b.path.localeCompare(a.path)))
       ops.push({ t: 'rmdirIfEmpty', path: abs(active.roots[d.root], d.path) })
+    ops.push(...originalsCleanup(restoreOps.map((r) => r.original), active.roots))
 
     const plan: Plan = { id: newId('rm-'), title: t('installer.plan.remove', { name: active.packName }), mode: 'best-effort', ops }
     const res = ops.length ? await this.runPlan(plan, Object.values(active.roots), report) : { ok: true, results: [], rolledBack: false }
     const failed = fileOps.filter((fo) => !res.results[fo.idx]?.ok).map((fo) => fo.file)
+    const notRestored = restoreOps.filter((r) => !res.results[r.idx]?.ok).map((r) => r.original)
     if (pack) {
       pack.userConfigCount = await lib.countUserConfigs(pack.id)
       await this.syncPresetFromGame(pack)
       await lib.save(pack)
       await this.autoCover(pack.id, active.appliedAt, await this.ctx.detectGames())
     }
-    const nextActive: ActiveInstall | null = failed.length ? { ...active, files: failed, partial: true } : null
+    const nextActive: ActiveInstall | null = failed.length || notRestored.length ? { ...active, files: failed, originals: notRestored, partial: true } : null
     // Pack retiré : les fichiers qu'il avait laissés aux mods ne reviendront pas.
     const mods = nextActive ? this.mods : this.mods.map((m) => ({ ...m, shadowed: m.shadowed.filter((s) => s.packId !== active.packId) }))
     await this.setState(
-      pushHistory({ ...this.state, active: nextActive, mods }, { action: 'remove', packName: active.packName, ok: !failed.length, ...(failed.length ? { summary: res.error ?? '' } : { msg: msg('history.removed') }) })
+      pushHistory({ ...this.state, active: nextActive, mods }, { action: 'remove', packName: active.packName, ok: !nextActive, ...(nextActive ? { summary: res.error ?? '' } : { msg: msg('history.removed') }) })
     )
     if (failed.length) throw new Error(t('installer.errors.removeFailed', { count: failed.length }))
+    if (notRestored.length) throw new Error(t('installer.errors.originalsFailed', { count: notRestored.length }))
     return { removed: fileOps.length }
   }
 

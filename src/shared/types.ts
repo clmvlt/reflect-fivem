@@ -152,6 +152,11 @@ export interface ActiveInstall {
   roots: Record<RootId, string>
   files: InstalledFile[]
   createdDirs: Destination[]
+  /**
+   * Fichiers d'origine du jeu remplacés par le pack, gardés dans le dossier .fpm-originaux de leur racine et remis en
+   * place quand le pack est retiré (absent : aucun).
+   */
+  originals?: Destination[]
   /** Fichiers qui n'ont pas pu être retirés lors d'une désinstallation précédente. */
   partial: boolean
 }

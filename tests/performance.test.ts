@@ -104,7 +104,7 @@ describe('comparaison d’un pack à la machine', () => {
   it('fluide : 60 images par seconde et mémoire recommandée', () => {
     const e = estimate(MODEL, machine('NVIDIA GeForce RTX 3080', 10240), perf())
     expect(e.verdict).toBe('smooth')
-    expect(e.fps).toBeCloseTo(1000 / (12 / 2.6))
+    expect(e.frameMs).toBeCloseTo(12 / 2.6)
     expect(e.vram).toEqual({ min: 3584, recommended: 5120 })
   })
 
@@ -138,7 +138,7 @@ describe('comparaison d’un pack à la machine', () => {
 
   it('carte non reconnue : seule la mémoire vidéo est comparée, et c’est signalé', () => {
     const ok = estimate(MODEL, machine('Matrox G200eW', 8192), perf())
-    expect(ok).toMatchObject({ verdict: 'smooth', gpuUnknown: true, frameMs: null, fps: null })
+    expect(ok).toMatchObject({ verdict: 'smooth', gpuUnknown: true, frameMs: null })
     expect(estimate(MODEL, machine('Matrox G200eW', 4096), perf()).verdict).toBe('playable')
     expect(estimate(MODEL, machine('Matrox G200eW', 2048), perf()).verdict).toBe('too-heavy')
   })

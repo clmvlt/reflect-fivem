@@ -1124,10 +1124,6 @@
     "facts": {
       "onYourPc": "On your PC"
     },
-    "fps": {
-      "about": "≈ {{value}} FPS",
-      "over": "over {{value}} FPS"
-    },
     "gpuClass": {
       "level0": {
         "examples": "Intel UHD / Iris Xe, Radeon Vega 3 to 11",
@@ -1154,8 +1150,8 @@
       "negligible": "negligible cost"
     },
     "reasons": {
-      "belowPlayable": "Under {{fps}} frames per second estimated at {{resolution}}.",
-      "belowTarget": "Between {{min}} and {{max}} frames per second estimated at {{resolution}}.",
+      "gpuShort": "Your graphics card may not keep up at {{resolution}}.",
+      "gpuTight": "Your graphics card is a bit tight at {{resolution}}: lowering a few settings may help.",
       "gpuUnknown": "Graphics card not recognized: only video memory is compared.",
       "notAnalyzed": "Not analyzed yet.",
       "unknown": "Your graphics card couldn’t be detected: set it in Graphics › My setup.",
@@ -1170,7 +1166,6 @@
       "medium": "Medium"
     },
     "title": {
-      "fps": "{{fps}} (estimate)",
       "tier": "Weight: {{tier}}"
     },
     "units": {

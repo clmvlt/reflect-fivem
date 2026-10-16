@@ -82,12 +82,6 @@ export function msText(ms: number): string {
   return t('performance.units.ms', { value: formatNumber(ms, { maximumFractionDigits: ms < 10 ? 1 : 0 }) })
 }
 
-/** Images par seconde estimées, arrondies (ce n'est qu'un ordre de grandeur). */
-export function fpsText(fps: number): string {
-  if (fps >= 200) return t('performance.fps.over', { value: formatNumber(200) })
-  return t('performance.fps.about', { value: formatNumber(Math.max(5, Math.round(fps / 5) * 5)) })
-}
-
 function resolutionText(m: Machine): string {
   return m.width && m.height ? `${m.width} × ${m.height}` : m.resolution.key
 }
@@ -100,14 +94,11 @@ export function verdictReasons(ctx: PerfContext, est: PerfEstimate): string[] {
   if (est.verdict === 'not-analyzed') return [t('performance.reasons.notAnalyzed')]
   if (est.verdict === 'unknown') return [t('performance.reasons.unknown')]
   const vramShort = est.vram && m.vramMb !== null && m.vramMb < (est.verdict === 'too-heavy' ? est.vram.min : est.vram.recommended)
-  // Seuils du modèle : 25 ms = 40 images par seconde, 16,7 ms = 60.
-  const playable = Math.round(1000 / model.minFrameMs)
-  const target = Math.round(1000 / model.targetFrameMs)
+  // Seuils du modèle (minFrameMs, targetFrameMs) : on dit si la carte suit, sans chiffrer les images par seconde.
   if (est.frameMs !== null) {
     const resolution = resolutionText(m)
-    if (est.frameMs > model.minFrameMs) out.push(t('performance.reasons.belowPlayable', { fps: formatNumber(playable), resolution }))
-    else if (est.frameMs > model.targetFrameMs)
-      out.push(t('performance.reasons.belowTarget', { min: formatNumber(playable), max: formatNumber(target), resolution }))
+    if (est.frameMs > model.minFrameMs) out.push(t('performance.reasons.gpuShort', { resolution }))
+    else if (est.frameMs > model.targetFrameMs) out.push(t('performance.reasons.gpuTight', { resolution }))
   }
   if (vramShort && est.vram)
     out.push(
@@ -123,15 +114,9 @@ export function verdictReasons(ctx: PerfContext, est: PerfEstimate): string[] {
 // ---------------------------------------------------------------------------
 // Badges et verdict
 
-/** Infobulle d'un verdict : niveau du pack, FPS estimés, raisons. */
+/** Infobulle d'un verdict : poids du pack, raisons. */
 function verdictTitle(ctx: PerfContext, perf: PackPerformance, est: PerfEstimate): string {
-  return [
-    t('performance.title.tier', { tier: tierLabel(ctx.profile.model, perf.tier) }),
-    est.fps !== null && t('performance.title.fps', { fps: fpsText(est.fps) }),
-    ...verdictReasons(ctx, est)
-  ]
-    .filter(Boolean)
-    .join('\n')
+  return [t('performance.title.tier', { tier: tierLabel(ctx.profile.model, perf.tier) }), ...verdictReasons(ctx, est)].join('\n')
 }
 
 /**
@@ -172,7 +157,7 @@ export function usePerfConfirm(): (item: { name: string; kind: MarketKind; perfo
   )
 }
 
-/** « Sur votre PC : Fluide · ≈ 80 FPS », une ligne de la liste des caractéristiques d'une fiche. */
+/** « Sur votre PC : Fluide », une ligne de la liste des caractéristiques d'une fiche. */
 export function PerfFacts({ perf }: { perf: PackPerformance | null | undefined }) {
   const { t } = useTranslation()
   const ctx = usePerformance()
@@ -184,7 +169,6 @@ export function PerfFacts({ perf }: { perf: PackPerformance | null | undefined }
       <dt>{t('performance.facts.onYourPc')}</dt>
       <dd title={verdictTitle(ctx, perf, est)}>
         <span className={`perf-tag v-${est.verdict}`}>{VERDICT_LABEL[est.verdict]}</span>
-        {est.fps !== null && <span className="muted">&nbsp;· {fpsText(est.fps)}</span>}
       </dd>
     </>
   )

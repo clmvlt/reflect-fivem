@@ -405,7 +405,6 @@ export interface PerfEstimate {
   verdict: PerfVerdict
   /** Temps d'une image estimé (null : carte non reconnue, ou pack non analysé). */
   frameMs: number | null
-  fps: number | null
   /** Mémoire vidéo nécessaire à la résolution de l'utilisateur. */
   vram: { min: number; recommended: number } | null
   /** Seule la mémoire vidéo a été comparée : la carte n'est pas reconnue. */
@@ -425,7 +424,6 @@ export function estimate(model: PerformanceModel, machine: Machine, perf: PackPe
   const none: PerfEstimate = {
     verdict: 'not-analyzed',
     frameMs: null,
-    fps: null,
     vram: null,
     gpuUnknown: false,
     vramUnknown: false
@@ -437,7 +435,6 @@ export function estimate(model: PerformanceModel, machine: Machine, perf: PackPe
     recommended: perf.recommendedVramMb + extra
   }
   const frameMs = machine.gpuClass === null ? null : frameMsOf(model, machine.gpuClass, machine.resolution, perf.effectsMs, perf.worldMs)
-  const fps = frameMs ? 1000 / frameMs : null
   const gpuUnknown = frameMs === null
   const vramUnknown = machine.vramMb === null
   if (gpuUnknown && vramUnknown) return { ...none, verdict: 'unknown', vram, gpuUnknown, vramUnknown }
@@ -446,7 +443,7 @@ export function estimate(model: PerformanceModel, machine: Machine, perf: PackPe
   const enough = (needed: number): boolean => machine.vramMb === null || machine.vramMb >= needed
   const verdict: PerfVerdict =
     fast(model.targetFrameMs) && enough(vram.recommended) ? 'smooth' : fast(model.minFrameMs) && enough(vram.min) ? 'playable' : 'too-heavy'
-  return { verdict, frameMs, fps, vram, gpuUnknown, vramUnknown }
+  return { verdict, frameMs, vram, gpuUnknown, vramUnknown }
 }
 
 /** Libellé d'un niveau (« Moyen ») d'après le modèle. */

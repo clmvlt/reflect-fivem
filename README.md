@@ -81,7 +81,9 @@ L'installateur et la version portable (`npm run dist`) ne sont compilés que sur
 - `src/main/core/updater.ts`, `portableSwap.ts` et `releaseSignature.ts` : mises à jour automatiques de l'application (installateur et version portable) et vérification de leur signature.
 - `src/renderer/` : interface.
 
-L'API utilisée est `https://reflect-fivem.com/api`, sauf avec `npm run dev` où c'est l'API de dev du poste (`http://192.168.1.13:8080/api`, projet `packs_api`).
+L'API utilisée est `https://reflect-fivem.com/api`, sauf avec `npm run dev` où c'est l'API de dev du poste (`http://192.168.1.13:8080/api`, projet `packs_api`). `npm run devprod` lance l'application en développement sur l'API et le site de production.
+
+En développement (`dev` et `devprod`), l'interface est servie sur le port 5180 (le 5173 est celui du site).
 
 Variables pour les tests : `PM_DATA_DIR` (autre dossier de données), `PM_FORCE_ELEVATION=1`, `PM_NO_UAC=1`, `PM_API_URL` (autre adresse d'API) et `PM_UPDATER_DEV=1` (mises à jour de l'installateur actives hors version installée, avec `dev-app-update.yml`) et `PM_NO_UPDATE=1` (aucune recherche de mise à jour).
 

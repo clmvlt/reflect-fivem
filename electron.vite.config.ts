@@ -16,6 +16,9 @@ export default defineConfig({
   renderer: {
     resolve: { alias: { '@shared': shared } },
     plugins: [react()],
+    // Serveur de dev (npm run dev et devprod) sur 5180 : le 5173 est celui du site (Vite), lancé en même temps.
+    // strictPort : erreur plutôt qu'un autre port pris au hasard.
+    server: { port: 5180, strictPort: true },
     // Code de l'interface réduit : moins de JavaScript à lire au démarrage.
     build: { minify: true }
   }

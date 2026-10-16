@@ -4,6 +4,8 @@ import type {
   AuthorPage,
   AuthorProfile,
   CommentPage,
+  DownloadDone,
+  DownloadItem,
   FiveMInstance,
   ForeignItem,
   GamesInfo,
@@ -166,6 +168,10 @@ export interface PackManagerApi {
    * change pas), pour pouvoir le noter.
    */
   marketClaim(id: string, kind?: MarketKind): Promise<string>
+  /** Téléchargements en cours et en file d'attente, dans l'ordre. */
+  downloadsGet(): Promise<DownloadItem[]>
+  /** Annule un téléchargement (en cours, ou retiré de la file d'attente) ; son fichier partiel est supprimé. */
+  downloadCancel(id: string): Promise<void>
   /** Auteurs ayant au moins un pack publié. */
   marketAuthors(query: AuthorQuery): Promise<AuthorPage>
   /** Page publique d'un auteur (adresse ou identifiant de son compte). */
@@ -269,6 +275,10 @@ export interface PackManagerApi {
   maintenanceCheck(): Promise<MaintenanceState>
 
   onTask(cb: (p: TaskProgress) => void): () => void
+  /** File des téléchargements changée (progression, ajout, fin). */
+  onDownloads(cb: (items: DownloadItem[]) => void): () => void
+  /** Un téléchargement est fini (résultat à afficher). */
+  onDownloadDone(cb: (d: DownloadDone) => void): () => void
   onChanged(cb: () => void): () => void
   onUpdate(cb: (s: UpdateState) => void): () => void
   /** Connexion, déconnexion, profil modifié ou connexion expirée. */
@@ -335,6 +345,8 @@ export interface AuthorQuery {
 export const IPC = {
   invoke: 'pm:invoke',
   task: 'pm:task',
+  downloads: 'pm:downloads',
+  downloadDone: 'pm:download-done',
   changed: 'pm:changed',
   update: 'pm:update',
   account: 'pm:account',

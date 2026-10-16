@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
-import type { AccountMe, Overview, TaskProgress, UpdateState } from '@shared/types'
+import type { AccountMe, DownloadDone, DownloadItem, Overview, TaskProgress, UpdateState } from '@shared/types'
 import { MAINTENANCE, PENDING, readApiError } from '@shared/api'
 import type { MaintenanceState } from '@shared/maintenance'
 import { emptyLinks, type AppLinks } from '@shared/links'
@@ -16,6 +16,8 @@ interface Store {
   overview: Overview | null
   refresh: () => Promise<void>
   task: TaskProgress | null
+  /** Téléchargements de la Marketplace : celui en cours d'abord, puis la file d'attente. */
+  downloads: DownloadItem[]
   /** Mise à jour de l'application. */
   update: UpdateState | null
   /** Compte connecté (null sans compte, undefined tant qu'il n'est pas chargé). */
@@ -49,6 +51,7 @@ const Ctx = createContext<Store | null>(null)
 export function StoreProvider({ children }: { children: ReactNode }): ReactElement {
   const [overview, setOverview] = useState<Overview | null>(null)
   const [task, setTask] = useState<TaskProgress | null>(null)
+  const [downloads, setDownloads] = useState<DownloadItem[]>([])
   const [message, setMessage] = useState<Message | null>(null)
   const [update, setUpdate] = useState<UpdateState | null>(null)
   const [account, setAccount] = useState<AccountMe | null | undefined>(undefined)
@@ -122,6 +125,12 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
     window.api.linksGet().then(setLinks, () => undefined)
     const offChangelog = window.api.onChangelog(setWhatsNew)
     window.api.changelogGet().then(setWhatsNew, () => undefined)
+    const offDownloads = window.api.onDownloads(setDownloads)
+    window.api.downloadsGet().then(setDownloads, () => undefined)
+    const offDownloadDone = window.api.onDownloadDone((d) => {
+      const info = downloadMessage(d)
+      if (info) setMessage(info)
+    })
     const offTask = window.api.onTask((p) => {
       if (!p.done) {
         // Nouvelle action : l'ancien message n'a plus lieu d'être.
@@ -131,6 +140,8 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
         return
       }
       setTask(null)
+      // Téléchargement : son résultat arrive avec la fin du téléchargement (onDownloadDone).
+      if (p.kind === 'download') return
       if (!p.ok) setMessage({ kind: 'error', text: p.error ?? t('common.failed') })
       else {
         const info = resultMessage(p)
@@ -148,6 +159,8 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
     return () => {
       offChanged()
       offTask()
+      offDownloads()
+      offDownloadDone()
       offUpdate()
       offAccount()
       offLanguage()
@@ -171,8 +184,8 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
   }, [overview?.accent])
 
   const value = useMemo<Store>(
-    () => ({ overview, refresh, task, update, account, setAccount, maintenance, checkMaintenance, links, openLink, whatsNew, dismissWhatsNew, message, setMessage, run, changeGame }),
-    [overview, refresh, task, update, account, maintenance, checkMaintenance, links, openLink, whatsNew, dismissWhatsNew, message, run, changeGame]
+    () => ({ overview, refresh, task, downloads, update, account, setAccount, maintenance, checkMaintenance, links, openLink, whatsNew, dismissWhatsNew, message, setMessage, run, changeGame }),
+    [overview, refresh, task, downloads, update, account, maintenance, checkMaintenance, links, openLink, whatsNew, dismissWhatsNew, message, run, changeGame]
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
@@ -192,6 +205,13 @@ export function apiError(e: unknown): { message: string; status: number | null; 
   const msg = (e as Error)?.message ?? String(e)
   // Les erreurs IPC sont préfixées par « Error invoking remote method 'pm:invoke': Error: ».
   return readApiError(msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, ''))
+}
+
+/** Message de fin d'un téléchargement de la Marketplace. */
+function downloadMessage(d: DownloadDone): Message | null {
+  if (d.cancelled) return { kind: 'info', text: t('downloads.cancelled', { name: q(d.name) }) }
+  if (!d.ok) return { kind: 'error', text: d.error ?? t('common.failed') }
+  return resultMessage({ taskId: d.id, kind: 'download', title: d.name, phase: '', current: 1, total: 1, done: true, ok: true, result: d.result })
 }
 
 function resultMessage(p: TaskProgress): Message | null {

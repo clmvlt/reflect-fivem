@@ -7,6 +7,7 @@ import type { InstalledMod, MarketCategory, MarketKind, PackManifest, TaskProgre
 import type { MenuItem } from '@shared/api'
 import { useStore } from '../store'
 import { bytes, num, q } from '../lib/format'
+import { DownloadInline, useDownload } from './Downloads'
 import { Cover, EmptyState, Progress } from './common'
 import { usePerfConfirm } from './Performance'
 import type { PackPerformance } from '@shared/performance'
@@ -224,7 +225,8 @@ function ModRow({
   const enabled = !!installed?.enabled
   // Mise à jour arrêtée par une maintenance : reprise toute seule à la fin.
   const paused = !!mod.marketplace && !!overview?.pausedDownloads.some((d) => d.id === mod.marketplace!.id)
-  const mine = task && task.detail === mod.id ? task : task?.kind === 'download' && task.detail === mod.marketplace?.id ? task : null
+  const mine = task && task.detail === mod.id ? task : null
+  const dl = useDownload(mod.marketplace?.id)
   const meta = [
     category,
     t('modsView.files', { count: mod.fileCount, n: num(mod.fileCount) }),
@@ -239,7 +241,7 @@ function ModRow({
   const menu = async (): Promise<void> => {
     const items: MenuItem[] = []
     if (mod.marketplace && !gone) items.push({ id: 'market', label: t('modsView.menu.market') })
-    if (update) items.push({ id: 'update', label: t('modsView.update'), enabled: !task })
+    if (update) items.push({ id: 'update', label: t('modsView.update'), enabled: !dl })
     items.push({ id: 'details', label: details ? t('modsView.menu.hideFiles') : t('modsView.menu.showFiles') })
     items.push({ id: 'open', label: t('modsView.menu.openFolder'), enabled: !mod.protected })
     items.push({ id: 'delete', label: t('common.delete'), enabled: !task, separator: true })
@@ -274,12 +276,14 @@ function ModRow({
         {shadowed > 0 && <div className="meta small">{t('modsView.shadowed', { count: shadowed, n: num(shadowed) })}</div>}
         {details && <ModFiles mod={mod} />}
       </div>
-      {mine ? (
+      {dl ? (
+        <DownloadInline d={dl} />
+      ) : mine ? (
         <Progress task={mine} />
       ) : (
         <div className="actions">
           {update && !paused && (
-            <button onClick={() => void run(() => window.api.marketInstall(mod.marketplace!.id, 'mod'))} disabled={!!task}>
+            <button onClick={() => void run(() => window.api.marketInstall(mod.marketplace!.id, 'mod'))}>
               {t('modsView.update')}
             </button>
           )}
@@ -346,7 +350,7 @@ export function ModMarketAction({ item, wide = false }: { item: { id: string; sh
     return (
       <>
         <div className="spacer" />
-        <button className={cls(true)} onClick={() => void installNew()} disabled={!!task}>
+        <button className={cls(true)} onClick={() => void installNew()}>
           {t('modsView.install')}
         </button>
       </>
@@ -362,7 +366,7 @@ export function ModMarketAction({ item, wide = false }: { item: { id: string; sh
         {update ? <span className="accent-text small">{t('modsView.newVersion')}</span> : <span className="state">{enabled ? t('common.enabled') : t('common.disabled')}</span>}
         <div className="spacer" />
         {update ? (
-          <button className="primary" onClick={install} disabled={!!task}>
+          <button className="primary" onClick={install}>
             {t('modsView.update')}
           </button>
         ) : (
@@ -374,7 +378,7 @@ export function ModMarketAction({ item, wide = false }: { item: { id: string; sh
     <>
       <span className="state big">{enabled ? t('modsView.stateEnabled') : t('modsView.stateDisabled')}</span>
       {update && (
-        <button className={cls(true)} onClick={install} disabled={!!task}>
+        <button className={cls(true)} onClick={install}>
           {t('modsView.update')}
         </button>
       )}

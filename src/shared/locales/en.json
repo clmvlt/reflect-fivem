@@ -319,6 +319,28 @@
       }
     }
   },
+  "downloads": {
+    "bar": "Downloads",
+    "cancel": "Cancel download",
+    "cancelled": "Download of {{name}} canceled.",
+    "etaHours": "{{h}} h {{m}} min left",
+    "etaMinutes": "{{n}} min left",
+    "etaSeconds": "{{n}} s left",
+    "next": "Up next",
+    "openPage": "Show page",
+    "queueTitle": "Queue",
+    "queue_one": "{{count}} queued",
+    "queue_other": "{{count}} queued",
+    "remove": "Remove from queue",
+    "size": "{{done}} of {{total}}",
+    "speed": "{{value}}/s",
+    "status": {
+      "installing": "Adding to library…",
+      "queued": "Queued",
+      "starting": "Starting…",
+      "waiting": "Waiting for another operation to finish…"
+    }
+  },
   "errors": {
     "busy": "Another operation is already running.",
     "network": "Can’t reach the server. Check your Internet connection.",
@@ -1445,6 +1467,7 @@
       "closeGameForModDelete": "Close FiveM before deleting an enabled mod.",
       "closeGameForMods": "Close FiveM before disabling mods.",
       "disableModsFirst": "Disable your mods first.",
+      "downloadInstalling": "The download is being added to the library and can no longer be canceled.",
       "fileError": "{{file}}: {{message}}",
       "fivemFolderNotFound": "FiveM folder not found.",
       "fivemNotFound": "FiveM not found. Set its folder in Settings.",
@@ -1471,6 +1494,7 @@
       "removePackFirst": "Remove this pack from the game first.",
       "signInToClaim": "Sign in so the download counts for your account.",
       "unreadableImage": "Unreadable image.",
+      "waitForDownloads": "Wait for the current downloads to finish.",
       "waitForSwitch": "Wait for the pack change to finish before launching FiveM.",
       "waitForTask": "Wait for the current operation to finish."
     },

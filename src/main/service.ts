@@ -28,6 +28,7 @@ import { LinksWatch } from './core/links'
 import { WhatsNewWatch } from './core/changelog'
 import { httpsUrl } from '@shared/links'
 import { Marketplace } from './core/marketplace'
+import { DownloadQueue, type DownloadContext, type DownloadJob } from './core/downloads'
 import { AppUpdater } from './core/updater'
 import { killProcesses, launchDetached, readVideoAdapters, runningGameProcesses } from './util/win'
 import type { GraphicsTarget } from '@shared/graphics'
@@ -38,7 +39,7 @@ import { copyPlan, currentInstanceId, instanceStateFile, listInstances, MAIN_INS
 import { exists, formatBytes, freeSpace, isInside, moveDir, newId, readJson, writeJsonAtomic } from './util/fsx'
 import { log } from './util/log'
 
-type ServerApi = Omit<PackManagerApi, 'onTask' | 'onChanged' | 'onUpdate' | 'onAccount' | 'onLanguage' | 'onMaintenance' | 'onLinks' | 'onChangelog' | 'onOpenMarketPack' | 'getPathForFile'>
+type ServerApi = Omit<PackManagerApi, 'onTask' | 'onDownloads' | 'onDownloadDone' | 'onChanged' | 'onUpdate' | 'onAccount' | 'onLanguage' | 'onMaintenance' | 'onLinks' | 'onChangelog' | 'onOpenMarketPack' | 'getPathForFile'>
 
 const MARKET_REFRESH = 6 * 60 * 60 * 1000
 /** Bibliothèque des mods : sous-dossier de la bibliothèque des packs (ignoré par celle-ci, comme tout dossier « . »). */
@@ -79,6 +80,10 @@ export class Service {
   private firstDetection: Promise<GamesInfo | null> = Promise.resolve(null)
   private foreign: Promise<Overview['foreign']> | null = null
   private running: { id: string; abort: AbortController } | null = null
+  /** Attendent qu'aucune tâche ne tourne (téléchargement à ajouter à la bibliothèque). */
+  private idleWaiters: (() => void)[] = []
+  /** Téléchargements de la Marketplace : un à la fois, sans bloquer le reste tant qu'ils ne modifient pas la bibliothèque. */
+  private downloads: DownloadQueue
   /** Clés des packs protégés : clé locale gardée chiffrée par Windows (DPAPI), clés des paquets remises par l'API. */
   private keys: KeyRing
   /** Compte reflect-fivem.com (facultatif) : jeton gardé chiffré par Windows. */
@@ -161,6 +166,16 @@ export class Service {
       file: path.join(dataDir, 'maintenance.json'),
       onChange: (state) => this.emit(IPC.maintenance, state),
       notify: (m) => this.notifyMaintenance(m)
+    })
+    this.downloads = new DownloadQueue({
+      run: (job, ctx) => this.runDownload(job, ctx),
+      onChange: (items) => this.emit(IPC.downloads, items),
+      onDone: (d) => {
+        if (d.cancelled) log.info(`Téléchargement annulé : ${d.name}`)
+        else if (!d.ok) log.error(`Téléchargement en échec : ${d.name} : ${d.error}`)
+        this.emit(IPC.downloadDone, d)
+        this.changed()
+      }
     })
     this.paused = new PausedDownloads(path.join(dataDir, 'paused-downloads.json'), (d) =>
       d.claim ? this.api.marketClaim(d.id, d.kind) : this.api.marketInstall(d.id, d.kind)
@@ -626,11 +641,109 @@ export class Service {
         if (id === this.pendingTask) this.relaunchHint = false
         this.emit(IPC.task, { ...base, done: true, ok: false, error: message } satisfies TaskProgress)
       } finally {
-        this.running = null
-        this.changed()
+        this.release()
       }
     })()
     return id
+  }
+
+  /** Fin d'une tâche : la place est libre (téléchargement qui attendait son tour, changement en attente...). */
+  private release(): void {
+    this.running = null
+    const waiters = this.idleWaiters
+    this.idleWaiters = []
+    for (const wake of waiters) wake()
+    this.changed()
+  }
+
+  /** Attend qu'aucune tâche ne tourne puis prend la place. Rejette si `abort` est déclenché pendant l'attente. */
+  private async takeTurn(id: string, abort: AbortController): Promise<void> {
+    while (this.running) {
+      await new Promise<void>((resolve, reject) => {
+        if (abort.signal.aborted) return reject(new Error(t('market.errors.cancelled')))
+        const wake = (): void => {
+          abort.signal.removeEventListener('abort', onAbort)
+          resolve()
+        }
+        const onAbort = (): void => {
+          this.idleWaiters = this.idleWaiters.filter((w) => w !== wake)
+          reject(new Error(t('market.errors.cancelled')))
+        }
+        this.idleWaiters.push(wake)
+        abort.signal.addEventListener('abort', onAbort, { once: true })
+      })
+    }
+    if (abort.signal.aborted) throw new Error(t('market.errors.cancelled'))
+    this.running = { id, abort }
+  }
+
+  /**
+   * Téléchargement de la file : l'archive est téléchargée sans bloquer les autres tâches, puis ajoutée à la bibliothèque
+   * une fois la place libre (tâche « download », qui ne peut plus être annulée).
+   */
+  private async runDownload(job: DownloadJob, ctx: DownloadContext): Promise<unknown> {
+    const { id, kind, name } = job
+    const taskId = `download-${Date.now().toString(36)}`
+    const base: TaskProgress = { taskId, kind: 'download', title: job.title, phase: '', current: 0, total: 0, done: false, detail: id }
+    let held = false
+    const lock = async (): Promise<void> => {
+      ctx.setStatus('waiting')
+      await this.takeTurn(taskId, ctx.abort)
+      held = true
+      ctx.setStatus('installing')
+      this.emit(IPC.task, base)
+    }
+    let ok = false
+    log.info(`Téléchargement démarré : ${job.title}`)
+    try {
+      const result = job.claim ? await this.claimDownload(job, ctx) : await this.installDownload(job, ctx, lock)
+      ok = true
+      log.info(`Téléchargement terminé : ${job.title}`)
+      return result
+    } catch (err) {
+      if (ctx.signal.aborted) {
+        await this.marketplace.discardDownload(id)
+        throw err
+      }
+      // Maintenance : téléchargement en pause (son fichier partiel est gardé), repris à la fin de la maintenance.
+      if (!(err instanceof MaintenanceError)) throw err
+      await this.paused.pause({ id, kind, name, ...(job.claim ? { claim: true } : {}) })
+      ok = true
+      return { name, kind, status: 'paused' }
+    } finally {
+      if (held) {
+        this.emit(IPC.task, { ...base, done: true, ok } satisfies TaskProgress)
+        this.release()
+      }
+    }
+  }
+
+  private async installDownload(job: DownloadJob, ctx: DownloadContext, lock: () => Promise<void>): Promise<unknown> {
+    const { id, kind } = job
+    const hooks = {
+      activeId: () => this.state.get().active?.packId ?? null,
+      apply: (packId: string, r: Report) => this.installer.apply(packId, r),
+      enableMod: (modId: string, r: Report) => this.enableIfFree(modId, r),
+      replaceMod: (oldId: string, next: StoredManifest, r: Report) => this.installer.replaceMod(oldId, next, r),
+      lock
+    }
+    const result = await this.marketplace.install(id, ctx.report, ctx.signal, hooks, kind)
+    await this.paused.forget(id)
+    // Nouvelle version d'un pack installé (ou d'un mod activé) dans une autre instance : l'ancienne version y reste en
+    // place, rattachée à la nouvelle (la réinstaller depuis cette instance la met à jour).
+    const oldId = job.localId
+    if (result.status === 'updated' && oldId && result.packId !== oldId) await this.updateOthers((s) => relink(s, kind, oldId, result.packId))
+    if (result.status !== 'up-to-date') {
+      const summary = msg({ added: 'history.downloaded', updated: 'history.updated', linked: 'history.linked' }[result.status])
+      await this.state.set(pushHistory(this.state.get(), { action: 'download', packName: result.name, ok: true, msg: summary }))
+    }
+    return result
+  }
+
+  private async claimDownload(job: DownloadJob, ctx: DownloadContext): Promise<unknown> {
+    const result = await this.marketplace.claim(job.id, ctx.report, ctx.signal, job.kind)
+    await this.paused.forget(job.id)
+    return { ...result, kind: job.kind, status: 'claimed' }
   }
 
   // -------------------------------------------------------------------------
@@ -1074,6 +1187,8 @@ export class Service {
       const target = path.resolve(newDir)
       if (path.resolve(oldDir).toLowerCase() === target.toLowerCase()) throw this.toError(t('service.errors.libraryAlreadyThere'))
       if (isInside(oldDir, target)) throw this.toError(t('service.errors.libraryInsideCurrent'))
+      // Les téléchargements en cours écrivent dans la bibliothèque.
+      if (this.downloads.busy) throw this.toError(t('service.errors.waitForDownloads'))
       if (this.state.get().active) throw this.toError(t('service.errors.removeInstalledPackFirst'))
       if (this.state.get().mods.some((m) => m.enabled)) throw this.toError(t('service.errors.disableModsFirst'))
       for (const { instance, state } of await this.otherInstances())
@@ -1156,49 +1271,23 @@ export class Service {
     marketInstall: async (id: string, kind: MarketKind = 'pack') => {
       const remote = await this.marketplace.detail(id, kind)
       const title = t(remote.updateAvailable ? 'service.tasks.update' : 'service.tasks.download', { name: remote.name })
-      return this.startTask('download', title, remote.id, async (report, signal) => {
-        const hooks = {
-          activeId: () => this.state.get().active?.packId ?? null,
-          apply: (packId: string, r: Report) => this.installer.apply(packId, r),
-          enableMod: (modId: string, r: Report) => this.enableIfFree(modId, r),
-          replaceMod: (oldId: string, next: StoredManifest, r: Report) => this.installer.replaceMod(oldId, next, r)
-        }
-        let result
-        try {
-          result = await this.marketplace.install(remote.id, report, signal, hooks, kind)
-        } catch (err) {
-          // Maintenance : téléchargement en pause (son fichier partiel est gardé), repris à la fin de la maintenance.
-          if (!(err instanceof MaintenanceError)) throw err
-          await this.paused.pause({ id: remote.id, kind, name: remote.name })
-          return { name: remote.name, kind, status: 'paused' }
-        }
-        await this.paused.forget(remote.id)
-        // Nouvelle version d'un pack installé (ou d'un mod activé) dans une autre instance : l'ancienne version y reste en
-        // place, rattachée à la nouvelle (la réinstaller depuis cette instance la met à jour).
-        const oldId = remote.localId
-        if (result.status === 'updated' && oldId && result.packId !== oldId) await this.updateOthers((s) => relink(s, kind, oldId, result.packId))
-        if (result.status !== 'up-to-date') {
-          const summary = msg({ added: 'history.downloaded', updated: 'history.updated', linked: 'history.linked' }[result.status])
-          await this.state.set(pushHistory(this.state.get(), { action: 'download', packName: result.name, ok: true, msg: summary }))
-        }
-        return result
-      })
+      const job = { id: remote.id, kind, name: remote.name, coverId: (remote.cover ?? remote.images[0])?.id ?? null, claim: false, title, localId: remote.localId }
+      this.downloads.add(job)
+      return remote.id
     },
 
     marketClaim: async (id: string, kind: MarketKind = 'pack') => {
       if (!this.account.current()) throw this.toError(t('service.errors.signInToClaim'))
       const remote = await this.marketplace.detail(id, kind)
-      return this.startTask('download', t('service.tasks.claim', { name: remote.name }), remote.id, async (report, signal) => {
-        try {
-          const result = await this.marketplace.claim(remote.id, report, signal, kind)
-          await this.paused.forget(remote.id)
-          return { ...result, kind, status: 'claimed' }
-        } catch (err) {
-          if (!(err instanceof MaintenanceError)) throw err
-          await this.paused.pause({ id: remote.id, kind, name: remote.name, claim: true })
-          return { name: remote.name, kind, status: 'paused' }
-        }
-      })
+      const title = t('service.tasks.claim', { name: remote.name })
+      this.downloads.add({ id: remote.id, kind, name: remote.name, coverId: (remote.cover ?? remote.images[0])?.id ?? null, claim: true, title })
+      return remote.id
+    },
+
+    downloadsGet: async () => this.downloads.list(),
+
+    downloadCancel: async (id: string) => {
+      if (!this.downloads.cancel(id) && this.downloads.has(id)) throw this.toError(t('service.errors.downloadInstalling'))
     },
 
     marketAuthors: (query: AuthorQuery) => this.marketplace.authors(query),
@@ -1315,7 +1404,7 @@ export class Service {
     checkForUpdates: () => this.updater.check(),
 
     installUpdate: async () => {
-      if (this.running) throw this.toError(t('service.errors.waitForTask'))
+      if (this.running || this.downloads.busy) throw this.toError(t('service.errors.waitForTask'))
       this.updater.install()
     },
 

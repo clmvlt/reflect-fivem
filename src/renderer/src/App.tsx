@@ -16,6 +16,7 @@ import { DiscordIcon, DiscordView } from './components/DiscordView'
 import { GameControl } from './components/GameControl'
 import { MaintenanceBanner, MaintenanceScreen, useMaintenance } from './components/Maintenance'
 import { WhatsNew } from './components/WhatsNew'
+import { DownloadBar } from './components/Downloads'
 import icon from './assets/icon.png'
 
 /** instances : page des instances FiveM, ouverte depuis les réglages. */
@@ -306,6 +307,8 @@ export function App() {
             </button>
           </div>
         )}
+        {/* Téléchargements : bande en bas de la page, qui ne recouvre rien (la page se raccourcit d'autant). */}
+        <DownloadBar onOpen={(id, kind) => openMarketPack(id, kind)} />
       </main>
       {showWhatsNew && <WhatsNew whatsNew={whatsNew} onClose={dismissWhatsNew} />}
       {dragging && <div className="drop">{catalog === 'mod' && (page === 'library' || page === 'market') ? t('app.drop.mods') : t('app.drop.library')}</div>}

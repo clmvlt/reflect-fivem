@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { PackManagerApi } from '../shared/api'
-import type { AccountMe, MarketKind, TaskProgress, UpdateState } from '../shared/types'
+import type { AccountMe, DownloadDone, DownloadItem, MarketKind, TaskProgress, UpdateState } from '../shared/types'
 import type { MaintenanceState } from '../shared/maintenance'
 import type { AppLinks } from '../shared/links'
 import type { WhatsNew } from '../shared/changelog'
@@ -9,6 +9,8 @@ import type { WhatsNew } from '../shared/changelog'
 const IPC = {
   invoke: 'pm:invoke',
   task: 'pm:task',
+  downloads: 'pm:downloads',
+  downloadDone: 'pm:download-done',
   changed: 'pm:changed',
   update: 'pm:update',
   account: 'pm:account',
@@ -81,6 +83,8 @@ const methods = [
   'marketDetail',
   'marketPerformance',
   'marketInstall',
+  'downloadsGet',
+  'downloadCancel',
   'marketClaim',
   'marketAuthors',
   'marketAuthor',
@@ -137,6 +141,16 @@ api.onTask = (cb: (p: TaskProgress) => void) => {
   const h = (_e: unknown, p: TaskProgress): void => cb(p)
   ipcRenderer.on(IPC.task, h)
   return () => ipcRenderer.removeListener(IPC.task, h)
+}
+api.onDownloads = (cb: (items: DownloadItem[]) => void) => {
+  const h = (_e: unknown, items: DownloadItem[]): void => cb(items)
+  ipcRenderer.on(IPC.downloads, h)
+  return () => ipcRenderer.removeListener(IPC.downloads, h)
+}
+api.onDownloadDone = (cb: (d: DownloadDone) => void) => {
+  const h = (_e: unknown, d: DownloadDone): void => cb(d)
+  ipcRenderer.on(IPC.downloadDone, h)
+  return () => ipcRenderer.removeListener(IPC.downloadDone, h)
 }
 api.onChanged = (cb: () => void) => {
   const h = (): void => cb()

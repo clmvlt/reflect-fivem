@@ -319,6 +319,28 @@
       }
     }
   },
+  "downloads": {
+    "bar": "Téléchargements",
+    "cancel": "Annuler le téléchargement",
+    "cancelled": "Téléchargement de {{name}} annulé.",
+    "etaHours": "{{h}} h {{m}} min restantes",
+    "etaMinutes": "{{n}} min restantes",
+    "etaSeconds": "{{n}} s restantes",
+    "next": "Ensuite",
+    "openPage": "Afficher la fiche",
+    "queueTitle": "File d’attente",
+    "queue_one": "{{count}} en attente",
+    "queue_other": "{{count}} en attente",
+    "remove": "Retirer de la file d’attente",
+    "size": "{{done}} sur {{total}}",
+    "speed": "{{value}}/s",
+    "status": {
+      "installing": "Ajout à la bibliothèque…",
+      "queued": "En file d’attente",
+      "starting": "Démarrage…",
+      "waiting": "En attente de la fin d’une autre opération…"
+    }
+  },
   "errors": {
     "busy": "Une opération est déjà en cours.",
     "network": "Serveur injoignable. Vérifiez votre connexion à Internet.",
@@ -1445,6 +1467,7 @@
       "closeGameForModDelete": "Fermez FiveM avant de supprimer un mod activé.",
       "closeGameForMods": "Fermez FiveM avant de désactiver les mods.",
       "disableModsFirst": "Désactive d'abord tes mods.",
+      "downloadInstalling": "Le téléchargement est en train d’être ajouté à la bibliothèque : il ne peut plus être annulé.",
       "fileError": "{{file}} : {{message}}",
       "fivemFolderNotFound": "Dossier FiveM introuvable.",
       "fivemNotFound": "FiveM introuvable. Indiquez son dossier dans les réglages.",
@@ -1471,6 +1494,7 @@
       "removePackFirst": "Retire d'abord ce pack du jeu.",
       "signInToClaim": "Connectez-vous pour que le téléchargement soit compté pour votre compte.",
       "unreadableImage": "Image illisible.",
+      "waitForDownloads": "Attendez la fin des téléchargements en cours.",
       "waitForSwitch": "Attendez la fin du changement de pack avant de lancer FiveM.",
       "waitForTask": "Attendez la fin de l’opération en cours."
     },

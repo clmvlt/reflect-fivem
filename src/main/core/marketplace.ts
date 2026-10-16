@@ -147,6 +147,11 @@ export interface InstallHooks {
   enableMod?: (modId: string, report: Report) => Promise<string | null>
   /** Nouvelle version d'un mod : remplace l'ancienne dans le jeu si elle était activée (true dans ce cas). */
   replaceMod?: (oldId: string, next: StoredManifest, report: Report) => Promise<boolean>
+  /**
+   * Archive téléchargée : attend que plus aucune autre tâche ne tourne avant de modifier la bibliothèque (ou le jeu).
+   * Appelé une seule fois ; rejette si le téléchargement est annulé pendant l'attente.
+   */
+  lock?: () => Promise<void>
 }
 
 export interface InstallResult {
@@ -573,23 +578,21 @@ export class Marketplace {
     const download = downloadOf(remote, this.apiUrl, kind)
     if (!download || !remote.sha256 || !remote.archiveName) throw new Error(t(kind === 'mod' ? 'market.errors.noArchiveMod' : 'market.errors.noArchivePack'))
     const lib = this.libraryOf(kind)
-    const index = await this.localIndex(kind)
-    const linked = index.get(remote.id) ?? null
+    const linkedTo = async (): Promise<StoredManifest | null> => (await this.localIndex(kind)).get(remote.id) ?? null
 
-    if (linked && linked.marketplace!.sha256 === remote.sha256) {
-      await this.applyMetadata(lib, linked, remote, false, report)
-      return { packId: linked.id, name: linked.name, kind, status: 'up-to-date' }
-    }
-    if (!linked) {
-      // Même archive déjà ajoutée à la main : on la relie à sa fiche plutôt que de la télécharger à nouveau.
-      const duplicate = await lib.findDuplicate(remote.archiveName, remote.archiveSize ?? 0)
-      if (duplicate && !duplicate.marketplace) {
-        await this.applyMetadata(lib, duplicate, remote, false, report)
-        return { packId: duplicate.id, name: duplicate.name, kind, status: 'linked' }
-      }
+    const before = await this.existing(lib, remote, await linkedTo())
+    const downloaded = before ? null : await this.download(remote, download, report, signal)
+    // La bibliothèque n'est modifiée qu'une fois les autres tâches finies ; elle a pu changer pendant le téléchargement.
+    await hooks.lock?.()
+    const linked = await linkedTo()
+    const found = await this.existing(lib, remote, linked)
+    if (found) {
+      if (downloaded) await fs.rm(path.dirname(downloaded), { recursive: true, force: true }).catch(() => undefined)
+      await this.applyMetadata(lib, found.pack, remote, false, report)
+      return { packId: found.pack.id, name: found.pack.name, kind, status: found.status }
     }
 
-    const file = await this.download(remote, download, report, signal)
+    const file = downloaded ?? (await this.download(remote, download, report, signal))
     const onProgress = (p: ImportProgress): void => report(p.phase, p.current, p.total)
     let imported: StoredManifest
     try {
@@ -638,6 +641,21 @@ export class Marketplace {
     }
     await lib.remove(linked.id)
     return { packId: next.id, name: next.name, kind, status: 'updated' }
+  }
+
+  /**
+   * Rien à télécharger : pack déjà à jour, ou même archive déjà ajoutée à la main (reliée à sa fiche plutôt que
+   * téléchargée à nouveau).
+   */
+  private async existing(lib: Library, remote: RemoteDetail, linked: StoredManifest | null): Promise<{ pack: StoredManifest; status: 'up-to-date' | 'linked' } | null> {
+    if (linked) return linked.marketplace!.sha256 === remote.sha256 ? { pack: linked, status: 'up-to-date' } : null
+    const duplicate = await lib.findDuplicate(remote.archiveName!, remote.archiveSize ?? 0)
+    return duplicate && !duplicate.marketplace ? { pack: duplicate, status: 'linked' } : null
+  }
+
+  /** Téléchargement annulé : son fichier partiel est supprimé. */
+  async discardDownload(id: string): Promise<void> {
+    await fs.rm(path.join(this.library().dir, '.downloads', id), { recursive: true, force: true }).catch(() => undefined)
   }
 
   /**
@@ -768,7 +786,7 @@ export class Marketplace {
     const progress = new Transform({
       transform(chunk: Buffer, _encoding, callback) {
         received += chunk.length
-        report(phase, received, size)
+        report(phase, received, size, undefined, true)
         callback(null, chunk)
       }
     })

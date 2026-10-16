@@ -69,7 +69,8 @@ import { canWrite, dirSize, exists, freeSpace, newId, sameVolume } from '../util
 import { runningGameProcesses } from '../util/win'
 import { log } from '../util/log'
 
-export type Report = (phase: string, current: number, total: number, detail?: string) => void
+/** Progression d'une tâche. `bytes` : current et total sont des octets téléchargés (débit affiché). */
+export type Report = (phase: string, current: number, total: number, detail?: string, bytes?: boolean) => void
 
 export interface InstallerCtx {
   jobsDir: string

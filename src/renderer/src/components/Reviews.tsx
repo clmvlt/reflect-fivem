@@ -241,7 +241,7 @@ function Ratings({
   reload: () => void
   onSignIn: () => void
 }) {
-  const { account, task, run, setMessage } = useStore()
+  const { account, downloads, run, setMessage } = useStore()
   const { t } = useTranslation()
   const [busy, setBusy] = useState(false)
   const max = Math.max(1, ...Object.values(ratings.distribution))
@@ -324,7 +324,7 @@ function Ratings({
                   {pack.protected ? t('reviews.claim.protectedHint') : t('reviews.claim.redownloadHint', { size: bytes(pack.archiveSize) })}
                 </p>
                 <div>
-                  <button onClick={() => void run(() => window.api.marketClaim(pack.id, pack.kind))} disabled={!!task}>
+                  <button onClick={() => void run(() => window.api.marketClaim(pack.id, pack.kind))} disabled={downloads.some((d) => d.id === pack.id)}>
                     {pack.protected ? t('reviews.claim.validate') : t('reviews.claim.redownload')}
                   </button>
                 </div>

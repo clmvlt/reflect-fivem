@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
-import type { AuthorProfile, AuthorSummary, MarketCategory, MarketKind, MarketPack, MarketPackDetail, MarketPage, PackManifest, TaskProgress } from '@shared/types'
+import type { AuthorProfile, AuthorSummary, MarketCategory, MarketKind, MarketPack, MarketPackDetail, MarketPage, PackManifest } from '@shared/types'
 import { MOD_GONE, PACK_GONE, type MarketQuery } from '@shared/api'
 import { apiError, cleanError, useStore } from '../store'
 import { bytes, longDate as date, marketImageUrl, num, ratingText } from '../lib/format'
 import { Gallery } from './Gallery'
 import { Markdown } from './Markdown'
-import { Avatar, EmptyState, Progress } from './common'
+import { Avatar, EmptyState } from './common'
+import { DownloadInline, useDownload } from './Downloads'
 import { isRated, PackReviews, RatingLine } from './Reviews'
 import { categoryLabel, localMod, ModMarketAction, useModCategories } from './Mods'
 import { PerfBadge, PerfDetails, PerfFacts, usePerfConfirm, usePerformance, type PerfContext } from './Performance'
@@ -347,7 +348,7 @@ function PackGrid({
   /** Déjà affichés au-dessus (vitrine du moment) : retirés de la grille. */
   skip?: string[]
 }) {
-  const { overview, task } = useStore()
+  const { overview } = useStore()
   const { t } = useTranslation()
   if (!overview) return null
   if (error)
@@ -377,7 +378,7 @@ function PackGrid({
       {hiddenNote}
       <div className="grid">
         {items.map((item) => (
-          <MarketCard key={item.id} item={item} library={overview.library} task={task} onOpen={onOpen} onOpenLocal={onOpenLocal} />
+          <MarketCard key={item.id} item={item} library={overview.library} onOpen={onOpen} onOpenLocal={onOpenLocal} />
         ))}
       </div>
       {page.totalPages > 1 && (
@@ -414,7 +415,6 @@ const openItem = (item: MarketPack): MarketView => ({ kind: 'pack', id: item.id,
  * seule couverture, avec nom, résumé, auteur, note et action posés dessus, qui défile de côté quand il y en a beaucoup.
  */
 function FeaturedBanner({ items, library, onOpen, onOpenLocal }: Nav & { items: MarketPack[]; library: PackManifest[] }) {
-  const { task } = useStore()
   const { t } = useTranslation()
   const kind = items[0]?.kind ?? 'pack'
   const title = t(kind === 'mod' ? 'marketplace.featured.mods' : 'marketplace.featured.packs', { count: items.length })
@@ -428,16 +428,16 @@ function FeaturedBanner({ items, library, onOpen, onOpenLocal }: Nav & { items: 
       </div>
       <div className="featured-row">
         {items.map((item) => (
-          <FeaturedCard key={item.id} item={item} library={library} task={task} onOpen={onOpen} onOpenLocal={onOpenLocal} />
+          <FeaturedCard key={item.id} item={item} library={library} onOpen={onOpen} onOpenLocal={onOpenLocal} />
         ))}
       </div>
     </section>
   )
 }
 
-function FeaturedCard({ item, library, task, onOpen, onOpenLocal }: Nav & { item: MarketPack; library: PackManifest[]; task: TaskProgress | null }) {
+function FeaturedCard({ item, library, onOpen, onOpenLocal }: Nav & { item: MarketPack; library: PackManifest[] }) {
   const [failed, setFailed] = useState(false)
-  const mine = task?.kind === 'download' && task.detail === item.id ? task : null
+  const dl = useDownload(item.id)
   return (
     <article className="featured-item clickable" onClick={() => onOpen(openItem(item))}>
       {item.cover && !failed && (
@@ -465,7 +465,7 @@ function FeaturedCard({ item, library, task, onOpen, onOpenLocal }: Nav & { item
             <DownloadCount item={item} />
           </div>
           <div className="featured-actions" onClick={(e) => e.stopPropagation()}>
-            {mine ? <Progress task={mine} /> : <MarketAction item={item} library={library} task={task} onOpenLocal={onOpenLocal} />}
+            {dl ? <DownloadInline d={dl} /> : <MarketAction item={item} library={library} onOpenLocal={onOpenLocal} />}
           </div>
         </div>
       </div>
@@ -509,19 +509,17 @@ function AuthorLink({ item, onOpen, avatar = false }: { item: MarketPack; onOpen
 function MarketCard({
   item,
   library,
-  task,
   onOpen,
   onOpenLocal
 }: Nav & {
   item: MarketPack
   library: PackManifest[]
-  task: TaskProgress | null
 }) {
   const [failed, setFailed] = useState(false)
   const categories = useModCategories()
   const { overview } = useStore()
   const { t } = useTranslation()
-  const mine = task?.kind === 'download' && task.detail === item.id ? task : null
+  const dl = useDownload(item.id)
   // Mod : sa catégorie à la place des étiquettes.
   const label = item.kind === 'mod' ? categoryLabel(item.category, categories) : item.tags.slice(0, 3).join(', ')
   const others = [label, bytes(item.archiveSize), item.protected && t('marketplace.protected')].filter(Boolean).join(' · ')
@@ -550,15 +548,15 @@ function MarketCard({
           <PerfBadge perf={item.performance} />
         </div>
         <div className="card-foot" onClick={(e) => e.stopPropagation()}>
-          {mine ? (
-            <Progress task={mine} />
+          {dl ? (
+            <DownloadInline d={dl} />
           ) : (
             <>
               {/* Mod déjà dans la bibliothèque : son état prend la place du nombre de téléchargements. */}
               {!inLibrary && (
                 <DownloadCount item={item} />
               )}
-              <MarketAction item={item} library={library} task={task} onOpenLocal={onOpenLocal} />
+              <MarketAction item={item} library={library} onOpenLocal={onOpenLocal} />
             </>
           )}
         </div>
@@ -571,13 +569,11 @@ function MarketCard({
 function MarketAction({
   item,
   library,
-  task,
   onOpenLocal,
   wide = false
 }: {
   item: { id: string; sha256: string; kind: MarketKind; name: string; performance?: PackPerformance | null }
   library: PackManifest[]
-  task: TaskProgress | null
   onOpenLocal: (id: string) => void
   wide?: boolean
 }) {
@@ -605,7 +601,7 @@ function MarketAction({
     <>
       {update && !wide && <span className="accent-text small">{t('marketplace.action.newVersion')}</span>}
       <div className="spacer" />
-      <button className={`primary ${wide ? 'wide' : ''}`} onClick={() => void install()} disabled={!!task}>
+      <button className={`primary ${wide ? 'wide' : ''}`} onClick={() => void install()}>
         {update ? t('marketplace.action.update') : t('marketplace.action.download')}
       </button>
     </>
@@ -613,7 +609,7 @@ function MarketAction({
 }
 
 function MarketDetail({ id, catalog, back, onOpen, onOpenLocal, onSignIn }: Nav & { id: string; catalog: MarketKind; back: ReactNode; onSignIn: () => void }) {
-  const { overview, task, run } = useStore()
+  const { overview, run } = useStore()
   const { t, i18n } = useTranslation()
   const categories = useModCategories()
   const [pack, setPack] = useState<MarketPackDetail | null>(null)
@@ -621,7 +617,8 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal, onSignIn }: Nav 
   const [error, setError] = useState<{ message: string; code: string | null } | null>(null)
   // Téléchargements du pack terminés depuis l'ouverture de la fiche (notes relues, note proposée).
   const [installs, setInstalls] = useState(0)
-  const downloading = task?.kind === 'download' && !!pack && task.detail === pack.id
+  const dl = useDownload(pack?.id)
+  const downloading = !!dl
   const wasDownloading = useRef(false)
 
   const load = useCallback(async () => {
@@ -673,7 +670,6 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal, onSignIn }: Nav 
     )
 
   const mod = pack.kind === 'mod'
-  const mine = task?.kind === 'download' && task.detail === pack.id ? task : null
   const { local, update } = mod ? { local: localMod(pack.id, overview.mods), update: false } : localState(pack, overview.library)
   const modUpdate = mod && !!local && !!pack.sha256 && local.marketplace!.sha256 !== pack.sha256
   const category = mod ? categoryLabel(pack.category, categories) : null
@@ -704,10 +700,10 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal, onSignIn }: Nav 
           </button>
           {pack.summary && <p className="summary">{pack.summary}</p>}
           <div className={mod ? 'side-actions mod-actions' : 'side-actions row-actions'}>
-            {mine ? <Progress task={mine} /> : <MarketAction item={pack} library={overview.library} task={task} onOpenLocal={onOpenLocal} wide />}
+            {dl ? <DownloadInline d={dl} /> : <MarketAction item={pack} library={overview.library} onOpenLocal={onOpenLocal} wide />}
           </div>
-          {update && !mine && <p className="hint">{t('marketplace.detail.updatePack')}</p>}
-          {modUpdate && !mine && <p className="hint">{t('marketplace.detail.updateMod')}</p>}
+          {update && !dl && <p className="hint">{t('marketplace.detail.updatePack')}</p>}
+          {modUpdate && !dl && <p className="hint">{t('marketplace.detail.updateMod')}</p>}
           {pack.protected && <p className="hint">{t(mod ? 'common.protectedMod' : 'common.protectedPack')}</p>}
           <dl className="facts">
             {category && (

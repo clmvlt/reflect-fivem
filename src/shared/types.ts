@@ -344,6 +344,45 @@ export interface TaskProgress {
   result?: unknown
 }
 
+/**
+ * Téléchargement de la Marketplace, en cours ou en file d'attente (un seul à la fois, dans l'ordre demandé). Le
+ * téléchargement de l'archive ne bloque pas le reste de l'application ; seul son ajout à la bibliothèque attend que
+ * les autres tâches soient finies.
+ */
+export interface DownloadItem {
+  /** Fiche de la Marketplace. */
+  id: string
+  kind: MarketKind
+  name: string
+  /** Image de couverture de la fiche (null sans image). */
+  coverId: string | null
+  /** Pack déjà dans la bibliothèque, téléchargé de nouveau au nom du compte (rien n'est ajouté). */
+  claim: boolean
+  /**
+   * queued : en file d'attente ; downloading : archive en cours de téléchargement (ou vérification) ; waiting : archive
+   * téléchargée, attend la fin d'une autre tâche ; installing : ajout à la bibliothèque (ne peut plus être annulé).
+   */
+  status: 'queued' | 'downloading' | 'waiting' | 'installing'
+  phase: string
+  current: number
+  total: number
+  /** current et total sont des octets (téléchargement de l'archive). */
+  bytes: boolean
+  /** Débit moyen des dernières secondes, en octets par seconde (0 hors téléchargement de l'archive). */
+  speed: number
+}
+
+/** Fin d'un téléchargement de la Marketplace (terminé, en échec, annulé ou mis en pause par une maintenance). */
+export interface DownloadDone {
+  id: string
+  kind: MarketKind
+  name: string
+  ok: boolean
+  cancelled?: boolean
+  error?: string
+  result?: unknown
+}
+
 export interface Overview {
   settings: Settings
   games: GamesInfo

@@ -7,6 +7,7 @@ import { useStore } from '../store'
 import { bytes, longDate, mediaUrl, num, packImages } from '../lib/format'
 import { asiBuildText, LEVEL_LABEL, levelOf, type Level } from '@shared/insights'
 import { Cover, packMenuAction, Progress, RenameInput } from './common'
+import { DownloadInline, useDownload } from './Downloads'
 import { Gallery } from './Gallery'
 import { useInstallTarget } from './InstallTarget'
 import { Markdown } from './Markdown'
@@ -50,6 +51,7 @@ export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest;
   }, [marketId, pack.youtubeId])
   const video = pack.youtubeId !== undefined ? pack.youtubeId : fetched && fetched.marketId === marketId ? fetched.youtubeId : null
   // Pack de la Marketplace : son analyse, pour le comparer à la machine avec le preset et les options choisis.
+  const downloading = useDownload(marketId)
   const { choose, picker } = useInstallTarget()
   const perfDetail = usePerformanceDetail(pack.marketplace && pack.marketplace.kind !== 'mod' ? pack.marketplace.id : null, 'pack')
 
@@ -64,7 +66,6 @@ export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest;
   const market = pack.marketplace
   const updateAvailable = overview.market.updates.includes(pack.id)
   const gone = overview.market.gone.includes(pack.id)
-  const downloading = task?.kind === 'download' && market && task.detail === market.id ? task : null
   // Mise à jour arrêtée par une maintenance : reprise toute seule à la fin.
   const paused = !!market && overview.pausedDownloads.some((d) => d.id === market.id)
   const report = perfDetail?.report ?? null
@@ -128,13 +129,13 @@ export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest;
           {market && updateAvailable && (
             <div className="side-update">
               {downloading ? (
-                <Progress task={downloading} />
+                <DownloadInline d={downloading} />
               ) : paused ? (
                 <span>{t('maintenance.pausedShort')}</span>
               ) : (
                 <>
                   <span>{t('packDetail.updateAvailable')}</span>
-                  <button onClick={() => void run(() => window.api.marketInstall(market.id))} disabled={!!task}>
+                  <button onClick={() => void run(() => window.api.marketInstall(market.id))}>
                     {t('packDetail.update')}
                   </button>
                 </>

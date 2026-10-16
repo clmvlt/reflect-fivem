@@ -1492,6 +1492,7 @@
       "invalidFpsLimit": "Limite invalide : choisissez entre {{min}} et {{max}} images par seconde.",
       "invalidGpuClass": "Classe de carte graphique invalide.",
       "invalidLink": "Lien invalide.",
+      "invalidTheme": "Thème inconnu.",
       "invalidVram": "Mémoire vidéo invalide : indiquez une valeur entre {{min}} et {{max}}.",
       "libraryAlreadyThere": "Les packs sont déjà dans ce dossier.",
       "libraryInsideCurrent": "Choisis un dossier en dehors du dossier actuel.",
@@ -1581,6 +1582,27 @@
     "pickFivem": "Dossier FiveM.app",
     "pickGta": "Dossier de GTA V",
     "removeActiveFirst": "Retirez d’abord le pack installé.",
+    "theme": {
+      "help": "Couleurs de l’application. « Système » suit le thème clair ou sombre de Windows.",
+      "names": {
+        "dark": "Noir",
+        "ember": "Braise",
+        "forest": "Forêt",
+        "gray": "Graphite",
+        "lavender": "Lavande",
+        "light": "Clair",
+        "midnight": "Bleu nuit",
+        "mint": "Menthe",
+        "ocean": "Océan",
+        "pink": "Rose",
+        "raspberry": "Framboise",
+        "sand": "Sable",
+        "sky": "Ciel",
+        "system": "Système",
+        "violet": "Violet"
+      },
+      "title": "Thème"
+    },
     "title": "Réglages",
     "update": {
       "available": "Version {{version}} disponible.",

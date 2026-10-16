@@ -2,8 +2,9 @@
    violet du logo de Reflect FiveM. */
 
 :root {
-  color-scheme: light dark;
-  --accent: #7c40fd;
+  color-scheme: light;
+  /* Accent de Windows (posé par l'interface), violet du logo à défaut ; un thème peut avoir le sien. */
+  --accent: var(--system-accent, #7c40fd);
   --bg: #f3f3f3;
   --layer: #f9f9f9;
   --surface: #ffffff;
@@ -33,36 +34,36 @@
   accent-color: var(--accent);
 }
 
-/* Thème sombre : fond noir ; cartes, boutons et champs à peine plus clairs pour rester lisibles. */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #000000;
-    --layer: #000000;
-    --surface: #111111;
-    --surface-hover: #181818;
-    --media: #0a0a0a;
-    --border: rgba(255, 255, 255, 0.09);
-    --text: #ffffff;
-    --text-2: #b8b8b8;
-    --hover: rgba(255, 255, 255, 0.06);
-    --selected: rgba(255, 255, 255, 0.09);
-    --btn: #161616;
-    --btn-hover: #1f1f1f;
-    --btn-border: rgba(255, 255, 255, 0.1);
-    --btn-border-bottom: rgba(255, 255, 255, 0.06);
-    --warning-bg: #2e2410;
-    --error-bg: #34181a;
-    --info-bg: #141414;
-    --bad: #ff99a4;
-    /* Windows utilise une variante claire de l'accent pour le texte en thème sombre. */
-    --accent-text: color-mix(in srgb, var(--accent) 45%, white);
-    --ok-text: #6ccb5f;
-    --warn-text: #f0c75e;
-    --star: #ffc83d;
-    --star-off: rgba(255, 255, 255, 0.2);
-    --scroll-thumb: rgba(255, 255, 255, 0.16);
-    --scroll-thumb-hover: rgba(255, 255, 255, 0.28);
-  }
+/* Base sombre (thème Windows sombre, ou thème sombre choisi) : fond noir ; cartes, boutons et champs à peine plus
+   clairs pour rester lisibles. Les thèmes colorés remplacent ensuite quelques couleurs (voir @shared/themes). */
+:root[data-base='dark'] {
+  color-scheme: dark;
+  --bg: #000000;
+  --layer: #000000;
+  --surface: #111111;
+  --surface-hover: #181818;
+  --media: #0a0a0a;
+  --border: rgba(255, 255, 255, 0.09);
+  --text: #ffffff;
+  --text-2: #b8b8b8;
+  --hover: rgba(255, 255, 255, 0.06);
+  --selected: rgba(255, 255, 255, 0.09);
+  --btn: #161616;
+  --btn-hover: #1f1f1f;
+  --btn-border: rgba(255, 255, 255, 0.1);
+  --btn-border-bottom: rgba(255, 255, 255, 0.06);
+  --warning-bg: #2e2410;
+  --error-bg: #34181a;
+  --info-bg: #141414;
+  --bad: #ff99a4;
+  /* Windows utilise une variante claire de l'accent pour le texte en thème sombre. */
+  --accent-text: color-mix(in srgb, var(--accent) 45%, white);
+  --ok-text: #6ccb5f;
+  --warn-text: #f0c75e;
+  --star: #ffc83d;
+  --star-off: rgba(255, 255, 255, 0.2);
+  --scroll-thumb: rgba(255, 255, 255, 0.16);
+  --scroll-thumb-hover: rgba(255, 255, 255, 0.28);
 }
 
 * {
@@ -2865,6 +2866,101 @@ button.google {
   .modal-backdrop {
     animation: none;
   }
+}
+
+/* ------------------------------------------------------------ Choix du thème (réglages) */
+
+.theme-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 10px;
+}
+.theme-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  height: auto;
+  padding: 6px 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  text-align: center;
+  cursor: pointer;
+}
+.theme-swatch:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+.theme-swatch.is-selected {
+  border-color: var(--accent-text);
+  box-shadow: 0 0 0 1px var(--accent-text);
+}
+.theme-name {
+  font-size: 12px;
+  line-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.theme-swatch.is-selected .theme-name {
+  font-weight: 600;
+}
+.theme-preview {
+  display: flex;
+  height: 58px;
+  overflow: hidden;
+  border-radius: 5px;
+  border: 1px solid rgba(128, 128, 128, 0.25);
+}
+.theme-preview.is-split .theme-mini + .theme-mini {
+  clip-path: polygon(40% 0, 100% 0, 100% 100%, 0 100%);
+  margin-left: -100%;
+}
+.theme-mini {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  padding: 7px;
+}
+.theme-mini-side {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 22%;
+  padding-top: 2px;
+}
+.theme-mini-side span {
+  height: 3px;
+  border-radius: 2px;
+  opacity: 0.35;
+}
+.theme-mini-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 6px;
+  border: 1px solid;
+  border-radius: 4px;
+}
+.theme-mini-line {
+  width: 70%;
+  height: 4px;
+  border-radius: 2px;
+  opacity: 0.55;
+}
+.theme-mini-btn {
+  align-self: flex-end;
+  width: 42%;
+  height: 9px;
+  border-radius: 3px;
 }
 
 /* ------------------------------------------------------------ Menu contextuel */

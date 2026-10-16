@@ -2,7 +2,7 @@
 
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { app, BrowserWindow, dialog, nativeImage, net, Notification, safeStorage, screen, shell, systemPreferences } from 'electron'
+import { app, BrowserWindow, dialog, nativeImage, nativeTheme, net, Notification, safeStorage, screen, shell, systemPreferences } from 'electron'
 import type { AppState, FiveMInstance, GamesInfo, InstanceSummary, MarketKind, Overview, PackPatch, RootId, Settings, TaskProgress } from '@shared/types'
 import type { AccountMe, ProfileInput } from '@shared/types'
 import type { AuthorQuery, CommentQuery, ComponentFile, ForeignSelection, MarketQuery, PackManagerApi } from '@shared/api'
@@ -27,6 +27,7 @@ import { MaintenanceWatch, PausedDownloads } from './core/maintenance'
 import { LinksWatch } from './core/links'
 import { WhatsNewWatch } from './core/changelog'
 import { httpsUrl } from '@shared/links'
+import { isThemeChoice, resolveTheme, themeBackground, type ThemeChoice } from '@shared/themes'
 import { Marketplace } from './core/marketplace'
 import { DownloadQueue, type DownloadContext, type DownloadJob } from './core/downloads'
 import { AppUpdater } from './core/updater'
@@ -340,6 +341,20 @@ export class Service {
     }
   }
 
+  /**
+   * Thème choisi : menus et boîtes de Windows, et thème clair ou sombre vu par l'interface (prefers-color-scheme),
+   * suivent sa base ; « system » laisse Windows décider.
+   */
+  private applyNativeTheme(): void {
+    const choice = this.settings.get().theme
+    nativeTheme.themeSource = !choice || choice === 'system' ? 'system' : resolveTheme(choice, false).base
+  }
+
+  /** Fond de la fenêtre, le même que celui de l'interface (pas d'éclair d'une autre couleur à l'ouverture). */
+  windowBackground(): string {
+    return themeBackground(resolveTheme(this.settings.get().theme, nativeTheme.shouldUseDarkColors))
+  }
+
   /** Instance enregistrée (l'instance active ne change pas) ; le dossier FiveM de l'instance active est fixé. */
   private async addInstance(instance: FiveMInstance): Promise<void> {
     const s = this.settings.get()
@@ -394,6 +409,7 @@ export class Service {
     })
     initI18n(locale)
     log.info(`Langue : ${locale}`)
+    this.applyNativeTheme()
     // Instance active disparue de la liste (réglages modifiés à la main) : la première, avec ses dossiers.
     const loaded = this.settings.get()
     const first = loaded.instances?.[0]
@@ -1361,6 +1377,16 @@ export class Service {
     accountChangePassword: (currentPassword: string | null, newPassword: string) => this.account.changePassword(currentPassword, newPassword),
 
     getLanguage: async () => currentLocale(),
+
+    getTheme: async () => this.settings.get().theme ?? 'system',
+
+    setTheme: async (theme: ThemeChoice) => {
+      if (!isThemeChoice(theme)) throw this.toError(t('service.errors.invalidTheme'))
+      await this.settings.patch({ theme })
+      this.applyNativeTheme()
+      this.getWindow()?.setBackgroundColor(this.windowBackground())
+      this.changed()
+    },
 
     setLanguage: async (code: string) => {
       const locale = supportedLocale(code)

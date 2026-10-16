@@ -115,6 +115,8 @@ const methods = [
   'accountRemoveAvatar',
   'accountChangePassword',
   'getLanguage',
+  'getTheme',
+  'setTheme',
   'setLanguage',
   'listLanguages',
   'checkForUpdates',

@@ -33,6 +33,7 @@ import type { HardwareOverride, MachineProfile, PerformanceDetail } from './perf
 import type { MaintenanceState } from './maintenance'
 import type { AppLinks } from './links'
 import type { WhatsNew } from './changelog'
+import type { ThemeChoice } from './themes'
 
 export interface ComponentFile {
   rel: string
@@ -226,6 +227,9 @@ export interface PackManagerApi {
 
   /** Langue affichée (choisie par le processus principal). */
   getLanguage(): Promise<string>
+  /** Thème choisi dans les réglages (« system » : celui de Windows), connu avant le premier affichage. */
+  getTheme(): Promise<ThemeChoice>
+  setTheme(theme: ThemeChoice): Promise<void>
   /**
    * Change la langue de l'application (toutes les fenêtres, menus du processus principal), l'enregistre sur ce poste
    * et, si un compte est connecté, dans le compte.

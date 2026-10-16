@@ -1492,6 +1492,7 @@
       "invalidFpsLimit": "Invalid limit: choose between {{min}} and {{max}} frames per second.",
       "invalidGpuClass": "Invalid graphics card class.",
       "invalidLink": "Invalid link.",
+      "invalidTheme": "Unknown theme.",
       "invalidVram": "Invalid video memory: enter a value between {{min}} and {{max}}.",
       "libraryAlreadyThere": "The packs are already in this folder.",
       "libraryInsideCurrent": "Choose a folder outside the current folder.",
@@ -1581,6 +1582,27 @@
     "pickFivem": "FiveM.app folder",
     "pickGta": "GTA V folder",
     "removeActiveFirst": "Uninstall the installed pack first.",
+    "theme": {
+      "help": "App colors. “System” follows the Windows light or dark theme.",
+      "names": {
+        "dark": "Black",
+        "ember": "Ember",
+        "forest": "Forest",
+        "gray": "Graphite",
+        "lavender": "Lavender",
+        "light": "Light",
+        "midnight": "Midnight",
+        "mint": "Mint",
+        "ocean": "Ocean",
+        "pink": "Pink",
+        "raspberry": "Raspberry",
+        "sand": "Sand",
+        "sky": "Sky",
+        "system": "System",
+        "violet": "Violet"
+      },
+      "title": "Theme"
+    },
     "title": "Settings",
     "update": {
       "available": "Version {{version}} available.",

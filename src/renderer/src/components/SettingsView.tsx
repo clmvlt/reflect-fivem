@@ -8,6 +8,7 @@ import { formatDateTime } from '@shared/intl'
 import { bytes } from '../lib/format'
 import { useStore } from '../store'
 import { LanguageSelect } from './LanguageSelect'
+import { ThemeSelect } from './ThemeSelect'
 import { WhatsNew } from './WhatsNew'
 
 const STORE_LABEL: Record<string, string> = { rockstar: 'Rockstar Games Launcher', steam: 'Steam', epic: 'Epic Games' }
@@ -172,6 +173,7 @@ export function SettingsView({ onManageInstances }: { onManageInstances: () => v
           </div>
         </li>
         <LanguageSelect />
+        <ThemeSelect />
         <li className="row">
           <div className="row-main">
             <div className="name">{t('settings.app.trayTitle')}</div>

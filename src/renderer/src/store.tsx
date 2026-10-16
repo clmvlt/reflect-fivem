@@ -6,6 +6,7 @@ import { emptyLinks, type AppLinks } from '@shared/links'
 import type { WhatsNew } from '@shared/changelog'
 import i18next, { t } from 'i18next'
 import { num, q } from './lib/format'
+import { applyTheme } from './lib/theme'
 
 export interface Message {
   kind: 'error' | 'info'
@@ -178,10 +179,17 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
     return () => window.clearTimeout(timer)
   }, [message])
 
-  // Couleur d'accent de Windows
+  // Couleur d'accent de Windows (celle des thèmes qui n'ont pas la leur).
   useEffect(() => {
-    if (overview?.accent) document.documentElement.style.setProperty('--accent', overview.accent)
+    if (overview?.accent) document.documentElement.style.setProperty('--system-accent', overview.accent)
   }, [overview?.accent])
+
+  // Thème changé (réglages) ; le premier est posé avant l'affichage (main.tsx).
+  const theme = overview?.settings.theme
+  const loaded = overview !== null
+  useEffect(() => {
+    if (loaded) applyTheme(theme)
+  }, [theme, loaded])
 
   const value = useMemo<Store>(
     () => ({ overview, refresh, task, downloads, update, account, setAccount, maintenance, checkMaintenance, links, openLink, whatsNew, dismissWhatsNew, message, setMessage, run, changeGame }),

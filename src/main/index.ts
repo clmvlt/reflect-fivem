@@ -157,7 +157,7 @@ function startApp(): void {
     })
 
     Menu.setApplicationMenu(null)
-    win = createWindow(path.join(dataDir, 'window.json'))
+    win = createWindow(path.join(dataDir, 'window.json'), service.windowBackground())
     tray = createTray(service, () => win)
     // Fermer la fenêtre la cache : l'application reste dans la zone de notification (sauf si désactivé dans les réglages).
     win.on('close', (e) => {
@@ -175,7 +175,7 @@ function startApp(): void {
     service.startBackground()
     // Liens modifiables depuis le site : relus quand la fenêtre reprend le focus (au plus une fois par minute).
     win.on('focus', () => void service.links.refresh())
-    nativeTheme.on('updated', () => win?.setBackgroundColor(windowBackground()))
+    nativeTheme.on('updated', () => win?.setBackgroundColor(service.windowBackground()))
   })
 }
 
@@ -253,11 +253,6 @@ interface Bounds {
 
 const DEFAULT_SIZE = { width: 1120, height: 780 }
 
-/** Même fond que l'interface (noir en thème sombre) : pas d'éclair gris à l'ouverture. */
-function windowBackground(): string {
-  return nativeTheme.shouldUseDarkColors ? '#000000' : '#f3f3f3'
-}
-
 /** Taille enregistrée à la fermeture ; sinon la taille par défaut, réduite si l'écran est plus petit. */
 function initialBounds(boundsFile: string): Bounds {
   let saved: Bounds | null = null
@@ -284,7 +279,8 @@ function initialBounds(boundsFile: string): Bounds {
   return visible ? saved : { ...fallback, width: saved.width, height: saved.height }
 }
 
-function createWindow(boundsFile: string): BrowserWindow {
+/** `background` : même fond que l'interface (thème choisi), pas d'éclair d'une autre couleur à l'ouverture. */
+function createWindow(boundsFile: string, background: string): BrowserWindow {
   const bounds = initialBounds(boundsFile)
   const win = new BrowserWindow({
     x: bounds.x,
@@ -294,7 +290,7 @@ function createWindow(boundsFile: string): BrowserWindow {
     minWidth: 560,
     minHeight: 420,
     show: false,
-    backgroundColor: windowBackground(),
+    backgroundColor: background,
     title: 'Reflect FiveM',
     icon: path.join(__dirname, '../../resources/icon.png'),
     webPreferences: {

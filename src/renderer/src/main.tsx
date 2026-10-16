@@ -4,13 +4,13 @@ import { initReactI18next } from 'react-i18next'
 import { initI18n } from '@shared/i18n'
 import { App } from './App'
 import { StoreProvider } from './store'
+import { applyTheme } from './lib/theme'
 import './styles.css'
 
-// Langue choisie par le processus principal, connue avant le premier affichage (pas d'éclair dans une autre langue).
-void window.api
-  .getLanguage()
-  .catch(() => 'fr')
-  .then((lng) => {
+// Langue et thème choisis, connus avant le premier affichage (pas d'éclair dans une autre langue ou d'autres couleurs).
+void Promise.all([window.api.getLanguage().catch(() => 'fr'), window.api.getTheme().catch(() => 'system' as const)])
+  .then(([lng, theme]) => {
+    applyTheme(theme)
     initI18n(lng, initReactI18next)
     document.documentElement.lang = lng
     createRoot(document.getElementById('root') as HTMLElement).render(

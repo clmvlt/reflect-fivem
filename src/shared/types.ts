@@ -3,6 +3,7 @@
 import type { HardwareOverride, PackPerformance } from './performance'
 import type { Msg } from './i18n'
 import type { ReleaseNotes } from './changelog'
+import type { ThemeChoice } from './themes'
 
 /** Racines de destination gérées par l'application. */
 export type RootId = 'fivem' | 'gta'
@@ -228,6 +229,8 @@ export interface Settings {
   instance?: string
   /** Installation d'un pack avec plusieurs instances : dans l'instance active, ou dans celle choisie à chaque fois (absent : active). */
   packTarget?: 'active' | 'ask'
+  /** Thème de l'application (absent : celui de Windows, clair ou sombre). */
+  theme?: ThemeChoice
 }
 
 /** Dossier FiveM géré par l'application, avec son propre pack installé et ses propres mods (voir instances.ts). */

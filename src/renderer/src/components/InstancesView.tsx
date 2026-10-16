@@ -5,6 +5,7 @@ import { q } from '../lib/format'
 import { useStore } from '../store'
 import { Progress } from './common'
 import { Modal } from './Modal'
+import { confirmDialog } from './Confirm'
 
 /** Nouvelle instance copiée depuis une autre : nom, instance copiée, dossier qui la recevra, raccourci sur le bureau. */
 interface CreateForm {
@@ -64,7 +65,7 @@ export function InstancesView({ onBack }: { onBack: () => void }) {
     } else if (choice === 'remove-pack') await changeGame(() => window.api.removeActive(i.id))
     else if (choice === 'rename') setRenaming({ id: i.id, name: i.name })
     else if (choice === 'delete') {
-      if (await window.api.confirm(t('instances.view.removeTitle', { name: q(i.name) }), t('instances.view.removeDetail'), t('common.delete')))
+      if (await confirmDialog(t('instances.view.removeTitle', { name: q(i.name) }), t('instances.view.removeDetail'), t('common.delete')))
         await run(() => window.api.instanceRemove(i.id))
     }
   }

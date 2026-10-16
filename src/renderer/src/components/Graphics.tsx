@@ -16,6 +16,7 @@ import { formatNumber } from '@shared/intl'
 import { useStore } from '../store'
 import { num, q } from '../lib/format'
 import { MachinePanel } from './Performance'
+import { confirmDialog } from './Confirm'
 
 function displayRange(def: GraphicsSettingDef, v: string): string {
   const n = Number(v)
@@ -85,7 +86,7 @@ export function Graphics() {
     }
   }
   const restore = async (): Promise<void> => {
-    const ok = await window.api.confirm(t('graphics.restore.title'), t('graphics.restore.message'), t('graphics.restore.confirm'))
+    const ok = await confirmDialog(t('graphics.restore.title'), t('graphics.restore.message'), t('graphics.restore.confirm'))
     if (!ok) return
     const s = await run(() => window.api.restoreGraphics(state.target.id))
     if (s) {

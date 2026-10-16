@@ -7,6 +7,7 @@ import type { CommentQuery, MenuItem } from '@shared/api'
 import { apiError, cleanError, useStore } from '../store'
 import { ago, bytes, fullDate, num, ratingText } from '../lib/format'
 import { Avatar } from './common'
+import { confirmDialog } from './Confirm'
 
 const COMMENT_MAX = 2000
 
@@ -749,7 +750,7 @@ function CommentItem({
         return setMode('hide')
       case 'delete':
         if (
-          await window.api.confirm(
+          await confirmDialog(
             t('reviews.confirmDelete.message'),
             isReply ? t('reviews.confirmDelete.reply') : t('reviews.confirmDelete.comment'),
             t('common.delete')
@@ -765,7 +766,7 @@ function CommentItem({
         await act(() => window.api.adminCommentPin(c.id, !c.pinned), c.pinned ? t('reviews.unpinned') : t('reviews.pinned'))
         return
       case 'purge':
-        if (await window.api.confirm(t('reviews.confirmPurge.message'), t('reviews.confirmPurge.detail'), t('reviews.menu.purge')))
+        if (await confirmDialog(t('reviews.confirmPurge.message'), t('reviews.confirmPurge.detail'), t('reviews.menu.purge')))
           await act(() => window.api.adminCommentDelete(c.id), t('reviews.purged'))
         return
     }

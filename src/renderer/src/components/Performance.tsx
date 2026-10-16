@@ -10,6 +10,7 @@ import type { MarketKind } from '@shared/types'
 import { cleanError } from '../store'
 import { q } from '../lib/format'
 import { formatNumber } from '@shared/intl'
+import { confirmDialog } from './Confirm'
 
 // ---------------------------------------------------------------------------
 // Machine et modèle, lus une fois puis partagés par toute l'interface
@@ -147,7 +148,7 @@ export function usePerfConfirm(): (item: { name: string; kind: MarketKind; perfo
       if (!ctx || !item.performance) return true
       const est = estimate(ctx.profile.model, ctx.machine, item.performance)
       if (est.verdict !== 'too-heavy') return true
-      return window.api.confirm(
+      return confirmDialog(
         t('performance.confirm.title', { name: q(item.name) }),
         t('performance.confirm.message', { reasons: verdictReasons(ctx, est).join(' ') }),
         okLabel

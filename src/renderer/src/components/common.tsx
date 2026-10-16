@@ -4,6 +4,7 @@ import { t } from 'i18next'
 import type { PackManifest, TaskProgress } from '@shared/types'
 import { useStore } from '../store'
 import { bytes, mediaUrl, num, packImages, q } from '../lib/format'
+import { confirmDialog } from './Confirm'
 
 /** Tâches dont la barre de progression porte un libellé (clés progress.task.*). */
 const TASK_LABEL = ['apply', 'remove', 'delete', 'stash', 'clean', 'cache', 'screenshots', 'trash', 'download'] as const
@@ -57,7 +58,7 @@ export async function packMenuAction(pack: PackManifest, run: <T>(fn: () => Prom
   if (choice === 'image') await run(() => window.api.setCoverFromFile(pack.id))
   else if (choice === 'open') await run(() => window.api.openPackFolder(pack.id))
   else if (choice === 'delete') {
-    const ok = await window.api.confirm(t('app.packMenu.deleteTitle', { name: q(pack.name) }), t('app.packMenu.deleteDetail'), t('common.delete'))
+    const ok = await confirmDialog(t('app.packMenu.deleteTitle', { name: q(pack.name) }), t('app.packMenu.deleteDetail'), t('common.delete'))
     if (ok) await run(() => window.api.deletePack(pack.id))
   }
   return false

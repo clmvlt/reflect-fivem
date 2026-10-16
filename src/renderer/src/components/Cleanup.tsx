@@ -5,6 +5,7 @@ import { formatList } from '@shared/intl'
 import { useStore } from '../store'
 import { bytes, num, q } from '../lib/format'
 import { Progress } from './common'
+import { confirmDialog } from './Confirm'
 
 const key = (i: ForeignItem): string => `${i.root}:${i.path}`
 
@@ -55,12 +56,12 @@ export function Cleanup() {
   const mine = (target: string) => (task && task.detail === target ? task : null)
 
   const clearCache = async (): Promise<void> => {
-    const ok = await window.api.confirm(t('cleanup.cache.confirm'), t('cleanup.cache.confirmDetail'), t('cleanup.cache.clear'))
+    const ok = await confirmDialog(t('cleanup.cache.confirm'), t('cleanup.cache.confirmDetail'), t('cleanup.cache.clear'))
     if (ok) await run(() => window.api.clearCache())
   }
   const shotsSize = shots.reduce((s, i) => s + i.size, 0)
   const trashShots = async (): Promise<void> => {
-    const ok = await window.api.confirm(
+    const ok = await confirmDialog(
       t('cleanup.shots.confirm', { count: shots.length }),
       t('cleanup.shots.confirmDetail', { size: bytes(shotsSize) }),
       t('common.delete')
@@ -102,7 +103,7 @@ export function Cleanup() {
     ]
       .filter(Boolean)
       .join(' ')
-    const ok = await window.api.confirm(t('cleanup.game.confirm.title'), detail, t('cleanup.game.action'))
+    const ok = await confirmDialog(t('cleanup.game.confirm.title'), detail, t('cleanup.game.action'))
     if (ok) await changeGame(() => window.api.cleanGame(removeMods))
   }
 

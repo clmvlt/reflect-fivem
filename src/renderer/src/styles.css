@@ -2867,6 +2867,17 @@ button.google {
   }
 }
 
+/* Confirmation (supprimer, nettoyer...) : carte plus étroite, explication sous le titre. */
+.modal.confirm {
+  width: min(460px, 100%);
+}
+.confirm-detail {
+  margin: 0;
+  color: var(--text-2);
+  white-space: pre-line;
+  user-select: text;
+}
+
 /* Nouveautés : une partie par version, rubriques avec une petite icône. */
 .whatsnew-release + .whatsnew-release {
   margin-top: 16px;

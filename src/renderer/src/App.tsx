@@ -17,6 +17,7 @@ import { GameControl } from './components/GameControl'
 import { MaintenanceBanner, MaintenanceScreen, useMaintenance } from './components/Maintenance'
 import { WhatsNew } from './components/WhatsNew'
 import { DownloadBar } from './components/Downloads'
+import { ConfirmHost } from './components/Confirm'
 import icon from './assets/icon.png'
 
 /** instances : page des instances FiveM, ouverte depuis les réglages. */
@@ -311,6 +312,7 @@ export function App() {
         {/* Téléchargements : bande en bas de la page, qui ne recouvre rien (la page se raccourcit d'autant). */}
         <DownloadBar onOpen={(id, kind) => openMarketPack(id, kind)} />
       </main>
+      <ConfirmHost />
       {showWhatsNew && <WhatsNew whatsNew={whatsNew} onClose={dismissWhatsNew} />}
       {dragging && <div className="drop">{catalog === 'mod' && (page === 'library' || page === 'market') ? t('app.drop.mods') : t('app.drop.library')}</div>}
     </div>

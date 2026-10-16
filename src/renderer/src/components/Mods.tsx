@@ -11,6 +11,7 @@ import { DownloadInline, useDownload } from './Downloads'
 import { Cover, EmptyState, Progress } from './common'
 import { usePerfConfirm } from './Performance'
 import type { PackPerformance } from '@shared/performance'
+import { confirmDialog } from './Confirm'
 
 // Catégories de l'API (libellés et nombre de mods), lues une fois par lancement et par langue (libellés traduits par
 // l'API).
@@ -70,7 +71,7 @@ export function useModActions() {
       let disable: string[] = []
       if (pre.conflicts.length) {
         const names = pre.conflicts.map((c) => q(c.name)).join(', ')
-        const ok = await window.api.confirm(
+        const ok = await confirmDialog(
           t('modsView.conflict.message', { names }),
           t('modsView.conflict.detail', { count: pre.conflicts.length, mod: q(mod.name), names, files: fileList(pre.conflicts.flatMap((c) => c.files)) }),
           t('modsView.conflict.ok')
@@ -79,7 +80,7 @@ export function useModActions() {
         disable = pre.conflicts.map((c) => c.id)
       }
       if (pre.pack) {
-        const ok = await window.api.confirm(
+        const ok = await confirmDialog(
           t('modsView.overridePack.message', { pack: q(pre.pack.name) }),
           t('modsView.overridePack.detail', { mod: q(mod.name), count: pre.pack.files.length, n: num(pre.pack.files.length), files: fileList(pre.pack.files) }),
           t('modsView.overridePack.ok')
@@ -95,7 +96,7 @@ export function useModActions() {
 
   const remove = useCallback(
     async (mod: { id: string; name: string }, enabled: boolean): Promise<void> => {
-      const ok = await window.api.confirm(
+      const ok = await confirmDialog(
         t('modsView.delete.message', { mod: q(mod.name) }),
         enabled ? t('modsView.delete.detailEnabled') : t('modsView.delete.detail'),
         t('common.delete')
@@ -107,7 +108,7 @@ export function useModActions() {
 
   const disableAll = useCallback(
     async (count: number): Promise<void> => {
-      const ok = await window.api.confirm(
+      const ok = await confirmDialog(
         t('modsView.disableAll.message', { count, n: num(count) }),
         t('modsView.disableAll.detail'),
         t('modsView.disableAll.ok')

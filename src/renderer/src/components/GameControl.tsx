@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { q } from '../lib/format'
 import { useStore } from '../store'
+import { confirmDialog } from './Confirm'
 
 /**
  * Lancer, fermer ou redémarrer FiveM, en bas de la barre latérale. Pack changé pendant une partie : le changement est
@@ -33,10 +34,10 @@ export function GameControl() {
   }
   const close = async (): Promise<void> => {
     const detail = pending ? t('game.closeDetailPending', { title: q(pending.title) }) : t('game.closeDetail')
-    if (await window.api.confirm(t('game.closeTitle'), detail, t('game.close'))) await act('close', () => window.api.closeGame())
+    if (await confirmDialog(t('game.closeTitle'), detail, t('game.close'))) await act('close', () => window.api.closeGame())
   }
   const restart = async (): Promise<void> => {
-    if (await window.api.confirm(t('game.restartTitle'), t('game.restartDetail'), t('game.restart')))
+    if (await confirmDialog(t('game.restartTitle'), t('game.restartDetail'), t('game.restart')))
       await act('restart', () => window.api.restartGame())
   }
 

@@ -8,7 +8,7 @@ import { Gallery } from './Gallery'
 import { Markdown } from './Markdown'
 import { Avatar, EmptyState } from './common'
 import { DownloadInline, useDownload } from './Downloads'
-import { isRated, PackReviews, RatingLine } from './Reviews'
+import { isRated, PackReviews, RatingLine, useRatings } from './Reviews'
 import { categoryLabel, localMod, ModMarketAction, useModCategories } from './Mods'
 import { PerfBadge, PerfDetails, PerfFacts, usePerfConfirm, usePerformance, type PerfContext } from './Performance'
 import { estimate, type PackPerformance } from '@shared/performance'
@@ -618,6 +618,7 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal, onSignIn }: Nav 
   // Téléchargements du pack terminés depuis l'ouverture de la fiche (notes relues, note proposée).
   const [installs, setInstalls] = useState(0)
   const dl = useDownload(pack?.id)
+  const ratings = useRatings(pack?.id ?? null, catalog)
   const downloading = !!dl
   const wasDownloading = useRef(false)
 
@@ -757,7 +758,7 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal, onSignIn }: Nav 
         </>
       )}
 
-      <PackReviews pack={pack} local={!!local} installs={installs} onChanged={() => void load()} onSignIn={onSignIn} />
+      <PackReviews pack={pack} state={ratings} local={!!local} installs={installs} onChanged={() => void load()} onSignIn={onSignIn} />
     </div>
   )
 }

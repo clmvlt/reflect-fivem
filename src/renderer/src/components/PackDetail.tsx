@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { t as tr } from 'i18next'
-import type { Destination, Insight, PackComponent, PackManifest } from '@shared/types'
+import type { Destination, Insight, MarketPackDetail, PackComponent, PackManifest } from '@shared/types'
 import type { ComponentFile } from '@shared/api'
 import { useStore } from '../store'
 import { bytes, longDate, mediaUrl, num, packImages } from '../lib/format'
@@ -12,6 +12,7 @@ import { Gallery } from './Gallery'
 import { useInstallTarget } from './InstallTarget'
 import { Markdown } from './Markdown'
 import { msText, optionCostText, PerfFacts, usePerfConfirm, usePerformance, usePerformanceDetail } from './Performance'
+import { PackReviews, RateNudge, RatingLine, useRatings } from './Reviews'
 import { costOnMachine, installedPerformance, optionFor, presetFor } from '@shared/performance'
 
 /** Destinations proposées (évaluées à l'affichage : libellé « Ne pas installer » traduit). */
@@ -28,30 +29,56 @@ const destinations = (): { key: string; label: string; dest: Destination | null 
 const keyOf = (d: Destination | null): string => (d ? `${d.root}:${d.path}` : 'none')
 const labelOf = (d: Destination): string => `${d.root === 'fivem' ? 'FiveM' : 'GTA V'}${d.path ? ` › ${d.path.split('/').join(' › ')}` : ''}`
 
-export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest; onBack: () => void; onOpenMarket: (marketId: string) => void }) {
-  const { t } = useTranslation()
+export function PackDetail({
+  pack,
+  onBack,
+  onOpenMarket,
+  onSignIn
+}: {
+  pack: PackManifest
+  onBack: () => void
+  onOpenMarket: (marketId: string) => void
+  /** Connexion demandée pour noter ou commenter (retour à la fiche une fois connecté). */
+  onSignIn: () => void
+}) {
+  const { t, i18n } = useTranslation()
   const { overview, task, run, changeGame } = useStore()
   const perfCtx = usePerformance()
   const confirmHeavy = usePerfConfirm()
   const [renaming, setRenaming] = useState(false)
-  const [fetched, setFetched] = useState<{ marketId: string; youtubeId: string | null } | null>(null)
   const marketId = pack.marketplace?.id
-
-  // Pack téléchargé avant l'ajout des vidéos : on la cherche sur sa fiche.
-  useEffect(() => {
-    if (!marketId || pack.youtubeId !== undefined) return
-    let live = true
-    window.api.marketDetail(marketId).then(
-      (d) => live && setFetched({ marketId, youtubeId: d.youtubeId }),
-      () => undefined
-    )
-    return () => {
-      live = false
+  const marketKind = pack.marketplace?.kind ?? 'pack'
+  const gone = !!overview?.market.gone.includes(pack.id)
+  // Fiche en ligne du pack de la Marketplace : sa note, ses commentaires (et sa vidéo pour un pack téléchargé avant
+  // l'ajout des vidéos). null : pas de fiche (pack importé, retiré de la Marketplace, API injoignable).
+  const onlineKey = marketId && !gone ? `${marketKind}:${marketId}:${i18n.language}` : null
+  const [online, setOnline] = useState<MarketPackDetail | null>(null)
+  const loadOnline = useCallback(async () => {
+    if (!marketId || gone || !onlineKey) return setOnline(null)
+    try {
+      setOnline(await window.api.marketDetail(marketId, marketKind))
+    } catch {
+      /* hors ligne, maintenance : la fiche reste sans notes ni commentaires */
     }
-  }, [marketId, pack.youtubeId])
-  const video = pack.youtubeId !== undefined ? pack.youtubeId : fetched && fetched.marketId === marketId ? fetched.youtubeId : null
+  }, [marketId, marketKind, gone, onlineKey])
+  // Langue changée : fiche relue (textes de l'API).
+  useEffect(() => {
+    void loadOnline()
+  }, [loadOnline])
+  const ratings = useRatings(online?.id ?? null, marketKind)
+  const video = pack.youtubeId !== undefined ? pack.youtubeId : (online?.youtubeId ?? null)
   // Pack de la Marketplace : son analyse, pour le comparer à la machine avec le preset et les options choisis.
   const downloading = useDownload(marketId)
+  // Mise à jour téléchargée : fiche et notes relues (le téléchargement est compté pour le compte, qui peut noter).
+  const [installs, setInstalls] = useState(0)
+  const wasDownloading = useRef(false)
+  useEffect(() => {
+    if (wasDownloading.current && !downloading) {
+      setInstalls((n) => n + 1)
+      void loadOnline()
+    }
+    wasDownloading.current = !!downloading
+  }, [downloading, loadOnline])
   const { choose, picker } = useInstallTarget()
   const perfDetail = usePerformanceDetail(pack.marketplace && pack.marketplace.kind !== 'mod' ? pack.marketplace.id : null, 'pack')
 
@@ -65,7 +92,6 @@ export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest;
   const imported = longDate(pack.importedAt)
   const market = pack.marketplace
   const updateAvailable = overview.market.updates.includes(pack.id)
-  const gone = overview.market.gone.includes(pack.id)
   // Mise à jour arrêtée par une maintenance : reprise toute seule à la fin.
   const paused = !!market && overview.pausedDownloads.some((d) => d.id === market.id)
   const report = perfDetail?.report ?? null
@@ -124,6 +150,11 @@ export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest;
         <aside className="side">
           {renaming ? <RenameInput pack={pack} onDone={() => setRenaming(false)} className="rename big" /> : <h1 className="pack-title">{pack.name}</h1>}
           {pack.author && <div className="tags">{t('packDetail.byAuthor', { author: pack.author })}</div>}
+          {online && (
+            <button className="link rating-link" onClick={() => document.getElementById('avis')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+              <RatingLine pack={online} />
+            </button>
+          )}
           {pack.features.length > 0 && <div className="tags">{pack.features.join(' · ')}</div>}
 
           {market && updateAvailable && (
@@ -221,12 +252,10 @@ export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest;
           {gone && <p className="hint">{t('packDetail.gone')}</p>}
           {pack.protected && <p className="hint">{t(pack.kind === 'mod' ? 'common.protectedMod' : 'common.protectedPack')}</p>}
 
+          {online && <RateNudge pack={online} state={ratings} onChanged={() => void loadOnline()} />}
+
           <div className="side-links">
-            {market && !gone && (
-              <button onClick={() => onOpenMarket(market.id)} title={t('packDetail.rateTitle')}>
-                {t('packDetail.rate')}
-              </button>
-            )}
+            {market && !gone && <button onClick={() => onOpenMarket(market.id)}>{t('packDetail.marketPage')}</button>}
             {!pack.protected && <button onClick={() => void run(() => window.api.openPackFolder(pack.id))}>{t('packDetail.openFolder')}</button>}
             <button
               className="more"
@@ -284,6 +313,8 @@ export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest;
           <button onClick={() => void run(() => window.api.resetUserConfigs(pack.id))}>{t('packDetail.resetUserConfigs')}</button>
         </div>
       )}
+
+      {online && <PackReviews pack={online} state={ratings} local installs={installs} onChanged={() => void loadOnline()} onSignIn={onSignIn} />}
       {picker}
     </div>
   )

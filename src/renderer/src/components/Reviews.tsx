@@ -138,34 +138,21 @@ function reasonText(reason: RatingReason, kind: MarketKind): string {
 }
 
 /**
- * Notes et commentaires d'un pack. `installs` change à chaque téléchargement terminé du pack : les notes sont relues
- * (le compte peut alors le noter) et une note est proposée. `onChanged` relit la fiche (moyenne, nombre de commentaires).
+ * Notes d'un pack (ou d'un mod) vues par le compte, relues à la connexion, à la déconnexion et au changement de langue.
+ * `id` null : rien n'est lu (fiche pas encore chargée). Partagées entre la section des notes et l'invitation à noter.
  */
-export function PackReviews({
-  pack,
-  local,
-  installs,
-  onChanged,
-  onSignIn
-}: {
-  pack: MarketPack
-  /** Le pack (ou le mod, pack.kind) est dans la bibliothèque. */
-  local: boolean
-  installs: number
-  onChanged: () => void
-  onSignIn: () => void
-}) {
+export function useRatings(id: string | null, kind: MarketKind) {
   const { account } = useStore()
-  const { t, i18n } = useTranslation()
+  const { i18n } = useTranslation()
   const [ratings, setRatings] = useState<PackRatings | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [invite, setInvite] = useState(false)
   // Connexion, déconnexion ou compte réduit au silence : notes relues.
   const accountKey = account === undefined ? null : account ? `${account.id}:${account.muted}` : 'anonyme'
 
   const load = useCallback(async (): Promise<PackRatings | null> => {
+    if (!id) return null
     try {
-      const r = await window.api.packRatings(pack.id, pack.kind)
+      const r = await window.api.packRatings(id, kind)
       setRatings(r)
       setError(null)
       return r
@@ -173,12 +160,130 @@ export function PackReviews({
       setError(cleanError(e))
       return null
     }
-  }, [pack.id, pack.kind])
+  }, [id, kind])
 
   // Langue changée : notes relues (messages d'erreur de l'API).
   useEffect(() => {
     if (accountKey !== null) void load()
   }, [load, accountKey, i18n.language])
+
+  return { ratings, error, load, setRatings, accountKey }
+}
+
+export type RatingsState = ReturnType<typeof useRatings>
+
+/**
+ * Envoie la note (null : la retire) et affiche le résultat dans la barre de message. Refus (pack pas téléchargé, compte
+ * réduit au silence...) : `reload` relit les notes pour afficher l'explication à jour. Renvoie les notes, null si refus.
+ */
+async function sendRating(
+  pack: Pick<MarketPack, 'id' | 'kind'>,
+  stars: number | null,
+  setMessage: ReturnType<typeof useStore>['setMessage'],
+  reload: () => void
+): Promise<PackRatings | null> {
+  try {
+    const r = await window.api.packRate(pack.id, stars, pack.kind)
+    setMessage({ kind: 'info', text: stars === null ? i18next.t('reviews.ratingRemoved') : i18next.t('reviews.thanks') })
+    return r
+  } catch (e) {
+    const err = apiError(e)
+    setMessage({ kind: 'error', text: err.message })
+    if (err.status === 401 || err.status === 403) reload()
+    return null
+  }
+}
+
+/** En dessous de ce nombre de notes, le pack est signalé comme ayant besoin d'avis. */
+const FEW_RATINGS = 5
+
+/** Champ du commentaire de la fiche (l'invitation à noter y mène). */
+const NEW_COMMENT_ID = 'new-comment'
+
+/**
+ * Invitation à noter un pack qui a peu de notes, quand le compte peut le noter et ne l'a pas encore fait : les étoiles
+ * envoient la note directement, puis un lien mène au champ du commentaire.
+ */
+export function RateNudge({ pack, state, onChanged }: { pack: Pick<MarketPack, 'id' | 'kind'>; state: RatingsState; onChanged: () => void }) {
+  const { account, setMessage } = useStore()
+  const { t } = useTranslation()
+  const [busy, setBusy] = useState(false)
+  // Note envoyée depuis l'invitation : remerciement à la place des étoiles (jusqu'à fermeture).
+  const [rated, setRated] = useState<'thanks' | 'closed' | null>(null)
+  const { ratings } = state
+  const mod = pack.kind === 'mod'
+
+  if (!account || account.muted || !ratings || rated === 'closed') return null
+
+  if (rated === 'thanks')
+    return (
+      <div className="rate-nudge">
+        <button className="close" onClick={() => setRated('closed')} aria-label={t('common.close')} title={t('common.close')}>
+          ×
+        </button>
+        <div className="rate-nudge-title">{t('reviews.nudge.thanks')}</div>
+        <p className="muted small">{t(mod ? 'reviews.nudge.commentHintMod' : 'reviews.nudge.commentHintPack')}</p>
+        <div>
+          <button
+            className="link"
+            onClick={() => {
+              const field = document.getElementById(NEW_COMMENT_ID)
+              if (!field) return document.getElementById('avis')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              field.scrollIntoView({ behavior: 'smooth', block: 'center' })
+              field.focus({ preventScroll: true })
+            }}
+          >
+            {t('reviews.nudge.comment')}
+          </button>
+        </div>
+      </div>
+    )
+
+  if (!ratings.canRate || ratings.mine !== null || ratings.count >= FEW_RATINGS) return null
+
+  const rate = async (stars: number): Promise<void> => {
+    setBusy(true)
+    const r = await sendRating(pack, stars, setMessage, () => void state.load())
+    setBusy(false)
+    if (!r) return
+    state.setRatings(r)
+    setRated('thanks')
+    onChanged()
+  }
+
+  return (
+    <div className="rate-nudge">
+      <div className="rate-nudge-title">{t(mod ? 'reviews.nudge.titleMod' : 'reviews.nudge.titlePack')}</div>
+      <p className="muted small">{ratings.count === 0 ? t('reviews.nudge.none') : t('reviews.nudge.few', { count: ratings.count, n: num(ratings.count) })}</p>
+      <StarPicker value={null} disabled={busy} onPick={(n) => void rate(n)} />
+    </div>
+  )
+}
+
+/**
+ * Notes et commentaires d'un pack. `state` : ses notes (useRatings). `installs` change à chaque téléchargement terminé
+ * du pack : les notes sont relues (le compte peut alors le noter) et une note est proposée. `onChanged` relit la fiche
+ * (moyenne, nombre de commentaires).
+ */
+export function PackReviews({
+  pack,
+  state,
+  local,
+  installs,
+  onChanged,
+  onSignIn
+}: {
+  pack: MarketPack
+  state: RatingsState
+  /** Le pack (ou le mod, pack.kind) est dans la bibliothèque. */
+  local: boolean
+  installs: number
+  onChanged: () => void
+  onSignIn: () => void
+}) {
+  const { t } = useTranslation()
+  const { ratings, error, load, setRatings, accountKey } = state
+  const [invite, setInvite] = useState(false)
 
   // Installation terminée : le téléchargement est compté pour le compte, qui peut maintenant noter.
   const seen = useRef(installs)
@@ -256,17 +361,9 @@ function Ratings({
       return
     }
     setBusy(true)
-    try {
-      onRated(await window.api.packRate(pack.id, stars, pack.kind))
-      setMessage({ kind: 'info', text: stars === null ? t('reviews.ratingRemoved') : t('reviews.thanks') })
-    } catch (e) {
-      const err = apiError(e)
-      setMessage({ kind: 'error', text: err.message })
-      // Refus (pack pas téléchargé, compte réduit au silence...) : l'explication à jour s'affiche.
-      if (err.status === 401 || err.status === 403) reload()
-    } finally {
-      setBusy(false)
-    }
+    const r = await sendRating(pack, stars, setMessage, reload)
+    setBusy(false)
+    if (r) onRated(r)
   }
   // Pack de la bibliothèque téléchargé sans être connecté : un nouveau téléchargement au nom du compte permet de le noter.
   const claim = reason === 'download-required' && local && !!account
@@ -456,7 +553,12 @@ function Comments({
       ) : (
         <>
           {data.canComment && !account?.muted ? (
-            <CommentForm placeholder={t(kind === 'mod' ? 'reviews.placeholderMod' : 'reviews.placeholderPack')} submitLabel={t('reviews.publish')} onSubmit={post} />
+            <CommentForm
+              id={NEW_COMMENT_ID}
+              placeholder={t(kind === 'mod' ? 'reviews.placeholderMod' : 'reviews.placeholderPack')}
+              submitLabel={t('reviews.publish')}
+              onSubmit={post}
+            />
           ) : (
             gate
           )}
@@ -784,6 +886,7 @@ function CommentItem({
 
 /** Zone de saisie d'un commentaire (1 à 2 000 caractères, Ctrl+Entrée pour envoyer). Vidée quand l'envoi réussit. */
 function CommentForm({
+  id,
   initial = '',
   placeholder,
   submitLabel,
@@ -792,6 +895,8 @@ function CommentForm({
   onSubmit,
   onCancel
 }: {
+  /** Identifiant du champ. */
+  id?: string
   initial?: string
   placeholder?: string
   submitLabel: string
@@ -818,6 +923,7 @@ function CommentForm({
   return (
     <form className={`comment-form ${compact ? 'is-compact' : ''}`} onSubmit={(e) => void submit(e)}>
       <textarea
+        id={id}
         className="input"
         rows={compact ? 3 : 4}
         value={text}

@@ -2063,6 +2063,33 @@ button.google {
 .ratings-mine.is-invite {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
+/* Invitation à noter un pack qui a peu de notes (colonne de la fiche dans la bibliothèque). */
+.rate-nudge {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.rate-nudge p {
+  margin: 0;
+}
+.rate-nudge-title {
+  padding-right: 20px;
+  font-weight: 600;
+}
+.rate-nudge .star-picker {
+  margin-left: -4px;
+}
+.rate-nudge .close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+}
 .star-picker {
   display: flex;
   align-items: center;

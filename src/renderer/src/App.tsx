@@ -43,8 +43,8 @@ export function App() {
   const [catalog, setCatalog] = useState<MarketKind>('pack')
   const where = useRef({ page, catalog })
   where.current = { page, catalog }
-  // Connexion demandée depuis une fiche (pour noter, commenter) : retour à la fiche une fois connecté.
-  const [signInFromMarket, setSignInFromMarket] = useState(false)
+  // Connexion demandée depuis une fiche (pour noter, commenter) : page de la fiche, où revenir une fois connecté.
+  const [signInFrom, setSignInFrom] = useState<Page | null>(null)
   const [dragging, setDragging] = useState(false)
   const maintenance = useMaintenance()
 
@@ -118,10 +118,10 @@ export function App() {
   }, [page, links.discord])
 
   useEffect(() => {
-    if (!account || !signInFromMarket) return
-    setSignInFromMarket(false)
-    if (page === 'account') setPage('market')
-  }, [account, signInFromMarket, page])
+    if (!account || !signInFrom) return
+    setSignInFrom(null)
+    if (page === 'account') setPage(signInFrom)
+  }, [account, signInFrom, page])
 
   // Barre latérale affichée dès le premier rendu ; les pages attendent l'état de l'application.
   const detail = openPack ? overview?.library.find((p) => p.id === openPack) : null
@@ -145,7 +145,7 @@ export function App() {
     setMarketAuthor(null)
     setOpenPack(null)
     setMarketStack([])
-    setSignInFromMarket(false)
+    setSignInFrom(null)
   }
   const openLocal = (id: string): void => {
     setPage('library')
@@ -162,9 +162,10 @@ export function App() {
     setCatalog(kind)
     setMarketStack([{ kind: 'pack', id, catalog: kind }])
   }
+  /** Connexion depuis une fiche de la Marketplace ou de la bibliothèque (la fiche reste ouverte pour le retour). */
   const signIn = (): void => {
+    setSignInFrom(page)
     setPage('account')
-    setSignInFromMarket(true)
   }
   // Maintenance (sauf pour l'admin) : écran de maintenance à la place des pages qui passent par le serveur. La connexion
   // reste possible (l'API la permet) : un admin peut se connecter pour ne plus être bloqué.
@@ -266,7 +267,7 @@ export function App() {
           <>
             {page === 'library' &&
               (detail ? (
-                <PackDetail pack={detail} onBack={() => setOpenPack(null)} onOpenMarket={(id) => openMarketPack(id)} />
+                <PackDetail key={detail.id} pack={detail} onBack={() => setOpenPack(null)} onOpenMarket={(id) => openMarketPack(id)} onSignIn={signIn} />
               ) : (
                 <Library kind={catalog} onOpen={setOpenPack} onOpenMarket={openMarketPack} onBrowse={(k) => go('market', k)} />
               ))}
@@ -287,10 +288,10 @@ export function App() {
             {page === 'cleanup' && <Cleanup />}
             {page === 'discord' && <DiscordView />}
             {page === 'account' && <AccountView onOpenAuthor={openAuthor} onBack={
-                  signInFromMarket
+                  signInFrom
                     ? () => {
-                        setSignInFromMarket(false)
-                        setPage('market')
+                        setSignInFrom(null)
+                        setPage(signInFrom)
                       }
                     : undefined
                 } />}

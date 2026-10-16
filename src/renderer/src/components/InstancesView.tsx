@@ -6,6 +6,7 @@ import { useStore } from '../store'
 import { Progress } from './common'
 import { Modal } from './Modal'
 import { confirmDialog } from './Confirm'
+import { popupMenu } from './Menu'
 
 /** Nouvelle instance copiée depuis une autre : nom, instance copiée, dossier qui la recevra, raccourci sur le bureau. */
 interface CreateForm {
@@ -52,12 +53,12 @@ export function InstancesView({ onBack }: { onBack: () => void }) {
     if (await run(() => window.api.instanceRename(renaming.id, renaming.name).then(() => true))) setRenaming(null)
   }
   const menu = async (i: InstanceSummary): Promise<void> => {
-    const choice = await window.api.popupMenu([
+    const choice = await popupMenu([
       { id: 'open', label: t('instances.view.openFolder'), enabled: !!i.fivemPath },
       { id: 'shortcut', label: t('instances.view.shortcut'), enabled: !!i.fivemPath },
       { id: 'remove-pack', label: t('instances.view.removePack'), enabled: !!i.packName && !task, separator: true },
       { id: 'rename', label: t('instances.view.rename'), separator: true },
-      { id: 'delete', label: t('common.delete'), enabled: !i.current && !task }
+      { id: 'delete', label: t('common.delete'), enabled: !i.current && !task, danger: true }
     ])
     if (choice === 'open') await run(() => window.api.openPath(i.fivemPath!))
     else if (choice === 'shortcut') {

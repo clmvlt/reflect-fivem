@@ -12,6 +12,7 @@ import { Cover, EmptyState, Progress } from './common'
 import { usePerfConfirm } from './Performance'
 import type { PackPerformance } from '@shared/performance'
 import { confirmDialog } from './Confirm'
+import { popupMenu } from './Menu'
 
 // Catégories de l'API (libellés et nombre de mods), lues une fois par lancement et par langue (libellés traduits par
 // l'API).
@@ -245,8 +246,8 @@ function ModRow({
     if (update) items.push({ id: 'update', label: t('modsView.update'), enabled: !dl })
     items.push({ id: 'details', label: details ? t('modsView.menu.hideFiles') : t('modsView.menu.showFiles') })
     items.push({ id: 'open', label: t('modsView.menu.openFolder'), enabled: !mod.protected })
-    items.push({ id: 'delete', label: t('common.delete'), enabled: !task, separator: true })
-    switch (await window.api.popupMenu(items)) {
+    items.push({ id: 'delete', label: t('common.delete'), enabled: !task, separator: true, danger: true })
+    switch (await popupMenu(items)) {
       case 'market':
         return onOpenMarket(mod.marketplace!.id, 'mod')
       case 'update':

@@ -2,10 +2,10 @@
 
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { app, BrowserWindow, dialog, Menu, nativeImage, net, Notification, safeStorage, screen, shell, systemPreferences } from 'electron'
+import { app, BrowserWindow, dialog, nativeImage, net, Notification, safeStorage, screen, shell, systemPreferences } from 'electron'
 import type { AppState, FiveMInstance, GamesInfo, InstanceSummary, MarketKind, Overview, PackPatch, RootId, Settings, TaskProgress } from '@shared/types'
 import type { AccountMe, ProfileInput } from '@shared/types'
-import type { AuthorQuery, CommentQuery, ComponentFile, ForeignSelection, MarketQuery, MenuItem, PackManagerApi } from '@shared/api'
+import type { AuthorQuery, CommentQuery, ComponentFile, ForeignSelection, MarketQuery, PackManagerApi } from '@shared/api'
 import { IPC, PENDING } from '@shared/api'
 import i18next, { t } from 'i18next'
 import { currentLocale, initI18n, msg, supportedLocale } from '@shared/i18n'
@@ -1219,41 +1219,13 @@ export class Service {
       if (await shell.openPath(p)) throw this.toError(t('service.errors.cannotOpenFolder'))
     },
 
-    packMenu: async (id: string) => {
-      const w = this.getWindow()
-      const isActive = this.state.get().active?.packId === id
-      const isProtected = !!(await this.library.get(id).catch(() => null))?.protection
-      return new Promise<'rename' | 'image' | 'open' | 'delete' | null>((resolve) => {
-        let choice: 'rename' | 'image' | 'open' | 'delete' | null = null
-        const menu = Menu.buildFromTemplate([
-          { label: t('service.packMenu.rename'), click: () => (choice = 'rename') },
-          { label: t('service.packMenu.changeImage'), click: () => (choice = 'image') },
-          { label: t('service.packMenu.openFolder'), enabled: !isProtected, click: () => (choice = 'open') },
-          { type: 'separator' },
-          { label: t('common.delete'), enabled: !isActive, click: () => (choice = 'delete') }
-        ])
-        menu.popup({ window: w ?? undefined, callback: () => setTimeout(() => resolve(choice), 0) })
-      })
-    },
+    packInUse: async (id: string) => this.state.get().active?.packId === id || !!(await this.usedElsewhere(id, 'pack')),
 
     confirm: async (message: string, detail: string, okLabel: string) => {
       const w = this.getWindow()
       const opts = { type: 'question' as const, message, detail, buttons: [okLabel, t('common.cancel')], defaultId: 0, cancelId: 1, noLink: true }
       const r = w ? await dialog.showMessageBox(w, opts) : await dialog.showMessageBox(opts)
       return r.response === 0
-    },
-
-    popupMenu: async (items: MenuItem[]) => {
-      const w = this.getWindow()
-      return new Promise<string | null>((resolve) => {
-        let choice: string | null = null
-        const template: Electron.MenuItemConstructorOptions[] = []
-        for (const item of items) {
-          if (item.separator && template.length) template.push({ type: 'separator' })
-          template.push({ label: item.label, enabled: item.enabled !== false, click: () => (choice = item.id) })
-        }
-        Menu.buildFromTemplate(template).popup({ window: w ?? undefined, callback: () => setTimeout(() => resolve(choice), 0) })
-      })
     },
 
     marketList: (query: MarketQuery) => this.marketplace.list(query),

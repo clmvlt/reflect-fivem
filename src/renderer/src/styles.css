@@ -2867,6 +2867,66 @@ button.google {
   }
 }
 
+/* ------------------------------------------------------------ Menu contextuel */
+
+/* Clic droit ou bouton ⋯ : liste d'actions posée à l'endroit du clic, au-dessus de tout (fenêtres modales comprises). */
+.menu {
+  position: fixed;
+  z-index: 200;
+  min-width: 200px;
+  max-width: 320px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  animation: menu-in 0.08s ease-out;
+}
+.menu-item {
+  display: block;
+  width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.menu-item:hover:not(:disabled),
+.menu-item:focus-visible {
+  background: var(--hover);
+  outline: none;
+}
+.menu-item:active:not(:disabled) {
+  background: var(--selected);
+  color: inherit;
+}
+.menu-item:disabled {
+  cursor: default;
+}
+.menu-item.is-danger:not(:disabled) {
+  color: var(--bad);
+}
+.menu-separator {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--border);
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu {
+    animation: none;
+  }
+}
+
 /* Confirmation (supprimer, nettoyer...) : carte plus étroite, explication sous le titre. */
 .modal.confirm {
   width: min(460px, 100%);

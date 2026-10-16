@@ -18,6 +18,7 @@ import { MaintenanceBanner, MaintenanceScreen, useMaintenance } from './componen
 import { WhatsNew } from './components/WhatsNew'
 import { DownloadBar } from './components/Downloads'
 import { ConfirmHost } from './components/Confirm'
+import { MenuHost } from './components/Menu'
 import icon from './assets/icon.png'
 
 /** instances : page des instances FiveM, ouverte depuis les réglages. */
@@ -313,6 +314,7 @@ export function App() {
         <DownloadBar onOpen={(id, kind) => openMarketPack(id, kind)} />
       </main>
       <ConfirmHost />
+      <MenuHost />
       {showWhatsNew && <WhatsNew whatsNew={whatsNew} onClose={dismissWhatsNew} />}
       {dragging && <div className="drop">{catalog === 'mod' && (page === 'library' || page === 'market') ? t('app.drop.mods') : t('app.drop.library')}</div>}
     </div>

@@ -8,6 +8,7 @@ import { apiError, cleanError, useStore } from '../store'
 import { ago, bytes, fullDate, num, ratingText } from '../lib/format'
 import { Avatar } from './common'
 import { confirmDialog } from './Confirm'
+import { popupMenu } from './Menu'
 
 const COMMENT_MAX = 2000
 
@@ -736,14 +737,14 @@ function CommentItem({
   const menu = async (): Promise<void> => {
     const items: MenuItem[] = []
     if (c.canEdit && c.status !== 'deleted' && c.body !== null) items.push({ id: 'edit', label: t('common.edit') })
-    if (c.canDelete && c.status !== 'deleted') items.push({ id: 'delete', label: t('common.delete') })
+    if (c.canDelete && c.status !== 'deleted') items.push({ id: 'delete', label: t('common.delete'), danger: true })
     if (admin) {
       if (c.status === 'hidden') items.push({ id: 'unhide', label: t('reviews.menu.unhide'), separator: true })
       else if (c.status === 'visible') items.push({ id: 'hide', label: t('reviews.menu.hide'), separator: true })
       if (!isReply && c.status === 'visible') items.push({ id: c.pinned ? 'unpin' : 'pin', label: c.pinned ? t('reviews.menu.unpin') : t('reviews.menu.pin'), separator: c.status !== 'visible' })
-      items.push({ id: 'purge', label: t('reviews.menu.purge'), separator: true })
+      items.push({ id: 'purge', label: t('reviews.menu.purge'), separator: true, danger: true })
     }
-    switch (await window.api.popupMenu(items)) {
+    switch (await popupMenu(items)) {
       case 'edit':
         return setMode('edit')
       case 'hide':

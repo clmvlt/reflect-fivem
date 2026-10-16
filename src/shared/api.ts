@@ -141,12 +141,10 @@ export interface PackManagerApi {
   moveLibrary(newDir: string): Promise<string>
   openPath(p: string): Promise<void>
 
-  /** Menu contextuel natif d'un pack. */
-  packMenu(id: string): Promise<'rename' | 'image' | 'open' | 'delete' | null>
+  /** Pack installé dans le jeu (instance active ou une autre) : il ne peut pas être supprimé. */
+  packInUse(id: string): Promise<boolean>
   /** Boîte de confirmation native de Windows. */
   confirm(message: string, detail: string, okLabel: string): Promise<boolean>
-  /** Menu natif : identifiant de l'élément choisi, null si le menu est fermé sans choix. */
-  popupMenu(items: MenuItem[]): Promise<string | null>
 
   /** Packs (ou mods, query.kind) publiés sur la Marketplace. */
   marketList(query: MarketQuery): Promise<MarketPage>
@@ -328,6 +326,8 @@ export interface MenuItem {
   enabled?: boolean
   /** Séparateur avant cet élément. */
   separator?: boolean
+  /** Action destructrice (supprimer...), en rouge. */
+  danger?: boolean
 }
 
 export interface LanguageOption {

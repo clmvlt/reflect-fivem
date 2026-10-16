@@ -5,6 +5,7 @@ import type { PackManifest, TaskProgress } from '@shared/types'
 import { useStore } from '../store'
 import { bytes, mediaUrl, num, packImages, q } from '../lib/format'
 import { confirmDialog } from './Confirm'
+import { popupMenu } from './Menu'
 
 /** Tâches dont la barre de progression porte un libellé (clés progress.task.*). */
 const TASK_LABEL = ['apply', 'remove', 'delete', 'stash', 'clean', 'cache', 'screenshots', 'trash', 'download'] as const
@@ -51,9 +52,15 @@ export function Avatar({ url, name, size }: { url: string | null; name: string; 
   )
 }
 
-/** Menu natif d'un pack (clic droit ou ⋯). Retourne true si le renommage est demandé. */
+/** Menu d'un pack (clic droit ou ⋯). Retourne true si le renommage est demandé. */
 export async function packMenuAction(pack: PackManifest, run: <T>(fn: () => Promise<T>) => Promise<T | undefined>): Promise<boolean> {
-  const choice = await window.api.packMenu(pack.id)
+  const inUse = await window.api.packInUse(pack.id).catch(() => false)
+  const choice = await popupMenu([
+    { id: 'rename', label: t('app.packMenu.rename') },
+    { id: 'image', label: t('app.packMenu.changeImage') },
+    { id: 'open', label: t('app.packMenu.openFolder'), enabled: !pack.protected },
+    { id: 'delete', label: t('common.delete'), enabled: !inUse, separator: true, danger: true }
+  ])
   if (choice === 'rename') return true
   if (choice === 'image') await run(() => window.api.setCoverFromFile(pack.id))
   else if (choice === 'open') await run(() => window.api.openPackFolder(pack.id))

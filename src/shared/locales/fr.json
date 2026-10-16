@@ -178,8 +178,11 @@
       "settings": "Réglages"
     },
     "packMenu": {
+      "changeImage": "Changer l’image…",
       "deleteDetail": "Le pack est retiré de la bibliothèque et ses fichiers sont effacés. Le jeu n’est pas modifié.",
-      "deleteTitle": "Supprimer {{name}} ?"
+      "deleteTitle": "Supprimer {{name}} ?",
+      "openFolder": "Ouvrir le dossier",
+      "rename": "Renommer"
     },
     "passwordToChange": "Mot de passe à changer",
     "updatesAvailable_one": "{{count}} mise à jour disponible",
@@ -1508,11 +1511,6 @@
       "waitForTask": "Attendez la fin de l’opération en cours."
     },
     "modConflict": "il remplace des fichiers de {{names}}. Activez-le depuis vos mods pour choisir lequel garder.",
-    "packMenu": {
-      "changeImage": "Changer l’image…",
-      "openFolder": "Ouvrir le dossier",
-      "rename": "Renommer"
-    },
     "phases": {
       "deleting": "Suppression"
     },

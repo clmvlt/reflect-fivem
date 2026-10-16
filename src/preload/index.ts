@@ -3,6 +3,7 @@ import type { PackManagerApi } from '../shared/api'
 import type { AccountMe, MarketKind, TaskProgress, UpdateState } from '../shared/types'
 import type { MaintenanceState } from '../shared/maintenance'
 import type { AppLinks } from '../shared/links'
+import type { WhatsNew } from '../shared/changelog'
 
 // Canaux dupliqués ici : un preload « sandbox » ne peut importer que le module electron.
 const IPC = {
@@ -14,6 +15,7 @@ const IPC = {
   language: 'pm:language',
   maintenance: 'pm:maintenance',
   links: 'pm:links',
+  changelog: 'pm:changelog',
   openMarketPack: 'pm:open-market-pack'
 }
 
@@ -114,6 +116,9 @@ const methods = [
   'listLanguages',
   'checkForUpdates',
   'installUpdate',
+  'changelogGet',
+  'dismissChangelog',
+  'changelogLatest',
   'maintenanceGet',
   'maintenanceCheck'
 ] as const
@@ -160,6 +165,12 @@ api.onLinks = (cb: (links: AppLinks) => void) => {
   const h = (_e: unknown, links: AppLinks): void => cb(links)
   ipcRenderer.on(IPC.links, h)
   return () => ipcRenderer.removeListener(IPC.links, h)
+}
+
+api.onChangelog = (cb: (whatsNew: WhatsNew | null) => void) => {
+  const h = (_e: unknown, whatsNew: WhatsNew | null): void => cb(whatsNew)
+  ipcRenderer.on(IPC.changelog, h)
+  return () => ipcRenderer.removeListener(IPC.changelog, h)
 }
 
 // Pack ou mod demandé par un lien du site : gardé s'il arrive avant que l'interface ne s'abonne (démarrage).

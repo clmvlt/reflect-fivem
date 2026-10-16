@@ -25,6 +25,7 @@ import { languageFetch, MaintenanceError, onMaintenanceError, serverFetch } from
 import { accountLanguageAction, fetchLanguages, startupLocale } from './core/language'
 import { MaintenanceWatch, PausedDownloads } from './core/maintenance'
 import { LinksWatch } from './core/links'
+import { WhatsNewWatch } from './core/changelog'
 import { httpsUrl } from '@shared/links'
 import { Marketplace } from './core/marketplace'
 import { AppUpdater } from './core/updater'
@@ -36,7 +37,7 @@ import { defaultSettings, emptyState, JsonStore, normalizeState, pushHistory } f
 import { exists, isInside, moveDir, readJson, writeJsonAtomic } from './util/fsx'
 import { log } from './util/log'
 
-type ServerApi = Omit<PackManagerApi, 'onTask' | 'onChanged' | 'onUpdate' | 'onAccount' | 'onLanguage' | 'onMaintenance' | 'onLinks' | 'onOpenMarketPack' | 'getPathForFile'>
+type ServerApi = Omit<PackManagerApi, 'onTask' | 'onChanged' | 'onUpdate' | 'onAccount' | 'onLanguage' | 'onMaintenance' | 'onLinks' | 'onChangelog' | 'onOpenMarketPack' | 'getPathForFile'>
 
 const MARKET_REFRESH = 6 * 60 * 60 * 1000
 /** Bibliothèque des mods : sous-dossier de la bibliothèque des packs (ignoré par celle-ci, comme tout dossier « . »). */
@@ -93,6 +94,8 @@ export class Service {
   private paused: PausedDownloads
   /** Liens publics modifiables depuis le site (GET /links), envoyés à l'interface. */
   links: LinksWatch
+  /** Fenêtre « Nouveautés » : notes des versions publiées depuis la dernière vue, envoyées à l'interface. */
+  whatsNew: WhatsNewWatch
   private resumingPaused = false
   private resumeTimer: NodeJS.Timeout | null = null
   /** État de l'application changé (zone de notification : jeu lancé, changement en attente). */
@@ -165,6 +168,17 @@ export class Service {
       fetch: languageFetch((url, init) => net.fetch(url, init)),
       file: path.join(dataDir, 'links.json'),
       onChange: (links) => this.emit(IPC.links, links)
+    })
+    this.whatsNew = new WhatsNewWatch({
+      apiUrl,
+      // GET /app/releases/** n'est jamais refusé pendant une maintenance.
+      fetch: languageFetch((url, init) => net.fetch(url, init)),
+      version: app.getVersion(),
+      lastSeen: () => this.settings.get().lastSeenChangelogVersion,
+      save: async (version) => {
+        await this.settings.patch({ lastSeenChangelogVersion: version })
+      },
+      onChange: (whatsNew) => this.emit(IPC.changelog, whatsNew)
     })
   }
 
@@ -297,6 +311,8 @@ export class Service {
     // Maintenances : vérifiées tout de suite (l'écran de maintenance ne doit pas attendre), puis à leur rythme.
     void this.maintenance.start().then(() => this.resumePaused())
     void this.links.refresh()
+    // Nouveautés : premier lancement, ou première ouverture après une mise à jour.
+    void this.whatsNew.check()
     const refreshMarket = async (): Promise<void> => {
       try {
         await this.marketplace.refreshCatalog()
@@ -1132,6 +1148,12 @@ export class Service {
       if (this.running) throw this.toError(t('service.errors.waitForTask'))
       this.updater.install()
     },
+
+    changelogGet: async () => this.whatsNew.current,
+
+    dismissChangelog: () => this.whatsNew.dismiss(),
+
+    changelogLatest: () => this.whatsNew.latest(),
 
     maintenanceGet: async () => this.maintenance.current,
 

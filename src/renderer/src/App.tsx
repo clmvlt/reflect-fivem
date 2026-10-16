@@ -14,6 +14,7 @@ import { UpdatePanel } from './components/UpdatePanel'
 import { DiscordIcon, DiscordView } from './components/DiscordView'
 import { GameControl } from './components/GameControl'
 import { MaintenanceBanner, MaintenanceScreen, useMaintenance } from './components/Maintenance'
+import { WhatsNew } from './components/WhatsNew'
 import icon from './assets/icon.png'
 
 type Page = 'library' | 'market' | 'graphics' | 'cleanup' | 'discord' | 'account' | 'settings'
@@ -28,7 +29,7 @@ const NAV: Page[] = ['library', 'market', 'graphics', 'cleanup', 'settings']
 
 export function App() {
   const { t } = useTranslation()
-  const { overview, account, links, message, setMessage, run } = useStore()
+  const { overview, account, links, whatsNew, dismissWhatsNew, message, setMessage, run } = useStore()
   const [page, setPage] = useState<Page>('library')
   const [openPack, setOpenPack] = useState<string | null>(null)
   // Vues ouvertes dans la Marketplace (fiche, auteur...), la dernière affichée.
@@ -164,6 +165,9 @@ export function App() {
   // reste possible (l'API la permet) : un admin peut se connecter pour ne plus être bloqué.
   const serverPage = page === 'market' || (page === 'account' && !!account)
   const maintenanceScreen = maintenance.blocked && serverPage && maintenance.ongoing && maintenance.state
+  // Nouveautés : jamais par-dessus un écran qui bloque (chargement, maintenance, connexion au compte) ; montrées ensuite.
+  const showWhatsNew = !!whatsNew && !!overview && !maintenanceScreen && !(page === 'account' && !account)
+
 
   return (
     <div className="app">
@@ -292,6 +296,7 @@ export function App() {
           </div>
         )}
       </main>
+      {showWhatsNew && <WhatsNew whatsNew={whatsNew} onClose={dismissWhatsNew} />}
       {dragging && <div className="drop">{catalog === 'mod' && (page === 'library' || page === 'market') ? t('app.drop.mods') : t('app.drop.library')}</div>}
     </div>
   )

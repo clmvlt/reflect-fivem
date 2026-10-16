@@ -1542,5 +1542,21 @@
       "unsigned": "Version non signée.",
       "versionNotFound": "Version introuvable."
     }
+  },
+  "whatsNew": {
+    "button": "Nouveautés",
+    "date": "Publiée le {{date}}",
+    "empty": "Aucune nouveauté publiée pour cette version.",
+    "prerelease": "Préversion",
+    "sections": {
+      "features": "Nouveautés",
+      "fixes": "Corrections de bugs",
+      "improvements": "Améliorations",
+      "other": "Autres changements"
+    },
+    "see": "Voir les nouveautés",
+    "title": "Quoi de neuf dans la version {{version}}",
+    "unavailable": "Nouveautés indisponibles pour le moment. Réessayez plus tard.",
+    "version": "Version {{version}}"
   }
 }

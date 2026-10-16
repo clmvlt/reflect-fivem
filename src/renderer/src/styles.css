@@ -2418,3 +2418,112 @@ button.google {
   align-items: center;
   gap: 6px;
 }
+
+/* ------------------------------------------------------------ Fenêtre modale */
+
+/* Voile sur toute l'application et carte centrée ; le contenu défile, les boutons restent visibles en bas. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+  background: rgba(0, 0, 0, 0.45);
+  animation: modal-fade 0.12s ease-out;
+}
+.modal {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  max-height: min(640px, calc(100vh - 64px));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--layer);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+.modal:focus {
+  outline: none;
+}
+.modal-title {
+  padding: 20px 24px 12px;
+}
+.modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 24px;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 24px 20px;
+}
+.modal-actions button {
+  min-width: 96px;
+}
+@keyframes modal-fade {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop {
+    animation: none;
+  }
+}
+
+/* Nouveautés : une partie par version, rubriques avec une petite icône. */
+.whatsnew-release + .whatsnew-release {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.whatsnew-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-bottom: 8px;
+}
+.whatsnew-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.whatsnew-tag {
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--selected);
+  font-size: 12px;
+}
+.whatsnew-release .markdown {
+  max-width: none;
+}
+.whatsnew-section {
+  margin-top: 12px;
+}
+.whatsnew-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.whatsnew-icon {
+  display: inline-flex;
+  color: var(--accent-text);
+}
+.whatsnew-section .markdown ul {
+  margin: 0;
+  padding-left: 20px;
+}
+.whatsnew-section .markdown li + li {
+  margin-top: 2px;
+}
+.update-panel .update-notes {
+  align-self: flex-start;
+  font-size: 12px;
+}

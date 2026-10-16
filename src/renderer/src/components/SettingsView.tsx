@@ -1,12 +1,14 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { t } from 'i18next'
 import type { Check, GameCandidate, HistoryEntry, RootId, UpdateState } from '@shared/types'
+import type { WhatsNew as WhatsNewData } from '@shared/changelog'
 import { tm } from '@shared/i18n'
 import { formatDateTime } from '@shared/intl'
 import { bytes } from '../lib/format'
 import { useStore } from '../store'
 import { LanguageSelect } from './LanguageSelect'
+import { WhatsNew } from './WhatsNew'
 
 const STORE_LABEL: Record<string, string> = { rockstar: 'Rockstar Games Launcher', steam: 'Steam', epic: 'Epic Games' }
 
@@ -16,6 +18,8 @@ const HISTORY_ACTIONS: readonly HistoryEntry['action'][] = ['apply', 'remove', '
 export function SettingsView() {
   const { t } = useTranslation()
   const { overview, task, update, run } = useStore()
+  // Nouveautés de la version lancée, ouvertes à la demande (rien n'est enregistré).
+  const [whatsNew, setWhatsNew] = useState<WhatsNewData | null>(null)
   if (!overview) return null
   const { games, settings, state } = overview
 
@@ -125,15 +129,19 @@ export function SettingsView() {
 
       <div className="section-head">
         <h2>{t('settings.app.title')}</h2>
-        {update?.status !== 'unsupported' && (
-          <button
-            onClick={() => void run(() => window.api.checkForUpdates())}
-            disabled={['checking', 'downloading', 'verifying', 'ready'].includes(update?.status ?? '')}
-          >
-            {t('settings.app.checkUpdate')}
-          </button>
-        )}
+        <div className="actions">
+          <button onClick={() => void run(() => window.api.changelogLatest()).then((w) => w && setWhatsNew(w))}>{t('whatsNew.button')}</button>
+          {update?.status !== 'unsupported' && (
+            <button
+              onClick={() => void run(() => window.api.checkForUpdates())}
+              disabled={['checking', 'downloading', 'verifying', 'ready'].includes(update?.status ?? '')}
+            >
+              {t('settings.app.checkUpdate')}
+            </button>
+          )}
+        </div>
       </div>
+      {whatsNew && <WhatsNew whatsNew={whatsNew} onClose={() => setWhatsNew(null)} />}
       <ul className="list">
         <li className="row">
           <div className="row-main">

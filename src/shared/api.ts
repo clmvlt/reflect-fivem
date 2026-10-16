@@ -29,6 +29,7 @@ import type { GraphicsState, GraphicsTarget } from './graphics'
 import type { HardwareOverride, MachineProfile, PerformanceDetail } from './performance'
 import type { MaintenanceState } from './maintenance'
 import type { AppLinks } from './links'
+import type { WhatsNew } from './changelog'
 
 export interface ComponentFile {
   rel: string
@@ -230,6 +231,14 @@ export interface PackManagerApi {
   /** Ferme l'application et installe tout de suite la mise à jour téléchargée et vérifiée. */
   installUpdate(): Promise<void>
 
+  /** Fenêtre « Nouveautés » : notes des versions publiées depuis la dernière vue (null s'il n'y a rien à montrer). */
+  changelogGet(): Promise<WhatsNew | null>
+  /** « OK » de la fenêtre « Nouveautés » : la version lancée est enregistrée comme vue. */
+  dismissChangelog(): Promise<void>
+  /** Notes de la version lancée (sinon de la dernière publiée), à la demande : bouton « Nouveautés » des réglages. */
+  changelogLatest(): Promise<WhatsNew>
+
+
   /** Maintenances prévues par l'admin : dernier état connu (sans réseau). */
   maintenanceGet(): Promise<MaintenanceState>
   /** Interroge l'API tout de suite (« Réessayer » de l'écran de maintenance). */
@@ -246,6 +255,8 @@ export interface PackManagerApi {
   onMaintenance(cb: (state: MaintenanceState) => void): () => void
   /** Liens changés depuis le site (GET /links relu au démarrage et quand la fenêtre reprend le focus). */
   onLinks(cb: (links: AppLinks) => void): () => void
+  /** Nouveautés à montrer (vérifiées au démarrage), ou null une fois vues. */
+  onChangelog(cb: (whatsNew: WhatsNew | null) => void): () => void
   /** Lien « fivem-pack-manager://pack/<id> » ou « …://mod/<id> » reçu du site : ouvrir cette fiche dans la Marketplace. */
   onOpenMarketPack(cb: (id: string, kind: MarketKind) => void): () => void
 }
@@ -306,6 +317,7 @@ export const IPC = {
   language: 'pm:language',
   maintenance: 'pm:maintenance',
   links: 'pm:links',
+  changelog: 'pm:changelog',
   openMarketPack: 'pm:open-market-pack'
 } as const
 

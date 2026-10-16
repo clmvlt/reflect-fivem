@@ -1542,5 +1542,21 @@
       "unsigned": "Unsigned version.",
       "versionNotFound": "Version not found."
     }
+  },
+  "whatsNew": {
+    "button": "What’s new",
+    "date": "Released on {{date}}",
+    "empty": "No release notes published for this version.",
+    "prerelease": "Pre-release",
+    "sections": {
+      "features": "New features",
+      "fixes": "Bug fixes",
+      "improvements": "Improvements",
+      "other": "Other changes"
+    },
+    "see": "See what’s new",
+    "title": "What’s new in version {{version}}",
+    "unavailable": "Release notes are unavailable right now. Try again later.",
+    "version": "Version {{version}}"
   }
 }

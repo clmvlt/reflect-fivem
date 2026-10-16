@@ -17,6 +17,7 @@ import { app, net } from 'electron'
 import type { BaseUpdater, UpdateInfo } from 'electron-updater'
 import { t } from 'i18next'
 import type { UpdateState } from '@shared/types'
+import { parseReleaseNotes } from '@shared/changelog'
 import { log } from '../util/log'
 import { languageFetch } from './http'
 import { launchSwap, prepareSwapScript } from './portableSwap'
@@ -44,6 +45,9 @@ interface RemoteRelease {
   notes: string
   files: RemoteFile[]
 }
+
+/** Notes de la version, par rubrique (undefined si la réponse est inutilisable). */
+const releaseNotes = (remote: RemoteRelease | null): UpdateState['release'] => parseReleaseNotes(remote) ?? undefined
 
 type Mode = 'installer' | 'portable' | 'source'
 
@@ -148,7 +152,7 @@ export class AppUpdater {
           return this.state
         }
         const remote = await this.fetchRelease(info.version).catch(() => null)
-        this.set({ status: 'downloading', version: info.version, notes: remote?.notes ?? '', percent: 0, checkedAt: now() })
+        this.set({ status: 'downloading', version: info.version, notes: remote?.notes ?? '', release: releaseNotes(remote), percent: 0, checkedAt: now() })
         log.info(`Mise à jour ${info.version} trouvée : téléchargement`)
         // La suite (vérification puis « prête ») arrive par les évènements d'electron-updater.
         autoUpdater.downloadUpdate().catch((err) => this.set({ ...this.state, status: 'error', error: friendly(err) }))
@@ -166,7 +170,7 @@ export class AppUpdater {
         return this.state
       }
       // Lancée depuis les sources, ou version portable impossible à remplacer : la nouvelle version est signalée.
-      this.set({ status: 'available', version: latest.version, notes: latest.notes, manual: true, checkedAt: now() })
+      this.set({ status: 'available', version: latest.version, notes: latest.notes, release: releaseNotes(latest), manual: true, checkedAt: now() })
     } catch (err) {
       log.warn(`Recherche de mise à jour impossible : ${(err as Error).message}`)
       // Hors ligne ou serveur indisponible : nouvel essai à la prochaine vérification, sans alerter.
@@ -208,7 +212,7 @@ export class AppUpdater {
   private async downloadPortable(release: RemoteRelease, file: RemoteFile): Promise<void> {
     const workDir = path.join(app.getPath('temp'), 'Reflect FiveM', 'mise-a-jour')
     const target = path.join(workDir, `${release.version}-${file.fileName}`)
-    this.set({ status: 'downloading', version: release.version, notes: release.notes, percent: 0, transferred: 0, total: file.size, checkedAt: now() })
+    this.set({ status: 'downloading', version: release.version, notes: release.notes, release: releaseNotes(release), percent: 0, transferred: 0, total: file.size, checkedAt: now() })
     try {
       await fs.mkdir(workDir, { recursive: true })
       const already = await fs.stat(target).catch(() => null)

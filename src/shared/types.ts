@@ -2,6 +2,7 @@
 
 import type { HardwareOverride, PackPerformance } from './performance'
 import type { Msg } from './i18n'
+import type { ReleaseNotes } from './changelog'
 
 /** Racines de destination gérées par l'application. */
 export type RootId = 'fivem' | 'gta'
@@ -211,6 +212,8 @@ export interface Settings {
   machine?: HardwareOverride
   /** Langue choisie dans les réglages de l'application sur ce poste (absent : jamais choisie). */
   locale?: string
+  /** Dernière version dont la fenêtre « Nouveautés » a été vue (absent : premier lancement). */
+  lastSeenChangelogVersion?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -622,6 +625,8 @@ export interface UpdateState {
   status: 'idle' | 'checking' | 'none' | 'available' | 'downloading' | 'verifying' | 'ready' | 'error' | 'unsupported'
   version?: string
   notes?: string
+  /** Notes de la nouvelle version, par rubrique (« Voir les nouveautés »). */
+  release?: ReleaseNotes
   percent?: number
   /** Octets reçus et taille totale pendant le téléchargement. */
   transferred?: number

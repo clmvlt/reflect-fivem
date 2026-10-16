@@ -861,6 +861,10 @@
     "unnamed": "Untitled pack"
   },
   "libraryView": {
+    "addCard": {
+      "text": "Import a .zip, .rar or .7z archive, or drop it onto the window.",
+      "title": "Add a pack"
+    },
     "addPack": "Add a pack…",
     "browseMarket": "Browse the Marketplace",
     "card": {
@@ -885,6 +889,12 @@
       "meta_other": "{{n}} files · {{size}}",
       "removeTitle": "Move them into an “Old installation” pack",
       "title": "Manually installed mods"
+    },
+    "hero": {
+      "details": "Details",
+      "installed": "Installed in game",
+      "marketPage": "View listing",
+      "preset": "ReShade preset: {{name}}"
     },
     "importMod": "Import a mod…",
     "modsNoteEnabled_one": "{{n}} mod · {{enabled}}",

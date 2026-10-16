@@ -56,6 +56,9 @@ export function Library({
   const importing = task?.kind === 'import' ? task : null
   const showForeign = !!foreign && !state.active && !query
   const empty = !(library ?? []).length && !showForeign && !importing
+  // Pack installé : mis en avant au-dessus de la grille (hors recherche, où il reste la première carte).
+  const hero = !query ? (packs.find((p) => p.id === activeId) ?? null) : null
+  const gridPacks = hero ? packs.filter((p) => p !== hero) : packs
 
   const enabledMods = overview.state.mods.filter((m) => m.enabled).length
   const note = mods
@@ -111,7 +114,19 @@ export function Library({
           <button onClick={() => onBrowse('pack')}>{t('libraryView.browseMarket')}</button>
         </EmptyState>
       ) : (
-        <div className="grid">
+        <>
+          {hero && (
+            <ActiveHero
+              pack={hero}
+              partial={!!state.active?.partial}
+              problems={problemCount(hero, build)}
+              update={overview.market.updates.includes(hero.id)}
+              task={task}
+              onOpen={() => onOpen(hero.id)}
+              onOpenMarket={onOpenMarket}
+            />
+          )}
+          <div className="grid">
           {importing && (
             <article className="card">
               <div className="cover">
@@ -127,7 +142,7 @@ export function Library({
             </article>
           )}
           {showForeign && <ForeignCard files={foreign!.files} size={foreign!.size} task={task} />}
-          {packs.map((p) => (
+          {gridPacks.map((p) => (
             <PackCard
               key={p.id}
               pack={p}
@@ -141,9 +156,110 @@ export function Library({
               onOpen={() => onOpen(p.id)}
             />
           ))}
-        </div>
+          {!query && <AddCard disabled={!!task} onAdd={() => void add()} onBrowse={() => onBrowse('pack')} />}
+          </div>
+        </>
       )}
     </div>
+  )
+}
+
+/** Pack installé dans le jeu, en grand au-dessus de la grille. */
+function ActiveHero({
+  pack,
+  partial,
+  problems,
+  update,
+  task,
+  onOpen,
+  onOpenMarket
+}: {
+  pack: PackManifest
+  partial: boolean
+  problems: number
+  update: boolean
+  task: TaskProgress | null
+  onOpen: () => void
+  onOpenMarket: (marketId: string, kind?: MarketKind) => void
+}) {
+  const { t } = useTranslation()
+  const { run, changeGame } = useStore()
+  const [renaming, setRenaming] = useState(false)
+  const mine = task && task.detail === pack.id ? task : null
+  // Nom du fichier du preset, sans dossier ni extension.
+  const preset = pack.reshadePreset ? (pack.reshadePreset.split(/[\\/]/).pop() ?? '').replace(/\.ini$/i, '') : null
+
+  const menu = async (e?: MouseEvent): Promise<void> => {
+    e?.preventDefault()
+    e?.stopPropagation()
+    if (await packMenuAction(pack, run)) setRenaming(true)
+  }
+
+  return (
+    <section className="hero" onContextMenu={(e) => void menu(e)}>
+      <div className="cover hero-cover" onClick={onOpen}>
+        <Cover pack={pack} />
+      </div>
+      <div className="hero-body">
+        <span className="state">{partial ? t('libraryView.card.partial') : t('libraryView.hero.installed')}</span>
+        {renaming ? (
+          <RenameInput pack={pack} onDone={() => setRenaming(false)} className="rename big" />
+        ) : (
+          <h2 className="hero-name" title={pack.name}>
+            {pack.name}
+          </h2>
+        )}
+        <div className="meta">{[pack.author && t('packDetail.byAuthor', { author: pack.author }), packMeta(pack)].filter(Boolean).join(' · ')}</div>
+        <div className="hero-facts">
+          {preset && <span className="meta">{t('libraryView.hero.preset', { name: preset })}</span>}
+          {update && <span className="accent-text small">{t('libraryView.card.update')}</span>}
+          {problems > 0 && <span className="warn-text small">{t('libraryView.card.problems', { count: problems, n: num(problems) })}</span>}
+        </div>
+        <div className="hero-actions">
+          {mine ? (
+            <Progress task={mine} />
+          ) : (
+            <>
+              <button className="primary" onClick={onOpen}>
+                {t('libraryView.hero.details')}
+              </button>
+              {pack.marketplace && <button onClick={() => onOpenMarket(pack.marketplace!.id, pack.kind)}>{t('libraryView.hero.marketPage')}</button>}
+              <button onClick={() => void changeGame(() => window.api.removeActive())} disabled={!!task}>
+                {t('common.remove')}
+              </button>
+              <button className="more" onClick={(e) => void menu(e)} aria-label={t('libraryView.moreOptions')} title={t('libraryView.moreOptions')}>
+                ⋯
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/** Dernière case de la grille : importer une archive ou parcourir la Marketplace. */
+function AddCard({ disabled, onAdd, onBrowse }: { disabled: boolean; onAdd: () => void; onBrowse: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <article className={`card add-card ${disabled ? 'is-disabled' : 'clickable'}`} onClick={disabled ? undefined : onAdd}>
+      <div className="add-icon" aria-hidden>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </div>
+      <div className="name">{t('libraryView.addCard.title')}</div>
+      <p className="add-text">{t('libraryView.addCard.text')}</p>
+      <button
+        className="link"
+        onClick={(e) => {
+          e.stopPropagation()
+          onBrowse()
+        }}
+      >
+        {t('libraryView.browseMarket')}
+      </button>
+    </article>
   )
 }
 

@@ -861,6 +861,10 @@
     "unnamed": "Pack sans nom"
   },
   "libraryView": {
+    "addCard": {
+      "text": "Importez une archive .zip, .rar ou .7z, ou glissez-la dans la fenêtre.",
+      "title": "Ajouter un pack"
+    },
     "addPack": "Ajouter un pack…",
     "browseMarket": "Parcourir la Marketplace",
     "card": {
@@ -885,6 +889,12 @@
       "meta_other": "{{n}} fichiers · {{size}}",
       "removeTitle": "Les ranger dans un pack « Ancienne installation »",
       "title": "Mods installés à la main"
+    },
+    "hero": {
+      "details": "Détails",
+      "installed": "Installé dans le jeu",
+      "marketPage": "Voir la fiche",
+      "preset": "Preset ReShade : {{name}}"
     },
     "importMod": "Importer un mod…",
     "modsNoteEnabled_one": "{{n}} mod · {{enabled}}",

@@ -660,7 +660,8 @@
       "originalsFailed_one": "{{count}} fichier d'origine du jeu n'a pas pu être remis en place. Fermez FiveM et réessayez.",
       "originalsFailed_other": "{{count}} fichiers d'origine du jeu n'ont pas pu être remis en place. Fermez FiveM et réessayez.",
       "removeFailed_one": "{{count}} fichier(s) n'ont pas pu être retirés. Fermez FiveM et réessayez.",
-      "removeFailed_other": "{{count}} fichier(s) n'ont pas pu être retirés. Fermez FiveM et réessayez."
+      "removeFailed_other": "{{count}} fichier(s) n'ont pas pu être retirés. Fermez FiveM et réessayez.",
+      "otherInstance": "Ce pack remplacerait un fichier posé par {{owner}} dans l’instance {{instance}} ({{path}}). Retirez-le d’abord de cette instance, ou donnez à l’une des deux instances son propre dossier GTA V."
     },
     "failed": "Échec",
     "history": {
@@ -690,6 +691,94 @@
       "moveScreenshots": "Déplacement des captures",
       "remove": "Retrait de {{name}}",
       "removeMods": "Retrait des mods"
+    }
+  },
+  "instances": {
+    "applyTask": "Installation de {{name}} dans l’instance {{instance}}",
+    "card": {
+      "installedOn": "Installé sur {{names}}"
+    },
+    "createTask": "Création de l’instance {{name}}",
+    "created": "Instance {{name}} créée.",
+    "createdShortcut": "Instance {{name}} créée, avec un raccourci sur le bureau.",
+    "errors": {
+      "alreadyCurrent": "C’est déjà l’instance active.",
+      "autoDetect": "Avec plusieurs instances, chacune garde son propre dossier FiveM : choisissez-le.",
+      "closeGame": "Fermez FiveM avant de créer une instance.",
+      "exeMissing": "FiveM.exe est introuvable à côté du dossier FiveM.app de cette instance.",
+      "folderUsed": "Ce dossier FiveM est déjà celui de l’instance {{name}}.",
+      "insideSource": "Choisissez un emplacement en dehors du dossier FiveM copié.",
+      "libraryInUse": "Retirez d’abord le pack et désactivez les mods de l’instance {{name}}.",
+      "modEnabled": "Ce mod est activé dans l’instance {{name}} : désactivez-le depuis cette instance avant de le supprimer.",
+      "nameRequired": "Donnez un nom à l’instance.",
+      "notFound": "Instance introuvable.",
+      "packInstalled": "Ce pack est installé dans l’instance {{name}} : retirez-le de cette instance avant de le supprimer.",
+      "pendingChange": "Un changement de pack attend la fermeture du jeu : annulez-le ou fermez FiveM d’abord.",
+      "removeCurrent": "Passez sur une autre instance avant de supprimer celle-ci.",
+      "removeInstalled": "Retirez le pack et désactivez les mods de l’instance {{name}} avant de la supprimer.",
+      "shortcutFailed": "Le raccourci n’a pas pu être créé sur le bureau."
+    },
+    "mainName": "FiveM principal",
+    "phase": {
+      "copying": "Copie de FiveM",
+      "preparing": "Préparation de la copie"
+    },
+    "picker": {
+      "already": "Déjà installé",
+      "current": "Pack actuel : {{name}}",
+      "none": "Aucun pack installé",
+      "text": "Dans quelle instance installer ce pack ?",
+      "title": "Installer {{name}}"
+    },
+    "removeTask": "Retrait de {{name}} de l’instance {{instance}}",
+    "settings": {
+      "count_one": "Une seule instance : ajoutez-en pour installer des packs différents dans plusieurs dossiers FiveM.",
+      "count_other": "{{count}} instances",
+      "current": "Instance active : {{name}}",
+      "locations": "Emplacements de l’instance {{name}}",
+      "manage": "Gérer les instances",
+      "title": "Instances"
+    },
+    "view": {
+      "active": "Active",
+      "add": "Ajouter un dossier existant",
+      "addTitle": "Ajouter une instance",
+      "back": "‹ Réglages",
+      "change": "Modifier…",
+      "copyHint": "FiveM (FiveM.exe et FiveM.app) est copié sans son cache, ni le pack et les mods installés par l’application. Les fichiers du jeu téléchargés par FiveM sont copiés aussi : comptez quelques Go.",
+      "create": "Créer une instance",
+      "createTitle": "Nouvelle instance",
+      "destination": "Emplacement",
+      "folder": "Dossier FiveM",
+      "from": "Copier depuis",
+      "gtaNote": "GTA V est commun aux instances : les fichiers qu’un pack pose dans le dossier de GTA V (ENB…) servent à toutes les instances qui l’utilisent. Le même pack peut être installé dans plusieurs instances ; deux packs différents qui écrivent les mêmes fichiers de GTA V ne le peuvent pas.",
+      "intro": "Chaque instance est un dossier FiveM avec son propre pack graphique et ses propres mods, par exemple deux lanceurs FiveM sur le bureau pour jouer en même temps. Les bibliothèques de packs et de mods sont communes ; les pages de l’application montrent l’instance active.",
+      "menu": "Plus d’actions",
+      "mods_one": "{{count}} mod activé",
+      "mods_other": "{{count}} mods activés",
+      "name": "Nom",
+      "noPack": "Aucun pack installé",
+      "openFolder": "Ouvrir le dossier",
+      "pack": "Pack : {{name}}",
+      "pickDestination": "Emplacement de la nouvelle instance",
+      "pickFolder": "Dossier FiveM de l’instance à ajouter",
+      "removeDetail": "L’instance est retirée de l’application. Le dossier FiveM et ses fichiers ne sont pas touchés.",
+      "removePack": "Retirer le pack",
+      "removeTitle": "Supprimer l’instance {{name}} ?",
+      "rename": "Renommer",
+      "renameTitle": "Renommer l’instance",
+      "shortcut": "Créer un raccourci sur le bureau",
+      "shortcutDone": "Raccourci créé sur le bureau.",
+      "shortcutHint": "Il lance cette instance avec l’option -cl2 de FiveM, qui permet de jouer en même temps qu’une autre instance.",
+      "shortcutOption": "Créer un raccourci sur le bureau",
+      "sidebar": "Instance : {{name}}",
+      "sidebarTitle": "Gérer les instances",
+      "target": "Installation des packs",
+      "targetActive": "Dans l’instance active",
+      "targetAsk": "Choisir l’instance à chaque installation",
+      "targetHelp": "Où installer un pack quand vous cliquez sur « Installer ».",
+      "title": "Instances FiveM",
+      "use": "Utiliser"
     }
   },
   "knowledge": {
@@ -1087,6 +1176,7 @@
     },
     "gone": "Ce pack n’est plus proposé sur la Marketplace. Votre copie reste utilisable.",
     "install": "Installer",
+    "installOther": "Installer dans une autre instance…",
     "installAnyway": "Installer quand même",
     "installed": "Installé",
     "media": {

@@ -15,13 +15,14 @@ const STORE_LABEL: Record<string, string> = { rockstar: 'Rockstar Games Launcher
 /** Actions de l'historique (clés settings.history.action.*). */
 const HISTORY_ACTIONS: readonly HistoryEntry['action'][] = ['apply', 'remove', 'capture', 'clean', 'restore', 'import', 'delete', 'cache', 'graphics', 'download', 'mod']
 
-export function SettingsView() {
+export function SettingsView({ onManageInstances }: { onManageInstances: () => void }) {
   const { t } = useTranslation()
   const { overview, task, update, run } = useStore()
   // Nouveautés de la version lancée, ouvertes à la demande (rien n'est enregistré).
   const [whatsNew, setWhatsNew] = useState<WhatsNewData | null>(null)
   if (!overview) return null
-  const { games, settings, state } = overview
+  const { games, settings, state, instances } = overview
+  const instance = instances.find((i) => i.current)
 
   const choose = async (which: RootId): Promise<void> => {
     const current = which === 'fivem' ? games.fivem.path : games.gta.path
@@ -53,7 +54,22 @@ export function SettingsView() {
         <h1>{t('settings.title')}</h1>
       </header>
       <div className="section-head first">
-        <h2>{t('settings.locations')}</h2>
+        <h2>{t('instances.settings.title')}</h2>
+      </div>
+      <ul className="list">
+        <li className="row">
+          <div className="row-main">
+            <div className="name">{t('instances.settings.current', { name: instance?.name ?? '' })}</div>
+            <div className="meta">{t('instances.settings.count', { count: instances.length })}</div>
+          </div>
+          <div className="actions">
+            <button onClick={onManageInstances}>{t('instances.settings.manage')}</button>
+          </div>
+        </li>
+      </ul>
+
+      <div className="section-head">
+        <h2>{instances.length > 1 && instance ? t('instances.settings.locations', { name: instance.name }) : t('settings.locations')}</h2>
         <button onClick={() => void run(() => window.api.refreshGames())} disabled={!!task} title="F5">
           {t('settings.detectAgain')}
         </button>
@@ -68,7 +84,9 @@ export function SettingsView() {
           onUse={(c) => void run(() => window.api.setGamePath('fivem', c.path))}
           actions={
             <>
-              {settings.fivemPath && <button onClick={() => void run(() => window.api.setGamePath('fivem', null))}>{t('settings.autoDetect')}</button>}
+              {settings.fivemPath && instances.length < 2 && (
+                <button onClick={() => void run(() => window.api.setGamePath('fivem', null))}>{t('settings.autoDetect')}</button>
+              )}
               {games.fivem.path && <button onClick={() => void run(() => window.api.openPath(games.fivem.path!))}>{t('common.open')}</button>}
               <button onClick={() => void choose('fivem')}>{t('common.change')}</button>
             </>

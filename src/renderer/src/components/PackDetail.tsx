@@ -8,6 +8,7 @@ import { bytes, longDate, mediaUrl, num, packImages } from '../lib/format'
 import { asiBuildText, LEVEL_LABEL, levelOf, type Level } from '@shared/insights'
 import { Cover, packMenuAction, Progress, RenameInput } from './common'
 import { Gallery } from './Gallery'
+import { useInstallTarget } from './InstallTarget'
 import { Markdown } from './Markdown'
 import { msText, optionCostText, PerfFacts, usePerfConfirm, usePerformance, usePerformanceDetail } from './Performance'
 import { costOnMachine, installedPerformance, optionFor, presetFor } from '@shared/performance'
@@ -49,6 +50,7 @@ export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest;
   }, [marketId, pack.youtubeId])
   const video = pack.youtubeId !== undefined ? pack.youtubeId : fetched && fetched.marketId === marketId ? fetched.youtubeId : null
   // Pack de la Marketplace : son analyse, pour le comparer à la machine avec le preset et les options choisis.
+  const { choose, picker } = useInstallTarget()
   const perfDetail = usePerformanceDetail(pack.marketplace && pack.marketplace.kind !== 'mod' ? pack.marketplace.id : null, 'pack')
 
   if (!overview) return null
@@ -78,9 +80,14 @@ export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest;
     const preset = report && perfCtx ? presetFor(report, rel) : null
     return preset && perfCtx ? ` (+${msText(costOnMachine(perfCtx.profile.model, perfCtx.machine, preset.costMs))})` : ''
   }
-  const install = async (): Promise<void> => {
+  // Autres instances où le pack est installé.
+  const elsewhere = overview.instances.filter((i) => !i.current && i.packId === pack.id).map((i) => i.name)
+  /** `always` : choisir l'instance même quand les packs s'installent dans l'instance active. */
+  const install = async (always = false): Promise<void> => {
+    const target = await choose(pack, always)
+    if (target === null) return
     if (!(await confirmHeavy({ name: pack.name, kind: 'pack', performance: installedPerf }, t('packDetail.installAnyway')))) return
-    await changeGame(() => window.api.applyPack(pack.id))
+    await changeGame(() => window.api.applyPack(pack.id, target))
   }
 
   return (
@@ -144,6 +151,11 @@ export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest;
                 <button className="wide" onClick={() => void changeGame(() => window.api.removeActive())} disabled={!!task}>
                   {t('packDetail.removeFromGame')}
                 </button>
+                {overview.instances.length > 1 && (
+                  <button className="link" onClick={() => void install(true)} disabled={!!task}>
+                    {t('packDetail.installOther')}
+                  </button>
+                )}
               </>
             ) : overview.game.pending?.packId === pack.id ? (
               <>
@@ -154,9 +166,12 @@ export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest;
                 </button>
               </>
             ) : (
-              <button className="primary wide" onClick={() => void install()} disabled={!!task || !installable.length}>
-                {t('packDetail.install')}
-              </button>
+              <>
+                {elsewhere.length > 0 && <div className="state">{t('instances.card.installedOn', { names: elsewhere.join(', ') })}</div>}
+                <button className="primary wide" onClick={() => void install()} disabled={!!task || !installable.length}>
+                  {t('packDetail.install')}
+                </button>
+              </>
             )}
           </div>
 
@@ -268,6 +283,7 @@ export function PackDetail({ pack, onBack, onOpenMarket }: { pack: PackManifest;
           <button onClick={() => void run(() => window.api.resetUserConfigs(pack.id))}>{t('packDetail.resetUserConfigs')}</button>
         </div>
       )}
+      {picker}
     </div>
   )
 }

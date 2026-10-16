@@ -660,7 +660,8 @@
       "originalsFailed_one": "{{count}} original game file couldn't be put back. Close FiveM and try again.",
       "originalsFailed_other": "{{count}} original game files couldn't be put back. Close FiveM and try again.",
       "removeFailed_one": "{{count}} file couldn't be removed. Close FiveM and try again.",
-      "removeFailed_other": "{{count}} files couldn't be removed. Close FiveM and try again."
+      "removeFailed_other": "{{count}} files couldn't be removed. Close FiveM and try again.",
+      "otherInstance": "This pack would replace a file installed by {{owner}} in instance {{instance}} ({{path}}). Uninstall it from that instance first, or give one of the two instances its own GTA V folder."
     },
     "failed": "Failed",
     "history": {
@@ -690,6 +691,94 @@
       "moveScreenshots": "Moving screenshots",
       "remove": "Removing {{name}}",
       "removeMods": "Removing mods"
+    }
+  },
+  "instances": {
+    "applyTask": "Installing {{name}} in instance {{instance}}",
+    "card": {
+      "installedOn": "Installed on {{names}}"
+    },
+    "createTask": "Creating instance {{name}}",
+    "created": "Instance {{name}} created.",
+    "createdShortcut": "Instance {{name}} created, with a desktop shortcut.",
+    "errors": {
+      "alreadyCurrent": "This is already the active instance.",
+      "autoDetect": "With several instances, each one keeps its own FiveM folder: choose it.",
+      "closeGame": "Close FiveM before creating an instance.",
+      "exeMissing": "FiveM.exe was not found next to this instance’s FiveM.app folder.",
+      "folderUsed": "This FiveM folder is already used by instance {{name}}.",
+      "insideSource": "Choose a location outside the FiveM folder being copied.",
+      "libraryInUse": "First uninstall the pack and disable the mods of instance {{name}}.",
+      "modEnabled": "This mod is enabled in instance {{name}}: disable it from that instance before deleting it.",
+      "nameRequired": "Give the instance a name.",
+      "notFound": "Instance not found.",
+      "packInstalled": "This pack is installed in instance {{name}}: uninstall it from that instance before deleting it.",
+      "pendingChange": "A pack change is waiting for the game to close: cancel it or close FiveM first.",
+      "removeCurrent": "Switch to another instance before deleting this one.",
+      "removeInstalled": "Uninstall the pack and disable the mods of instance {{name}} before deleting it.",
+      "shortcutFailed": "The desktop shortcut could not be created."
+    },
+    "mainName": "Main FiveM",
+    "phase": {
+      "copying": "Copying FiveM",
+      "preparing": "Preparing the copy"
+    },
+    "picker": {
+      "already": "Already installed",
+      "current": "Current pack: {{name}}",
+      "none": "No pack installed",
+      "text": "Which instance should this pack be installed in?",
+      "title": "Install {{name}}"
+    },
+    "removeTask": "Removing {{name}} from instance {{instance}}",
+    "settings": {
+      "count_one": "A single instance: add more to install different packs in several FiveM folders.",
+      "count_other": "{{count}} instances",
+      "current": "Active instance: {{name}}",
+      "locations": "Locations of instance {{name}}",
+      "manage": "Manage instances",
+      "title": "Instances"
+    },
+    "view": {
+      "active": "Active",
+      "add": "Add an existing folder",
+      "addTitle": "Add an instance",
+      "back": "‹ Settings",
+      "change": "Change…",
+      "copyHint": "FiveM (FiveM.exe and FiveM.app) is copied without its cache, and without the pack and mods installed by the application. Game files downloaded by FiveM are copied too: expect a few GB.",
+      "create": "Create an instance",
+      "createTitle": "New instance",
+      "destination": "Location",
+      "folder": "FiveM folder",
+      "from": "Copy from",
+      "gtaNote": "GTA V is shared between instances: files a pack puts in the GTA V folder (ENB…) apply to every instance that uses it. The same pack can be installed in several instances; two different packs writing the same GTA V files cannot.",
+      "intro": "Each instance is a FiveM folder with its own graphics pack and its own mods, for example two FiveM launchers on the desktop to play at the same time. The pack and mod libraries are shared; the application’s pages show the active instance.",
+      "menu": "More actions",
+      "mods_one": "{{count}} mod enabled",
+      "mods_other": "{{count}} mods enabled",
+      "name": "Name",
+      "noPack": "No pack installed",
+      "openFolder": "Open folder",
+      "pack": "Pack: {{name}}",
+      "pickDestination": "Location of the new instance",
+      "pickFolder": "FiveM folder of the instance to add",
+      "removeDetail": "The instance is removed from the application. The FiveM folder and its files are left untouched.",
+      "removePack": "Uninstall the pack",
+      "removeTitle": "Delete instance {{name}}?",
+      "rename": "Rename",
+      "renameTitle": "Rename instance",
+      "shortcut": "Create a desktop shortcut",
+      "shortcutDone": "Shortcut created on the desktop.",
+      "shortcutHint": "It launches this instance with FiveM’s -cl2 option, which lets you play at the same time as another instance.",
+      "shortcutOption": "Create a desktop shortcut",
+      "sidebar": "Instance: {{name}}",
+      "sidebarTitle": "Manage instances",
+      "target": "Pack installation",
+      "targetActive": "In the active instance",
+      "targetAsk": "Choose the instance each time",
+      "targetHelp": "Where a pack is installed when you click “Install”.",
+      "title": "FiveM instances",
+      "use": "Use"
     }
   },
   "knowledge": {
@@ -1087,6 +1176,7 @@
     },
     "gone": "This pack is no longer available on the Marketplace. Your copy remains usable.",
     "install": "Install",
+    "installOther": "Install in another instance…",
     "installAnyway": "Install anyway",
     "installed": "Installed",
     "media": {

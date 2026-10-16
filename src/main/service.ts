@@ -3,7 +3,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { app, BrowserWindow, dialog, Menu, nativeImage, net, Notification, safeStorage, screen, shell, systemPreferences } from 'electron'
-import type { AppState, GamesInfo, MarketKind, Overview, PackPatch, RootId, Settings, TaskProgress } from '@shared/types'
+import type { AppState, FiveMInstance, GamesInfo, InstanceSummary, MarketKind, Overview, PackPatch, RootId, Settings, TaskProgress } from '@shared/types'
 import type { AccountMe, ProfileInput } from '@shared/types'
 import type { AuthorQuery, CommentQuery, ComponentFile, ForeignSelection, MarketQuery, MenuItem, PackManagerApi } from '@shared/api'
 import { IPC, PENDING } from '@shared/api'
@@ -11,8 +11,8 @@ import i18next, { t } from 'i18next'
 import { currentLocale, initI18n, msg, supportedLocale } from '@shared/i18n'
 import { formatDateTime, formatMegabytes, formatNumber, quote } from '@shared/intl'
 import type { Maintenance } from '@shared/maintenance'
-import { detectGames, inspectFiveM, inspectGta, normalizeFiveMPath } from './core/games'
-import { Installer, type Report } from './core/installer'
+import { detectGames, inspectFiveM, inspectGta, normalizeFiveMPath, samePath } from './core/games'
+import { Installer, type OtherInstall, type Report } from './core/installer'
 import { FPS_LIMIT_MAX, FPS_LIMIT_MIN } from './core/enb'
 import { Account, AVATAR_EXTENSIONS, TokenFile } from './core/account'
 import { Community } from './core/community'
@@ -34,7 +34,8 @@ import type { GraphicsTarget } from '@shared/graphics'
 import type { HardwareOverride, MachineProfile } from '@shared/performance'
 import { fileDestination } from './core/analyzer'
 import { defaultSettings, emptyState, JsonStore, normalizeState, pushHistory } from './core/stores'
-import { exists, isInside, moveDir, readJson, writeJsonAtomic } from './util/fsx'
+import { copyPlan, currentInstanceId, instanceStateFile, listInstances, MAIN_INSTANCE, runCopy, safeFileName, SECOND_CLIENT_ARG, suggestedName } from './core/instances'
+import { exists, formatBytes, freeSpace, isInside, moveDir, newId, readJson, writeJsonAtomic } from './util/fsx'
 import { log } from './util/log'
 
 type ServerApi = Omit<PackManagerApi, 'onTask' | 'onChanged' | 'onUpdate' | 'onAccount' | 'onLanguage' | 'onMaintenance' | 'onLinks' | 'onChangelog' | 'onOpenMarketPack' | 'getPathForFile'>
@@ -113,6 +114,8 @@ export class Service {
   private relaunchHint = false
   /** Compte connecté au dernier changement (une connexion se reconnaît à un compte différent). */
   private accountId: number | null = null
+  /** État des instances autres que l'instance active, lu à la demande (il ne change pas tant qu'on ne les reprend pas). */
+  private others = new Map<string, AppState>()
 
   constructor(
     public dataDir: string,
@@ -222,6 +225,148 @@ export class Service {
     return target ? { target, targets } : null
   }
 
+  // -------------------------------------------------------------------------
+  // Instances (voir core/instances.ts)
+
+  private instanceList(): FiveMInstance[] {
+    return listInstances(this.settings.get(), t('instances.mainName'))
+  }
+
+  private async instanceState(id: string): Promise<AppState> {
+    let s = this.others.get(id)
+    if (!s) {
+      s = normalizeState({ ...emptyState(), ...(await readJson<Partial<AppState>>(instanceStateFile(this.dataDir, id), {})) })
+      this.others.set(id, s)
+    }
+    return s
+  }
+
+  private async saveInstanceState(id: string, s: AppState): Promise<void> {
+    this.others.set(id, s)
+    await writeJsonAtomic(instanceStateFile(this.dataDir, id), s)
+  }
+
+  /** Les instances autres que l'instance active, avec leur état. */
+  private async otherInstances(): Promise<{ instance: FiveMInstance; state: AppState }[]> {
+    const current = currentInstanceId(this.settings.get())
+    const out: { instance: FiveMInstance; state: AppState }[] = []
+    for (const instance of this.instanceList()) if (instance.id !== current) out.push({ instance, state: await this.instanceState(instance.id) })
+    return out
+  }
+
+  /** Change l'état des autres instances (pack renommé, nouvelle version d'un pack ou d'un mod). */
+  private async updateOthers(fn: (s: AppState) => AppState): Promise<void> {
+    for (const { instance, state } of await this.otherInstances()) {
+      const next = fn(state)
+      if (next !== state) await this.saveInstanceState(instance.id, next)
+    }
+  }
+
+  /** Autre instance où le pack est installé, ou le mod activé (null : aucune). */
+  private async usedElsewhere(id: string, kind: MarketKind): Promise<string | null> {
+    for (const { instance, state } of await this.otherInstances())
+      if (kind === 'pack' ? state.active?.packId === id : state.mods.some((m) => m.id === id && m.enabled)) return instance.name
+    return null
+  }
+
+  private async instanceSummaries(): Promise<InstanceSummary[]> {
+    const current = currentInstanceId(this.settings.get())
+    return Promise.all(
+      this.instanceList().map(async (i) => {
+        const isCurrent = i.id === current
+        const s = isCurrent ? this.state.get() : await this.instanceState(i.id)
+        // Instance active en détection automatique : le dossier trouvé.
+        const fivemPath = isCurrent ? (i.fivemPath ?? this.gamesCache?.fivem.path ?? null) : i.fivemPath
+        return { ...i, fivemPath, current: isCurrent, packId: s.active?.packId ?? null, packName: s.active?.packName ?? null, mods: s.mods.filter((m) => m.enabled).length }
+      })
+    )
+  }
+
+  private makeInstaller(state: JsonStore<AppState>, detect: () => Promise<GamesInfo>, others: () => Promise<OtherInstall[]>): Installer {
+    return new Installer({
+      jobsDir: path.join(this.dataDir, 'jobs'),
+      library: () => this.library,
+      modLibrary: () => this.modLibrary,
+      state,
+      detectGames: detect,
+      saveCover: (src, packDir) => saveCover(src, packDir),
+      fpsLimit: () => this.settings.get().fpsLimit ?? null,
+      others
+    })
+  }
+
+  /** Fichiers posés par les instances autres que {@link id} : pack installé et mods activés de chacune. */
+  private async installsExcept(id: string): Promise<OtherInstall[]> {
+    const current = currentInstanceId(this.settings.get())
+    const out: OtherInstall[] = []
+    for (const i of this.instanceList()) {
+      if (i.id === id) continue
+      const s = i.id === current ? this.state.get() : await this.instanceState(i.id)
+      if (s.active) out.push({ instance: i.name, packId: s.active.packId, packName: s.active.packName, roots: s.active.roots, files: s.active.files })
+      for (const m of s.mods) if (m.enabled) out.push({ instance: i.name, packId: null, packName: m.name, roots: m.roots, files: m.files })
+    }
+    return out
+  }
+
+  /**
+   * Opération sur le pack d'une instance, active ou non. Une autre instance a son propre installateur, sur son état et
+   * ses dossiers ; son état gardé en mémoire est mis à jour à la fin.
+   */
+  private async onInstance<T>(id: string, fn: (installer: Installer) => Promise<T>): Promise<T> {
+    if (id === currentInstanceId(this.settings.get())) return fn(this.installer)
+    const instance = this.instanceList().find((i) => i.id === id)
+    if (!instance) throw this.toError(t('instances.errors.notFound'))
+    const store = new JsonStore<AppState>(instanceStateFile(this.dataDir, id), await this.instanceState(id))
+    const detect = (): Promise<GamesInfo> => detectGames({ ...this.settings.get(), fivemPath: instance.fivemPath, gtaPath: instance.gtaPath })
+    try {
+      return await fn(this.makeInstaller(store, detect, () => this.installsExcept(id)))
+    } finally {
+      this.others.set(id, store.get())
+    }
+  }
+
+  /** Instance enregistrée (l'instance active ne change pas) ; le dossier FiveM de l'instance active est fixé. */
+  private async addInstance(instance: FiveMInstance): Promise<void> {
+    const s = this.settings.get()
+    // Instance active en détection automatique : la détection suit le dernier FiveM lancé (lien fivem://) et pourrait
+    // tomber sur le dossier d'une autre instance.
+    const fixed = s.fivemPath ?? this.gamesCache?.fivem.path ?? null
+    await this.settings.patch({ instances: [...this.instanceList(), instance], instance: currentInstanceId(s), fivemPath: fixed })
+    if (fixed !== s.fivemPath) await this.refreshGames()
+    this.changed()
+  }
+
+  /** Raccourci sur le bureau qui lance le FiveM de l'instance (avec -cl2, sauf l'instance principale, pour jouer en même temps). */
+  private async createShortcut(instance: FiveMInstance): Promise<string> {
+    const current = currentInstanceId(this.settings.get())
+    const fivemApp = instance.fivemPath ?? (instance.id === current ? (this.gamesCache?.fivem.path ?? null) : null)
+    const exe = fivemApp ? path.join(path.dirname(fivemApp), 'FiveM.exe') : null
+    if (!exe || !(await exists(exe))) throw this.toError(t('instances.errors.exeMissing'))
+    const file = path.join(app.getPath('desktop'), `${safeFileName(`FiveM - ${instance.name}`)}.lnk`)
+    const ok = shell.writeShortcutLink(file, {
+      target: exe,
+      cwd: path.dirname(exe),
+      args: instance.id === MAIN_INSTANCE ? '' : SECOND_CLIENT_ARG,
+      description: `FiveM (${instance.name})`,
+      icon: exe,
+      iconIndex: 0
+    })
+    if (!ok) throw this.toError(t('instances.errors.shortcutFailed'))
+    log.info(`Raccourci créé : ${file}`)
+    return file
+  }
+
+  /** Dossier FiveM.app déjà utilisé par une autre instance que {@link except} : son nom (null sinon). */
+  private fivemUsedBy(fivemApp: string, except: string): string | null {
+    const current = currentInstanceId(this.settings.get())
+    for (const i of this.instanceList()) {
+      if (i.id === except) continue
+      const p = i.fivemPath ?? (i.id === current ? (this.gamesCache?.fivem.path ?? null) : null)
+      if (samePath(p, fivemApp)) return i.name
+    }
+    return null
+  }
+
   async init(): Promise<void> {
     await this.settings.load(defaultSettings(this.dataDir))
     // Langue : avant tout texte affiché (menus, erreurs, tâches). Celle du compte enregistré peut servir.
@@ -234,7 +379,12 @@ export class Service {
     })
     initI18n(locale)
     log.info(`Langue : ${locale}`)
-    await this.state.load(emptyState())
+    // Instance active disparue de la liste (réglages modifiés à la main) : la première, avec ses dossiers.
+    const loaded = this.settings.get()
+    const first = loaded.instances?.[0]
+    if (first && !loaded.instances!.some((i) => i.id === loaded.instance))
+      await this.settings.patch({ instance: first.id, fivemPath: first.fivemPath, gtaPath: first.gtaPath })
+    await this.state.open(instanceStateFile(this.dataDir, currentInstanceId(this.settings.get())), emptyState())
     // state.json d'avant les mods : liste des mods ajoutée (vide).
     const state = normalizeState(this.state.get())
     if (state !== this.state.get()) await this.state.set(state)
@@ -257,15 +407,7 @@ export class Service {
     await this.library.cleanupStaging()
     this.modLibrary = new Library(modsDir(this.settings.get().libraryDir), this.keys)
     await this.modLibrary.cleanupStaging()
-    this.installer = new Installer({
-      jobsDir: path.join(this.dataDir, 'jobs'),
-      library: () => this.library,
-      modLibrary: () => this.modLibrary,
-      state: this.state,
-      detectGames: () => this.refreshGames(),
-      saveCover: (src, packDir) => saveCover(src, packDir),
-      fpsLimit: () => this.settings.get().fpsLimit ?? null
-    })
+    this.installer = this.makeInstaller(this.state, () => this.refreshGames(), () => this.installsExcept(currentInstanceId(this.settings.get())))
     await fs.rm(path.join(this.dataDir, 'jobs'), { recursive: true, force: true }).catch(() => undefined)
     // Maintenances : dernier état connu (écran de maintenance tout de suite, même hors ligne), vérifié au démarrage.
     await this.maintenance.load()
@@ -508,6 +650,7 @@ export class Service {
         state: this.state.get(),
         library: library.map(toPublic),
         mods: mods.map(toPublic),
+        instances: await this.instanceSummaries(),
         foreign,
         accent: accentColor(),
         version: app.getVersion(),
@@ -527,11 +670,15 @@ export class Service {
     },
 
     setGamePath: async (which: RootId, p: string | null) => {
+      // Plusieurs instances : chacune garde son dossier FiveM (la détection suit le dernier FiveM lancé, quel qu'il soit).
+      if (!p && which === 'fivem' && this.instanceList().length > 1) throw this.toError(t('instances.errors.autoDetect'))
       if (p) {
         // Vérifié avant d'être enregistré : on refuse un dossier qui n'est manifestement pas le bon.
         if (which === 'fivem') {
           const info = await inspectFiveM(await normalizeFiveMPath(p), t('games.source.manual'))
           if (!info.valid) throw this.toError(t('service.errors.notFiveMDir'))
+          const other = info.path && this.fivemUsedBy(info.path, currentInstanceId(this.settings.get()))
+          if (other) throw this.toError(t('instances.errors.folderUsed', { name: quote(other) }))
           p = info.path
         } else {
           const info = await inspectGta(p, t('games.source.manual'))
@@ -588,10 +735,9 @@ export class Service {
 
     renamePack: async (id: string, name: string) => {
       const m = await this.library.update(id, { name })
-      if (this.state.get().active?.packId === id) {
-        const s = this.state.get()
-        await this.state.set({ ...s, active: s.active ? { ...s.active, packName: m.name } : null })
-      }
+      const renamed = (s: AppState): AppState => (s.active?.packId === id ? { ...s, active: { ...s.active, packName: m.name } } : s)
+      if (this.state.get().active?.packId === id) await this.state.set(renamed(this.state.get()))
+      await this.updateOthers(renamed)
       this.changed()
       return toPublic(m)
     },
@@ -652,6 +798,8 @@ export class Service {
     deletePack: async (id: string) => {
       if (this.state.get().active?.packId === id) throw this.toError(t('service.errors.removePackFirst'))
       if (this.running) throw this.toError(t('errors.busy'))
+      const elsewhere = await this.usedElsewhere(id, 'pack')
+      if (elsewhere) throw this.toError(t('instances.errors.packInstalled', { name: quote(elsewhere) }))
       const m = await this.library.get(id)
       return this.startTask('delete', t('service.tasks.delete', { name: m.name }), id, async (report) => {
         await this.library.remove(id, (done, total) => report(t('service.phases.deleting'), done, total))
@@ -664,17 +812,31 @@ export class Service {
       if (await shell.openPath(this.library.contentDir(id))) throw this.toError(t('service.errors.cannotOpenFolder'))
     },
 
-    applyPack: async (id: string) => {
+    applyPack: async (id: string, instanceId?: string) => {
       const m = await this.library.get(id)
-      const title = t('service.tasks.apply', { name: m.name })
-      return this.whenGameClosed(title, id, () => this.startTask('apply', title, id, (report) => this.installer.apply(id, report)))
+      const current = currentInstanceId(this.settings.get())
+      const target = this.instanceList().find((i) => i.id === (instanceId ?? current))
+      if (!target) throw this.toError(t('instances.errors.notFound'))
+      if (target.id === current) {
+        const title = t('service.tasks.apply', { name: m.name })
+        return this.whenGameClosed(title, id, () => this.startTask('apply', title, id, (report) => this.installer.apply(id, report)))
+      }
+      const title = t('instances.applyTask', { name: m.name, instance: target.name })
+      return this.whenGameClosed(title, null, () =>
+        this.startTask('apply', title, id, (report) => this.onInstance(target.id, (installer) => installer.apply(id, report)))
+      )
     },
 
-    removeActive: async () => {
-      const a = this.state.get().active
+    removeActive: async (instanceId?: string) => {
+      const current = currentInstanceId(this.settings.get())
+      const target = this.instanceList().find((i) => i.id === (instanceId ?? current))
+      if (!target) throw this.toError(t('instances.errors.notFound'))
+      const a = target.id === current ? this.state.get().active : (await this.instanceState(target.id)).active
       if (!a) throw this.toError(t('service.errors.noActivePack'))
-      const title = t('service.tasks.remove', { name: a.packName })
-      return this.whenGameClosed(title, null, () => this.startTask('remove', title, a.packId, (report) => this.installer.removeActive(report)))
+      const title = target.id === current ? t('service.tasks.remove', { name: a.packName }) : t('instances.removeTask', { name: a.packName, instance: target.name })
+      return this.whenGameClosed(title, null, () =>
+        this.startTask('remove', title, a.packId, (report) => this.onInstance(target.id, (installer) => installer.removeActive(report)))
+      )
     },
 
     stashForeign: async (selection?: ForeignSelection[]) => {
@@ -775,6 +937,8 @@ export class Service {
       const m = await this.modLibrary.get(id)
       const enabled = this.state.get().mods.some((x) => x.id === id && x.enabled)
       if (enabled && (await runningGameProcesses()).length) throw this.toError(t('service.errors.closeGameForModDelete'))
+      const elsewhere = await this.usedElsewhere(id, 'mod')
+      if (elsewhere) throw this.toError(t('instances.errors.modEnabled', { name: quote(elsewhere) }))
       return this.startTask('mod', t('service.tasks.delete', { name: m.name }), id, async (report) => {
         await this.installer.forgetMod(id, report)
         await this.modLibrary.remove(id, (done, total) => report(t('service.phases.deleting'), done, total))
@@ -912,6 +1076,8 @@ export class Service {
       if (isInside(oldDir, target)) throw this.toError(t('service.errors.libraryInsideCurrent'))
       if (this.state.get().active) throw this.toError(t('service.errors.removeInstalledPackFirst'))
       if (this.state.get().mods.some((m) => m.enabled)) throw this.toError(t('service.errors.disableModsFirst'))
+      for (const { instance, state } of await this.otherInstances())
+        if (state.active || state.mods.some((m) => m.enabled)) throw this.toError(t('instances.errors.libraryInUse', { name: quote(instance.name) }))
       return this.startTask('move-library', t('service.tasks.moveLibrary'), null, async (report) => {
         await fs.mkdir(target, { recursive: true })
         const packs = await this.library.list()
@@ -1007,6 +1173,10 @@ export class Service {
           return { name: remote.name, kind, status: 'paused' }
         }
         await this.paused.forget(remote.id)
+        // Nouvelle version d'un pack installé (ou d'un mod activé) dans une autre instance : l'ancienne version y reste en
+        // place, rattachée à la nouvelle (la réinstaller depuis cette instance la met à jour).
+        const oldId = remote.localId
+        if (result.status === 'updated' && oldId && result.packId !== oldId) await this.updateOthers((s) => relink(s, kind, oldId, result.packId))
         if (result.status !== 'up-to-date') {
           const summary = msg({ added: 'history.downloaded', updated: 'history.updated', linked: 'history.linked' }[result.status])
           await this.state.set(pushHistory(this.state.get(), { action: 'download', packName: result.name, ok: true, msg: summary }))
@@ -1155,10 +1325,135 @@ export class Service {
 
     changelogLatest: () => this.whatsNew.latest(),
 
+    instanceAdd: async (fivemPath: string, name?: string) => {
+      const info = await inspectFiveM(await normalizeFiveMPath(fivemPath), t('games.source.manual'))
+      if (!info.valid || !info.path) throw this.toError(t('service.errors.notFiveMDir'))
+      const used = this.fivemUsedBy(info.path, '')
+      if (used) throw this.toError(t('instances.errors.folderUsed', { name: quote(used) }))
+      const instance: FiveMInstance = { id: newId('i'), name: cleanName(name) || suggestedName(info.path), fivemPath: info.path, gtaPath: null }
+      await this.addInstance(instance)
+      log.info(`Instance ajoutée : ${instance.name} (${info.path})`)
+      return instance
+    },
+
+    instanceRename: async (id: string, name: string) => {
+      const clean = cleanName(name)
+      if (!clean) throw this.toError(t('instances.errors.nameRequired'))
+      const list = this.instanceList()
+      if (!list.some((i) => i.id === id)) throw this.toError(t('instances.errors.notFound'))
+      await this.settings.patch({ instances: list.map((i) => (i.id === id ? { ...i, name: clean } : i)), instance: currentInstanceId(this.settings.get()) })
+      this.changed()
+    },
+
+    instanceRemove: async (id: string) => {
+      const s = this.settings.get()
+      const list = this.instanceList()
+      const target = list.find((i) => i.id === id)
+      if (!target) throw this.toError(t('instances.errors.notFound'))
+      if (id === currentInstanceId(s)) throw this.toError(t('instances.errors.removeCurrent'))
+      const state = await this.instanceState(id)
+      if (state.active || state.mods.some((m) => m.enabled)) throw this.toError(t('instances.errors.removeInstalled', { name: quote(target.name) }))
+      await this.settings.patch({ instances: list.filter((i) => i.id !== id), instance: currentInstanceId(s) })
+      this.others.delete(id)
+      await fs.rm(instanceStateFile(this.dataDir, id), { force: true }).catch(() => undefined)
+      if (id !== MAIN_INSTANCE) await fs.rm(path.dirname(instanceStateFile(this.dataDir, id)), { recursive: true, force: true }).catch(() => undefined)
+      log.info(`Instance supprimée : ${target.name}`)
+      this.changed()
+    },
+
+    instanceSwitch: async (id: string) => {
+      const s = this.settings.get()
+      const from = currentInstanceId(s)
+      const list = this.instanceList()
+      const target = list.find((i) => i.id === id)
+      if (!target) throw this.toError(t('instances.errors.notFound'))
+      if (id === from) throw this.toError(t('instances.errors.alreadyCurrent'))
+      // Une tâche ou un changement en attente porte sur l'instance active : il se termine avant.
+      if (this.running) throw this.toError(t('errors.busy'))
+      if (this.pending) throw this.toError(t('instances.errors.pendingChange'))
+      this.others.set(from, this.state.get())
+      // Fiche de l'instance quittée : ses dossiers (ceux des réglages), dossier FiveM fixé s'il était détecté.
+      const instances = list.map((i) => (i.id === from ? { ...i, fivemPath: s.fivemPath ?? this.gamesCache?.fivem.path ?? null, gtaPath: s.gtaPath } : i))
+      await this.settings.patch({ instances, instance: id, fivemPath: target.fivemPath, gtaPath: target.gtaPath })
+      await this.state.open(instanceStateFile(this.dataDir, id), emptyState())
+      const state = normalizeState(this.state.get())
+      if (state !== this.state.get()) await this.state.set(state)
+      this.others.delete(id)
+      this.relaunchHint = false
+      await this.refreshGames()
+      log.info(`Instance active : ${target.name}`)
+      this.changed()
+    },
+
+    instanceCreate: async (sourceId: string, parentDir: string, name: string, shortcut: boolean) => {
+      const clean = cleanName(name)
+      if (!clean) throw this.toError(t('instances.errors.nameRequired'))
+      const current = currentInstanceId(this.settings.get())
+      const source = this.instanceList().find((i) => i.id === sourceId)
+      if (!source) throw this.toError(t('instances.errors.notFound'))
+      const fivemApp = source.fivemPath ?? (sourceId === current ? (this.gamesCache?.fivem.path ?? null) : null)
+      if (!fivemApp) throw this.toError(t('service.errors.fivemFolderNotFound'))
+      if (!(await exists(path.join(path.dirname(fivemApp), 'FiveM.exe')))) throw this.toError(t('instances.errors.exeMissing'))
+      const dest = path.join(parentDir, safeFileName(clean))
+      if (isInside(path.dirname(fivemApp), dest) || samePath(path.dirname(fivemApp), dest)) throw this.toError(t('instances.errors.insideSource'))
+      if ((await fs.readdir(dest).catch(() => [])).length) throw this.toError(t('service.errors.folderExists', { path: dest }))
+      // FiveM lancé : ses fichiers sont ouverts (et ceux qu'il écrit changeraient pendant la copie).
+      if ((await runningGameProcesses()).length) throw this.toError(t('instances.errors.closeGame'))
+      const state = sourceId === current ? this.state.get() : await this.instanceState(sourceId)
+      const managed = [...(samePath(state.active?.roots.fivem ?? null, fivemApp) ? state.active!.files : []), ...state.mods.filter((m) => m.enabled).flatMap((m) => m.files)]
+      return this.startTask('instance', t('instances.createTask', { name: clean }), null, async (report, signal) => {
+        report(t('instances.phase.preparing'), 0, 0)
+        const plan = await copyPlan(fivemApp, dest, managed)
+        const free = await freeSpace(parentDir)
+        if (free !== null && free < plan.bytes + 200 * 1024 * 1024) throw this.toError(t('installer.errors.noSpace', { size: formatBytes(plan.bytes) }))
+        log.info(`Copie de ${fivemApp} vers ${dest} (${plan.files.length} fichiers, ${formatBytes(plan.bytes)})`)
+        try {
+          await runCopy(plan, (done, total) => report(t('instances.phase.copying'), done, total), signal)
+        } catch (err) {
+          await fs.rm(dest, { recursive: true, force: true }).catch(() => undefined)
+          throw err
+        }
+        const instance: FiveMInstance = { id: newId('i'), name: clean, fivemPath: path.join(dest, 'FiveM.app'), gtaPath: sourceId === current ? this.settings.get().gtaPath : source.gtaPath }
+        await this.addInstance(instance)
+        let shortcutError: string | null = null
+        if (shortcut) await this.createShortcut(instance).catch((err: unknown) => (shortcutError = (err as Error).message))
+        log.info(`Instance créée : ${clean} (${instance.fivemPath})`)
+        return { name: clean, created: true, note: shortcutError }
+      })
+    },
+
+    instanceShortcut: async (id: string) => {
+      const instance = this.instanceList().find((i) => i.id === id)
+      if (!instance) throw this.toError(t('instances.errors.notFound'))
+      await this.createShortcut(instance)
+    },
+
+    instanceSetPackTarget: async (target: 'active' | 'ask') => {
+      await this.settings.patch({ packTarget: target })
+      this.changed()
+    },
+
     maintenanceGet: async () => this.maintenance.current,
 
     maintenanceCheck: () => this.maintenance.check()
   }
+}
+
+/** Nom d'instance : espaces superflus retirés, 60 caractères au plus. */
+function cleanName(name: string | undefined): string {
+  return (name ?? '').replace(/\s+/g, ' ').trim().slice(0, 60)
+}
+
+/**
+ * État d'une autre instance rattaché à la nouvelle version d'un pack (ou d'un mod) qui remplace {@link oldId} dans la
+ * bibliothèque. Renvoie le même objet s'il n'y a rien à changer.
+ */
+function relink(s: AppState, kind: MarketKind, oldId: string, newId: string): AppState {
+  if (kind === 'mod')
+    return s.mods.some((m) => m.id === oldId) ? { ...s, mods: s.mods.map((m) => (m.id === oldId ? { ...m, id: newId } : m)) } : s
+  if (s.active?.packId !== oldId) return s
+  const mods = s.mods.map((m) => ({ ...m, shadowed: m.shadowed.map((f) => (f.packId === oldId ? { ...f, packId: newId } : f)) }))
+  return { ...s, active: { ...s.active, packId: newId }, mods }
 }
 
 /** Enregistre une image réduite (1600 px de large au plus, JPEG) dans le dossier d'un pack. */

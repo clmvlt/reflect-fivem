@@ -19,6 +19,10 @@
 // ou mettre à jour des mods est aussi une seule opération atomique (voir changeMods). Un mod ne remplace jamais le
 // fichier d'un autre mod ; il peut remplacer un fichier du pack actif, réinstallé depuis le pack quand le mod est retiré.
 // Changer de pack ne touche pas aux mods : leurs fichiers sont connus (ni rangés dans « Ajouts manuels », ni remplacés).
+//
+// Instances (voir instances.ts) : les fichiers posés par les autres instances dans les mêmes dossiers (GTA V, en général
+// commun) sont connus eux aussi. Un pack ne les remplace jamais ; le même pack installé dans deux instances partage ses
+// fichiers de GTA V, retirés seulement quand plus aucune instance ne les utilise.
 
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
@@ -57,6 +61,7 @@ import {
 import { isEnbLocal, withEnbFpsLimit, withPackFpsLimit } from './enb'
 import { CONFIG_EXT, ext, isAllowedFiveMPath, isProtectedGtaPath } from './knowledge'
 import { readSource, type PackContent } from './content'
+import { samePath } from './games'
 import type { Library, StoredManifest } from './library'
 import type { SealedRef } from './sealed'
 import { JsonStore, pushHistory } from './stores'
@@ -77,6 +82,23 @@ export interface InstallerCtx {
   saveCover?: (src: string, packDir: string) => Promise<string | null>
   /** Limite d'images par seconde choisie dans l'application : null = celle du pack, 0 = aucune limite. */
   fpsLimit?: () => number | null
+  /** Fichiers posés par les autres instances (pack installé, mods activés). */
+  others?: () => Promise<OtherInstall[]>
+}
+
+/** Fichiers posés par une autre instance : son pack installé (packId) ou l'un de ses mods activés (packId null). */
+export interface OtherInstall {
+  instance: string
+  packId: string | null
+  packName: string | null
+  roots: Record<RootId, string>
+  files: InstalledFile[]
+}
+
+/** Fichier d'une autre instance posé dans les dossiers de celle-ci, et son instance. */
+interface SharedFile {
+  owner: OtherInstall
+  file: InstalledFile
 }
 
 interface InstallItem {
@@ -165,7 +187,8 @@ export class Installer {
     await this.ctx.state.set(s)
   }
 
-  private async runPlan(plan: Plan, roots: string[], report: Report): Promise<PlanResult> {
+  /** Exécute un plan, avec les droits administrateur si l'une des racines n'est pas modifiable (aussi pour le changement d'instance). */
+  async runPlan(plan: Plan, roots: string[], report: Report): Promise<PlanResult> {
     let elevate = false
     for (const r of new Set(roots.filter(Boolean))) if (!(await canWrite(r))) elevate = true
     // Test : force le passage par le processus séparé (avec PM_NO_UAC, sans fenêtre UAC).
@@ -183,6 +206,23 @@ export class Installer {
 
   private get mods(): InstalledMod[] {
     return this.state.mods ?? []
+  }
+
+  /** Fichiers des autres instances posés dans ces dossiers (GTA V commun), par destination. */
+  private async sharedFiles(roots: Record<RootId, string | null>): Promise<Map<string, SharedFile>> {
+    const out = new Map<string, SharedFile>()
+    for (const owner of (await this.ctx.others?.()) ?? [])
+      for (const file of owner.files) if (samePath(owner.roots[file.root], roots[file.root])) out.set(destKey(file), { owner, file })
+    return out
+  }
+
+  /** Mods activés, plus les fichiers des autres instances : connus, jamais pris pour des mods installés à la main. */
+  private async knownMods(games: GamesInfo): Promise<InstalledMod[]> {
+    const roots = { fivem: games.fivem.path ?? '', gta: games.gta.path ?? '' }
+    const shared = await this.sharedFiles(roots)
+    if (!shared.size) return this.mods
+    const files = [...shared.values()].map((s) => s.file)
+    return [...this.mods, { id: '', name: '', enabled: true, appliedAt: null, roots, files, createdDirs: [], shadowed: [] }]
   }
 
   /** Fichiers à installer ; un réglage modifié en jeu (dossier user/) remplace l'original. */
@@ -244,7 +284,8 @@ export class Installer {
 
   /** Mods installés à la main, hors pack actif (pour la ligne « Installation actuelle »). `games` : détection déjà faite. */
   async foreignSummary(games?: GamesInfo): Promise<{ files: number; size: number } | null> {
-    const c = await collectForeign(games ?? (await this.ctx.detectGames()), this.state.active, undefined, this.mods)
+    const g = games ?? (await this.ctx.detectGames())
+    const c = await collectForeign(g, this.state.active, undefined, await this.knownMods(g))
     return c.files.length ? { files: c.files.length, size: c.files.reduce((s, f) => s + f.size, 0) } : null
   }
 
@@ -288,7 +329,7 @@ export class Installer {
     if (!withMods || !enabled.length) return this.switchTo(null, report)
     await this.changeMods({ remove: enabled, add: [] }, report, msg('removeMods'))
     const games = await this.ctx.detectGames()
-    if (!this.state.active && !(await collectForeign(games, null, undefined, this.mods)).files.length)
+    if (!this.state.active && !(await collectForeign(games, null, undefined, await this.knownMods(games))).files.length)
       return { installed: 0, captured: null, removed: null, mods: enabled.length }
     return { ...(await this.switchTo(null, report)), mods: enabled.length }
   }
@@ -310,13 +351,16 @@ export class Installer {
     const ops: Op[] = []
     const trashDirs = new Set<string>()
 
-    // 1) Ancien pack : réglages modifiés conservés, puis fichiers déplacés dans un dossier temporaire.
+    // 1) Ancien pack : réglages modifiés conservés, puis fichiers déplacés dans un dossier temporaire. Ceux qu'une autre
+    // instance utilise aussi (même pack, GTA V commun) restent en place.
     const oldPack = active ? await lib.get(active.packId).catch(() => null) : null
+    const stillUsed = active ? await this.sharedFiles(active.roots) : new Map<string, SharedFile>()
     const saved = new Set<string>()
     // Fichiers du jeu remplacés depuis l'installation (mise à jour du jeu) : ce sont les nouveaux originaux, laissés en place.
     const updated = new Set<string>()
     if (active) {
       for (const f of active.files) {
+        if (stillUsed.has(destKey(f))) continue
         const rp = active.roots[f.root]
         const target = abs(rp, f.path)
         const st = await fs.stat(target).catch(() => null)
@@ -376,6 +420,28 @@ export class Installer {
       }
       items = placed
     }
+    // Fichiers d'une autre instance au même endroit (GTA V commun) : partagés si c'est le même fichier du même pack,
+    // sinon l'installation est refusée (les deux instances verraient le fichier de l'autre).
+    const sharing: InstalledFile[] = []
+    if (manifest) {
+      const shared = await this.sharedFiles(roots)
+      const placed: InstallItem[] = []
+      for (const it of items) {
+        const s = shared.get(destKey(it.dest))
+        if (!s) placed.push(it)
+        else if (s.owner.packId === manifest.id && s.file.source === it.source && !isGameFile(it.dest)) sharing.push(s.file)
+        else
+          throw new Error(
+            t('installer.errors.otherInstance', {
+              instance: quote(s.owner.instance),
+              owner: quote(s.owner.packName ?? s.owner.instance),
+              path: `${it.dest.root === 'gta' ? 'GTA V' : 'FiveM.app'}/${it.dest.path}`
+            })
+          )
+      }
+      items = placed
+    }
+
     // Les notes de l'ancien pack sont oubliées : ses fichiers ne reviendront pas.
     const modsAfter = (): InstalledMod[] => this.mods.map((m) => ({ ...m, shadowed: shadowed.get(m.id) ?? [] }))
 
@@ -406,8 +472,9 @@ export class Installer {
 
     // 2) Mods installés à la main et fichiers qui seraient écrasés : rangés dans « Ancienne installation ». Fichiers du
     // jeu : gardés dans .fpm-originaux, remis en place au retrait du pack.
-    const managed = managedSet(active, this.mods)
-    const collection = await collectForeign(games, active, undefined, this.mods)
+    const known = await this.knownMods(games)
+    const managed = managedSet(active, known)
+    const collection = await collectForeign(games, active, undefined, known)
     const overwritten: { root: RootId; rel: string; size: number }[] = []
     const replaced: Destination[] = []
     for (const it of items) {
@@ -484,6 +551,7 @@ export class Installer {
       linked: !!res.results[idx]?.linked,
       source: item.source
     }))
+    files.push(...sharing)
     // Dossiers à supprimer au retrait : créés maintenant, ou créés par l'ancien pack et réutilisés.
     const inherited = (active?.createdDirs ?? []).filter((d) => dirKeys.has(destKey(d)))
     const createdDirs = [...mkdirIdx.filter((m) => res.results[m.idx]?.created).map((m) => m.dest), ...inherited]
@@ -531,7 +599,10 @@ export class Installer {
     const fileOps: { file: InstalledFile; idx: number }[] = []
 
     const updated = new Set<string>()
+    // Fichiers qu'une autre instance utilise aussi (même pack, GTA V commun) : laissés en place.
+    const stillUsed = await this.sharedFiles(active.roots)
     for (const f of [...active.files].sort((a, b) => b.path.localeCompare(a.path))) {
+      if (stillUsed.has(destKey(f))) continue
       const target = abs(active.roots[f.root], f.path)
       const st = await fs.stat(target).catch(() => null)
       if (!st) continue
@@ -584,7 +655,8 @@ export class Installer {
 
   /** Liste des éléments installés à la main (hors pack actif), captures d'écran et journaux compris. */
   async scanForeign(): Promise<ForeignItem[]> {
-    return scanForeign(await this.ctx.detectGames(), this.state.active, this.mods)
+    const games = await this.ctx.detectGames()
+    return scanForeign(games, this.state.active, await this.knownMods(games))
   }
 
   /**
@@ -596,7 +668,7 @@ export class Installer {
     const lib = this.ctx.library()
     const games = await this.ctx.detectGames()
     const roots: Record<RootId, string> = { fivem: games.fivem.path ?? '', gta: games.gta.path ?? '' }
-    const collection = await collectForeign(games, this.state.active, selection, this.mods)
+    const collection = await collectForeign(games, this.state.active, selection, await this.knownMods(games))
     if (!collection.files.length) return { captured: null }
     const capId = lib.newCapturedId(PREVIOUS_INSTALL_NAME)
     const { ops, files } = this.captureOps(capId, roots, collection, [])

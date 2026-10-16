@@ -6,6 +6,7 @@ import { bytes, num } from '../lib/format'
 import { problemCount } from '@shared/insights'
 import { Cover, EmptyState, packMenuAction, packMeta, Progress, RenameInput } from './common'
 import { ModLibrary, useModActions } from './Mods'
+import { useInstallTarget } from './InstallTarget'
 
 export function Library({
   kind,
@@ -135,6 +136,7 @@ export function Library({
               problems={problemCount(p, build)}
               pending={overview.game.pending?.packId === p.id}
               update={overview.market.updates.includes(p.id)}
+              elsewhere={overview.instances.filter((i) => !i.current && i.packId === p.id).map((i) => i.name)}
               task={task}
               onOpen={() => onOpen(p.id)}
             />
@@ -152,6 +154,7 @@ function PackCard({
   problems,
   pending,
   update,
+  elsewhere,
   task,
   onOpen
 }: {
@@ -162,11 +165,18 @@ function PackCard({
   /** Sera installé à la fermeture de FiveM. */
   pending: boolean
   update: boolean
+  /** Autres instances où le pack est installé. */
+  elsewhere: string[]
   task: TaskProgress | null
   onOpen: () => void
 }) {
   const { t } = useTranslation()
   const { run, changeGame } = useStore()
+  const { choose, picker } = useInstallTarget()
+  const install = async (): Promise<void> => {
+    const target = await choose(pack)
+    if (target !== null) await changeGame(() => window.api.applyPack(pack.id, target))
+  }
   const [renaming, setRenaming] = useState(false)
   const mine = task && task.detail === pack.id ? task : null
 
@@ -197,6 +207,10 @@ function PackCard({
                 </span>
               ) : update ? (
                 <span className="accent-text small">{t('libraryView.card.update')}</span>
+              ) : elsewhere.length > 0 ? (
+                <span className="state ellipsis" title={elsewhere.join(', ')}>
+                  {t('instances.card.installedOn', { names: elsewhere.join(', ') })}
+                </span>
               ) : problems > 0 ? (
                 <span className="warn-text small">{t('libraryView.card.problems', { count: problems, n: num(problems) })}</span>
               ) : null}
@@ -208,7 +222,7 @@ function PackCard({
               ) : pending ? (
                 <button onClick={() => void run(() => window.api.cancelPending())}>{t('common.cancel')}</button>
               ) : (
-                <button onClick={() => void changeGame(() => window.api.applyPack(pack.id))} disabled={!!task}>
+                <button onClick={() => void install()} disabled={!!task}>
                   {t('libraryView.card.install')}
                 </button>
               )}
@@ -217,6 +231,7 @@ function PackCard({
               </button>
             </>
           )}
+          {picker}
         </div>
       </div>
     </article>

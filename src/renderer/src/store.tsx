@@ -211,6 +211,11 @@ function resultMessage(p: TaskProgress): Message | null {
     if (r.enabled !== undefined) return { kind: 'info', text: r.enabled ? t('store.mod.enabled', { name }) : t('store.mod.disabled', { name }) }
     return null
   }
+  if (p.kind === 'instance') {
+    const r = (p.result ?? {}) as { name?: string; note?: string | null }
+    const text = t('instances.created', { name: q(r.name ?? '') })
+    return r.note ? { kind: 'error', text: `${text}\n${r.note}` } : { kind: 'info', text }
+  }
   if (p.kind === 'download') {
     const d = (p.result ?? {}) as { name?: string; status?: string; note?: string; kind?: string; enabled?: boolean }
     if (d.note) return { kind: 'info', text: d.note }

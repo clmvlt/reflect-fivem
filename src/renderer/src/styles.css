@@ -2527,3 +2527,84 @@ button.google {
   align-self: flex-start;
   font-size: 12px;
 }
+
+/* ------------------------------------------------------------ Instances FiveM */
+
+.instances-intro {
+  max-width: 720px;
+  margin: -8px 0 0;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.instance-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.instance-name .badge {
+  flex: none;
+}
+.instance-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 420px;
+}
+.instance-form select {
+  width: 100%;
+}
+.instance-dest {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.instance-dest .path {
+  flex: 1;
+  min-width: 0;
+}
+.instance-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.instance-check > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.instance-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+.instance-picker-text {
+  margin: 0 0 12px;
+}
+.instance-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 380px;
+}
+.instance-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  height: auto;
+  padding: 10px 14px;
+  text-align: left;
+}
+.side-instance {
+  height: auto;
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 12px;
+  text-align: left;
+}

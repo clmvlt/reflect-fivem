@@ -15,6 +15,11 @@ export class JsonStore<T> {
     this.value = { ...fallback, ...(await readJson<Partial<T>>(this.file, {})) } as T
     return this.value
   }
+  /** Passe à un autre fichier (état d'une autre instance) et le lit. */
+  async open(file: string, fallback: T): Promise<T> {
+    this.file = file
+    return this.load(fallback)
+  }
   get(): T {
     return this.value
   }

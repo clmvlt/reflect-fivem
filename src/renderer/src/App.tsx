@@ -6,6 +6,7 @@ import { Library } from './components/Library'
 import { PackDetail } from './components/PackDetail'
 import { Cleanup } from './components/Cleanup'
 import { SettingsView } from './components/SettingsView'
+import { InstancesView } from './components/InstancesView'
 import { Graphics } from './components/Graphics'
 import { Marketplace, type MarketView } from './components/Marketplace'
 import { AccountView } from './components/AccountView'
@@ -17,7 +18,8 @@ import { MaintenanceBanner, MaintenanceScreen, useMaintenance } from './componen
 import { WhatsNew } from './components/WhatsNew'
 import icon from './assets/icon.png'
 
-type Page = 'library' | 'market' | 'graphics' | 'cleanup' | 'discord' | 'account' | 'settings'
+/** instances : page des instances FiveM, ouverte depuis les réglages. */
+type Page = 'library' | 'market' | 'graphics' | 'cleanup' | 'discord' | 'account' | 'settings' | 'instances'
 
 /** Bibliothèque et Marketplace s'ouvrent sur les packs ; Packs et Mods s'affichent en dessous quand l'une est ouverte. */
 const SUB_NAV: { kind: MarketKind; label: 'packs' | 'mods' }[] = [
@@ -25,7 +27,7 @@ const SUB_NAV: { kind: MarketKind; label: 'packs' | 'mods' }[] = [
   { kind: 'mod', label: 'mods' }
 ]
 
-const NAV: Page[] = ['library', 'market', 'graphics', 'cleanup', 'settings']
+const NAV: Exclude<Page, 'instances'>[] = ['library', 'market', 'graphics', 'cleanup', 'settings']
 
 export function App() {
   const { t } = useTranslation()
@@ -123,6 +125,8 @@ export function App() {
   // Barre latérale affichée dès le premier rendu ; les pages attendent l'état de l'application.
   const detail = openPack ? overview?.library.find((p) => p.id === openPack) : null
   const games = overview?.games
+  // Plusieurs instances FiveM : celle qui est active, rappelée dans la barre latérale.
+  const currentInstance = (overview?.instances.length ?? 0) > 1 ? overview?.instances.find((i) => i.current) : undefined
   const updates = overview?.market.updates.length ?? 0
   // Mises à jour en ligne, par genre (sous la Bibliothèque).
   const updatesOf = (kind: MarketKind): number =>
@@ -181,9 +185,10 @@ export function App() {
         <nav>
           {NAV.map((id) => {
             const open = page === id && (id === 'library' || id === 'market')
+            const selected = page === id || (id === 'settings' && page === 'instances')
             return (
               <div key={id} className="nav-group">
-                <button className={`nav ${open ? 'is-open' : page === id ? 'is-selected' : ''}`} aria-expanded={open || undefined} onClick={() => go(id)}>
+                <button className={`nav ${open ? 'is-open' : selected ? 'is-selected' : ''}`} aria-expanded={open || undefined} onClick={() => go(id)}>
                   {t(`app.nav.${id}`)}
                   {/* Packs et mods de la bibliothèque dont une nouvelle version est en ligne. */}
                   {id === 'library' && !open && updates > 0 && (
@@ -211,6 +216,11 @@ export function App() {
           })}
         </nav>
         <div className="side-bottom">
+          {currentInstance && (
+            <button className="side-instance" onClick={() => go('instances')} title={t('instances.view.sidebarTitle')}>
+              <span className="ellipsis">{t('instances.view.sidebar', { name: currentInstance.name })}</span>
+            </button>
+          )}
           <GameControl />
           <UpdatePanel />
           {gameProblem && (
@@ -283,7 +293,8 @@ export function App() {
                       }
                     : undefined
                 } />}
-            {page === 'settings' && <SettingsView />}
+            {page === 'settings' && <SettingsView onManageInstances={() => go('instances')} />}
+            {page === 'instances' && <InstancesView onBack={() => go('settings')} />}
           </>
         )}
 

@@ -119,6 +119,13 @@ const methods = [
   'changelogGet',
   'dismissChangelog',
   'changelogLatest',
+  'instanceAdd',
+  'instanceRename',
+  'instanceRemove',
+  'instanceSwitch',
+  'instanceCreate',
+  'instanceShortcut',
+  'instanceSetPackTarget',
   'maintenanceGet',
   'maintenanceCheck'
 ] as const

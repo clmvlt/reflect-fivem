@@ -4,6 +4,7 @@ import type {
   AuthorPage,
   AuthorProfile,
   CommentPage,
+  FiveMInstance,
   ForeignItem,
   GamesInfo,
   MarketCategory,
@@ -66,9 +67,12 @@ export interface PackManagerApi {
   deletePack(id: string): Promise<string>
   openPackFolder(id: string): Promise<void>
 
-  /** Identifiant de la tâche, ou PENDING si FiveM est lancé : le changement est fait dès sa fermeture. */
-  applyPack(id: string): Promise<string>
-  removeActive(): Promise<string>
+  /**
+   * Identifiant de la tâche, ou PENDING si FiveM est lancé : le changement est fait dès sa fermeture. `instanceId` :
+   * instance où installer le pack, ou d'où le retirer (absent : l'instance active).
+   */
+  applyPack(id: string, instanceId?: string): Promise<string>
+  removeActive(instanceId?: string): Promise<string>
   stashForeign(selection?: ForeignSelection[]): Promise<string>
 
   scanForeign(): Promise<ForeignItem[]>
@@ -238,6 +242,26 @@ export interface PackManagerApi {
   /** Notes de la version lancée (sinon de la dernière publiée), à la demande : bouton « Nouveautés » des réglages. */
   changelogLatest(): Promise<WhatsNew>
 
+
+  /**
+   * Ajoute une instance FiveM (dossier FiveM.app, ou le dossier qui le contient) ; sans nom, celui du dossier. L'instance
+   * active ne change pas.
+   */
+  instanceAdd(fivemPath: string, name?: string): Promise<FiveMInstance>
+  instanceRename(id: string, name: string): Promise<void>
+  /** Oublie une instance (ni l'instance active, ni une instance où un pack est installé ou un mod activé). */
+  instanceRemove(id: string): Promise<void>
+  /** Change d'instance active : celle que montrent la bibliothèque, le nettoyage et le bouton « Lancer FiveM ». */
+  instanceSwitch(id: string): Promise<void>
+  /**
+   * Crée une instance en copiant le FiveM d'une autre (sans cache, ni pack, ni mods) dans `parentDir`\<nom>.
+   * `shortcut` : raccourci sur le bureau pour la lancer. Renvoie l'identifiant de la tâche.
+   */
+  instanceCreate(sourceId: string, parentDir: string, name: string, shortcut: boolean): Promise<string>
+  /** Raccourci sur le bureau qui lance le FiveM de l'instance (avec -cl2, sauf l'instance principale). */
+  instanceShortcut(id: string): Promise<void>
+  /** Installation des packs avec plusieurs instances : dans l'instance active, ou dans celle choisie à chaque fois. */
+  instanceSetPackTarget(target: 'active' | 'ask'): Promise<void>
 
   /** Maintenances prévues par l'admin : dernier état connu (sans réseau). */
   maintenanceGet(): Promise<MaintenanceState>

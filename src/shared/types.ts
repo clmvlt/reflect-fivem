@@ -219,6 +219,34 @@ export interface Settings {
   locale?: string
   /** Dernière version dont la fenêtre « Nouveautés » a été vue (absent : premier lancement). */
   lastSeenChangelogVersion?: string
+  /**
+   * Instances FiveM (absent : une seule, l'instance principale). Les dossiers de l'instance active sont
+   * {@link fivemPath} et {@link gtaPath} ; ceux enregistrés dans sa fiche ne servent qu'une fois qu'on l'a quittée.
+   */
+  instances?: FiveMInstance[]
+  /** Identifiant de l'instance active (absent : l'instance principale). */
+  instance?: string
+  /** Installation d'un pack avec plusieurs instances : dans l'instance active, ou dans celle choisie à chaque fois (absent : active). */
+  packTarget?: 'active' | 'ask'
+}
+
+/** Dossier FiveM géré par l'application, avec son propre pack installé et ses propres mods (voir instances.ts). */
+export interface FiveMInstance {
+  id: string
+  name: string
+  /** Dossier FiveM.app (null : détection automatique, instance principale seule). */
+  fivemPath: string | null
+  /** Dossier de GTA V (null : celui indiqué par FiveM, sinon détecté). */
+  gtaPath: string | null
+}
+
+export interface InstanceSummary extends FiveMInstance {
+  current: boolean
+  /** Pack installé dans cette instance (null : aucun). */
+  packId: string | null
+  packName: string | null
+  /** Nombre de mods activés. */
+  mods: number
 }
 
 // ---------------------------------------------------------------------------
@@ -304,7 +332,7 @@ export interface ForeignItem {
 
 export interface TaskProgress {
   taskId: string
-  kind: 'import' | 'apply' | 'remove' | 'delete' | 'stash' | 'clean' | 'cache' | 'screenshots' | 'trash' | 'move-library' | 'download' | 'mod'
+  kind: 'import' | 'apply' | 'remove' | 'delete' | 'stash' | 'clean' | 'cache' | 'screenshots' | 'trash' | 'move-library' | 'download' | 'mod' | 'instance'
   title: string
   phase: string
   current: number
@@ -323,6 +351,8 @@ export interface Overview {
   library: PackManifest[]
   /** Bibliothèque des mods (leur état dans le jeu : state.mods). */
   mods: PackManifest[]
+  /** Instances FiveM, dans l'ordre d'ajout (une seule tant qu'aucune autre n'a été ajoutée). */
+  instances: InstanceSummary[]
   /** Mods installés à la main, hors pack actif. */
   foreign: { files: number; size: number } | null
   /** Couleur d'accent de Windows (#rrggbb). */

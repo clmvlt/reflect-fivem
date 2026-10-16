@@ -7,7 +7,9 @@
 #      installées la téléchargent, la vérifient et l'installent seules.
 #
 # Sans les secrets, la release GitHub est créée sans signatures et la version n'est pas mise en ligne sur le site.
-# Nouveautés : notes/X.Y.Z.md s'il existe, sinon la liste des commits depuis le tag précédent.
+# Nouveautés : notes/X.Y.Z.md s'il existe (rubriques : voir notes/modele.md), sinon la liste des commits depuis le tag
+# précédent, en « Autres changements ». La version n'est pas annoncée sur Discord : l'annonce se fait depuis
+# l'administration du site (bouton « Notifier la mise à jour »).
 name: Publication
 
 on:
@@ -69,9 +71,10 @@ jobs:
           if (-not (Test-Path $file)) {
             $previous = git describe --tags --abbrev=0 '${{ github.ref_name }}^' 2>$null
             $range = if ($previous) { "$previous..${{ github.ref_name }}" } else { '${{ github.ref_name }}' }
-            $lines = git log --no-merges --pretty='- %s' $range
+            $lines = @(git log --no-merges --pretty='- %s' $range)
             New-Item -ItemType Directory -Force notes | Out-Null
-            Set-Content -LiteralPath $file -Value ($lines -join "`n") -Encoding utf8
+            # Même rubrique que le repli de deploy/deploy.py.
+            Set-Content -LiteralPath $file -Value ((@('## Autres changements', '') + $lines) -join "`n") -Encoding utf8
           }
           "NOTES_FILE=$file" >> $env:GITHUB_ENV
 

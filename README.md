@@ -102,7 +102,9 @@ npm run release -- --no-watch    # pousse le tag sans attendre la fin
 
 Le script ne crée aucun commit. Il refuse de partir si des fichiers ne sont pas committés ou si la version est déjà publiée, pousse les commits pas encore envoyés, crée le tag, puis suit le workflow (GitHub CLI `gh`) et vérifie la release GitHub et reflect-fivem.com.
 
-Nouveautés affichées sur le site et dans la release : `notes/X.Y.Z.md` s'il existe, sinon la liste des commits depuis le tag précédent.
+Nouveautés affichées sur le site, dans la release et dans la fenêtre « Nouveautés » de l'application : `notes/X.Y.Z.md` s'il existe, sinon la liste des commits depuis le tag précédent (rubrique « Autres changements »). Le fichier suit `notes/modele.md` : le texte avant le premier titre est l'introduction, puis `## Nouveautés`, `## Améliorations`, `## Corrections de bugs` et `## Autres changements`, un point par puce `- `. `deploy/deploy.py` le découpe en rubriques pour l'API (`changelog`) ; `npm run release` vérifie le découpage avant de pousser le tag.
+
+La publication n'annonce pas la version sur Discord : l'annonce se fait depuis l'administration du site (`/admin/versions`, bouton « Notifier la mise à jour »).
 
 Secrets du dépôt (Settings, Secrets and variables, Actions) :
 

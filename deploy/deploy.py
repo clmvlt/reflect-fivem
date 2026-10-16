@@ -4,7 +4,8 @@
 Lancé par le workflow de publication (.github/workflows/release.yml), après la compilation sur GitHub Actions : il n'y
 a pas de build local. Les fichiers publiés sont ceux de release/, compilés par le workflow.
 
-    python deploy/deploy.py --notes-file notes.md   signature, envoi et publication
+    python deploy/deploy.py                  signature, envoi et publication (nouveautés : notes/X.Y.Z.md)
+    python deploy/deploy.py --notes-file notes.md   nouveautés lues dans un autre fichier
     python deploy/deploy.py --draft          envoie sans publier (à vérifier puis publier dans l'administration)
     python deploy/deploy.py --dev            API de dev (http://192.168.1.13:8080/api) au lieu de la production
     python deploy/deploy.py --check          vérifie clé, fichiers, API et connexion, sans rien modifier
@@ -14,6 +15,14 @@ a pas de build local. Les fichiers publiés sont ceux de release/, compilés par
   2. API : connexion au compte d'administration, création de la version X.Y.Z (numéro de package.json),
      envoi des fichiers en morceaux (reprise après coupure), signatures, publication ;
   3. vérification : latest.yml annonce la nouvelle version aux applications installées.
+
+Nouveautés : notes/X.Y.Z.md (ou --notes-file), découpé en rubriques pour l'API (champ changelog) : le texte avant le
+premier titre est l'introduction, puis « ## Nouveautés », « ## Améliorations », « ## Corrections de bugs » et
+« ## Autres changements », un point par puce « - ». Sans fichier : la liste des commits depuis la version précédente,
+en « Autres changements ». Modèle : notes/modele.md.
+
+La publication n'annonce plus la version sur Discord : l'annonce se fait depuis l'administration du site (bouton
+« Notifier la mise à jour » de la version).
 
 Configuration : variables d'environnement (secrets du dépôt dans le workflow), sinon deploy/deploy.env, sinon
 ../deploy.env (dossier PackInstaller). Clés : PACKS_ADMIN_USER, PACKS_ADMIN_PASSWORD (et PACKS_DEV_ADMIN_USER,
@@ -31,6 +40,7 @@ import shutil
 import subprocess
 import sys
 import time
+import unicodedata
 from pathlib import Path
 
 try:
@@ -50,6 +60,7 @@ SITE_URLS = {"prod": "https://reflect-fivem.com", "dev": "http://192.168.1.13:51
 CONFIG_FILES = [SCRIPT_DIR / "deploy.env", WORKSPACE_DIR / "deploy.env"]
 CHUNK_SIZES = [8, 4, 2, 1, 0.5, 0.25]
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$")
+NOTES_DIR = PROJECT_DIR / "notes"
 
 
 # ----------------------------------------------------------------------------------------------------------
@@ -355,12 +366,132 @@ def sign(path: Path, version: str) -> str:
     return match.group(1)
 
 
-def read_notes(args: argparse.Namespace) -> str | None:
-    if args.notes_file:
-        return Path(args.notes_file).read_text(encoding="utf-8-sig").strip()
+# ----------------------------------------------------------------------------------------------------------
+# Nouveautés
+
+# Rubriques des notes (clés fixes de l'API, dans l'ordre d'affichage) et titres reconnus dans le Markdown, comparés en
+# minuscules, sans accents ni ponctuation (« ## Corrections de bugs », « ### 🐛 Corrections », « ## Autres : »...).
+SECTIONS = ("features", "improvements", "fixes", "other")
+SECTION_NAMES = {"features": "Nouveautés", "improvements": "Améliorations", "fixes": "Corrections de bugs",
+                 "other": "Autres changements"}
+SECTION_TITLES = {
+    "features": {"nouveautes", "nouveaute", "nouvelles fonctionnalites", "fonctionnalites", "new features", "features"},
+    "improvements": {"ameliorations", "amelioration", "improvements"},
+    "fixes": {"corrections", "correction", "corrections de bugs", "corrections de bug", "correctifs", "bug fixes", "fixes"},
+    "other": {"autres", "autre", "autres changements", "divers", "other", "other changes"},
+}
+# Limites de l'API (PUT /admin/releases/{id}/changelog).
+MAX_ITEMS = 50
+MAX_ITEM_LENGTH = 500
+MAX_SUMMARY_LENGTH = 5000
+
+HEADING = re.compile(r"^#{1,6}\s+(.*?)\s*#*\s*$")
+BULLET = re.compile(r"^(?:[-*+•]|\d+[.)])\s+(.*)$")
+
+
+def section_of(title: str) -> str | None:
+    """Rubrique d'un titre de notes, None s'il n'en désigne aucune."""
+    plain = "".join(c for c in unicodedata.normalize("NFKD", title.lower()) if not unicodedata.combining(c))
+    plain = " ".join(re.sub(r"[^a-z0-9]+", " ", plain).split())
+    return next((key for key, titles in SECTION_TITLES.items() if plain in titles), None)
+
+
+def split_changelog(markdown: str) -> tuple[dict, list[str]]:
+    """Notes Markdown découpées pour l'API : texte avant le premier titre = introduction (summary), puis un point par
+    puce sous chaque titre de rubrique. Une ligne en retrait (ou qui suit une puce) continue le point. Renvoie les
+    notes et les titres inconnus (leurs points vont dans « Autres changements »)."""
+    text = re.sub(r"<!--.*?-->", "", markdown.replace("\r\n", "\n"), flags=re.S)
+    changelog: dict = {"summary": "", **{key: [] for key in SECTIONS}}
+    summary: list[str] = []
+    unknown: list[str] = []
+    section: str | None = None
+    item_open = False
+    for line in text.split("\n"):
+        heading = HEADING.match(line)
+        if heading:
+            section = section_of(heading.group(1))
+            if section is None:
+                unknown.append(heading.group(1))
+                section = "other"
+            item_open = False
+            continue
+        if section is None:
+            summary.append(line)
+            continue
+        if not line.strip():
+            item_open = False
+            continue
+        bullet = BULLET.match(line)
+        items = changelog[section]
+        if bullet:
+            items.append(bullet.group(1).strip())
+            item_open = True
+        elif items and (item_open or line[:1].isspace()):
+            items[-1] = f"{items[-1]} {line.strip()}"
+        else:
+            items.append(line.strip())
+            item_open = True
+    changelog["summary"] = "\n".join(summary).strip()
+    for key in SECTIONS:
+        changelog[key] = [item for item in changelog[key] if item]
+    return changelog, unknown
+
+
+def check_changelog(changelog: dict) -> None:
+    """Limites de l'API, vérifiées avant tout envoi."""
+    if len(changelog["summary"]) > MAX_SUMMARY_LENGTH:
+        raise fail(f"introduction des nouveautés trop longue ({len(changelog['summary'])} caractères, {MAX_SUMMARY_LENGTH} au plus)")
+    for key in SECTIONS:
+        items = changelog[key]
+        if len(items) > MAX_ITEMS:
+            raise fail(f"« {SECTION_NAMES[key]} » : {len(items)} points, {MAX_ITEMS} au plus")
+        for item in items:
+            if len(item) > MAX_ITEM_LENGTH:
+                raise fail(f"« {SECTION_NAMES[key]} » : point trop long ({len(item)} caractères, {MAX_ITEM_LENGTH} au plus) : {item[:60]}…")
+
+
+def describe_changelog(changelog: dict) -> str:
+    parts = ["introduction"] if changelog["summary"] else []
+    parts += [f"{SECTION_NAMES[key]} : {len(changelog[key])}" for key in SECTIONS if changelog[key]]
+    return ", ".join(parts) or "vides"
+
+
+def commit_notes(version: str) -> str:
+    """Repli sans fichier de notes : les commits depuis la version précédente, en « Autres changements »."""
+    tag = f"v{version}"
+    has_tag = subprocess.run(["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"], cwd=PROJECT_DIR,
+                             capture_output=True).returncode == 0
+    ref = tag if has_tag else "HEAD"
+    previous = subprocess.run(["git", "describe", "--tags", "--abbrev=0", f"{ref}^"], cwd=PROJECT_DIR,
+                              capture_output=True, text=True, encoding="utf-8")
+    span = f"{previous.stdout.strip()}..{ref}" if previous.returncode == 0 else ref
+    log = subprocess.run(["git", "log", "--no-merges", "--pretty=- %s", span], cwd=PROJECT_DIR,
+                         capture_output=True, text=True, encoding="utf-8")
+    if log.returncode != 0 or not log.stdout.strip():
+        return ""
+    return f"## {SECTION_NAMES['other']}\n\n{log.stdout.strip()}"
+
+
+def read_changelog(args: argparse.Namespace, version: str) -> dict:
+    """Nouveautés de la version découpées en rubriques : --notes, --notes-file, sinon notes/X.Y.Z.md, sinon les commits."""
     if args.notes is not None:
-        return args.notes.strip()
-    return None
+        source, markdown = "--notes", args.notes
+    else:
+        path = Path(args.notes_file) if args.notes_file else NOTES_DIR / f"{version}.md"
+        if path.is_file():
+            source, markdown = path.name, path.read_text(encoding="utf-8-sig")
+        elif args.notes_file:
+            raise fail(f"fichier de nouveautés introuvable : {path}")
+        else:
+            warn(f"notes/{version}.md absent : nouveautés = liste des commits depuis la version précédente")
+            source, markdown = "commits", commit_notes(version)
+    changelog, unknown = split_changelog(markdown)
+    for title in unknown:
+        warn(f"titre « {title} » inconnu : ses points vont dans « {SECTION_NAMES['other']} » "
+             f"(titres reconnus : {', '.join(SECTION_NAMES.values())})")
+    check_changelog(changelog)
+    ok(f"nouveautés ({source}) : {describe_changelog(changelog)}")
+    return changelog
 
 
 # ----------------------------------------------------------------------------------------------------------
@@ -371,9 +502,9 @@ def publish(cfg: Config, args: argparse.Namespace) -> None:
     version = args.version or package_version()
     if not SEMVER.match(version):
         raise fail(f"numéro de version invalide : {version}")
-    notes = read_notes(args)
     step(f"Version {version} vers {cfg.api}{' (brouillon)' if args.draft else ''}")
     cfg.require_password()
+    changelog = read_changelog(args, version)
 
     step("Fichiers de la version")
     files = release_files(version, args.setup, args.portable)
@@ -392,11 +523,10 @@ def publish(cfg: Config, args: argparse.Namespace) -> None:
             raise fail(f"la version {version} est déjà publiée : montez le numéro dans package.json")
         if existing:
             release = existing
-            info(f"version {version} déjà créée (non publiée) : ses fichiers sont remplacés")
-            if notes is not None:
-                release = api.request("PUT", f"/admin/releases/{release['id']}/notes", json={"notes": notes}).json()
+            info(f"version {version} déjà créée (non publiée) : ses fichiers et ses nouveautés sont remplacés")
+            release = api.request("PUT", f"/admin/releases/{release['id']}/changelog", json=changelog).json()
         else:
-            release = api.request("POST", "/admin/releases", json={"version": version, "notes": notes or ""}).json()
+            release = api.request("POST", "/admin/releases", json={"version": version, "changelog": changelog}).json()
             ok(f"version {version} créée")
         for kind, path in files.items():
             api.upload(release["id"], kind, path)
@@ -407,6 +537,7 @@ def publish(cfg: Config, args: argparse.Namespace) -> None:
         if args.draft:
             step(f"Version {version} envoyée sans être publiée")
             info(f"à publier dans {cfg.site}/admin/versions")
+            info(discord_reminder(cfg))
             return
         api.request("PUT", f"/admin/releases/{release['id']}/published", json={"published": True})
         ok(f"version {version} publiée")
@@ -422,6 +553,12 @@ def publish(cfg: Config, args: argparse.Namespace) -> None:
         warn(f"latest.yml annonce {announced.group(1) if announced else '?'} (une version plus récente est-elle déjà publiée ?)")
     step(f"Version {version} publiée en {time.monotonic() - started:.0f} s")
     info(f"page de téléchargement : {cfg.site}/application")
+    info(discord_reminder(cfg))
+
+
+def discord_reminder(cfg: Config) -> str:
+    """La publication n'annonce plus rien sur Discord : l'admin le fait depuis le site, quand il le souhaite."""
+    return f"annonce Discord : à faire depuis {cfg.site}/admin/versions (bouton « Notifier la mise à jour » de la version)"
 
 
 def check(cfg: Config, args: argparse.Namespace) -> None:
@@ -431,6 +568,11 @@ def check(cfg: Config, args: argparse.Namespace) -> None:
     info(f"API           : {cfg.api}")
     info(f"compte        : {cfg.user} ({'mot de passe renseigné' if cfg.password else 'MOT DE PASSE MANQUANT'})")
     info(f"version       : {version} ({'--version' if args.version else 'package.json'})")
+    step("Nouveautés")
+    try:
+        read_changelog(args, version)
+    except DeployError:
+        pass
     step("Fichiers de la version")
     try:
         files = release_files(version, args.setup, args.portable)
@@ -464,8 +606,8 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="vérifie sans rien modifier")
     parser.add_argument("--dev", action="store_true", help="API de dev au lieu de la production")
     parser.add_argument("--draft", action="store_true", help="envoie sans publier")
-    parser.add_argument("--notes", help="nouveautés (Markdown)")
-    parser.add_argument("--notes-file", help="fichier Markdown des nouveautés")
+    parser.add_argument("--notes", help="nouveautés (Markdown, mêmes titres de rubriques que notes/modele.md)")
+    parser.add_argument("--notes-file", help="fichier Markdown des nouveautés (par défaut notes/X.Y.Z.md)")
     parser.add_argument("--version", help="numéro de version (par défaut celui de package.json)")
     parser.add_argument("--setup", help="chemin de l'installateur (par défaut release/Reflect-FiveM-Setup-X.Y.Z.exe)")
     parser.add_argument("--portable", help="chemin de la version portable")

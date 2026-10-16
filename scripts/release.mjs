@@ -7,6 +7,10 @@
 //
 // La version publiée est celle du dernier commit (package.json de HEAD). Le workflow .github/workflows/release.yml
 // compile, signe, crée la release GitHub et met la version en ligne sur reflect-fivem.com.
+//
+// Nouveautés : notes/X.Y.Z.md du dernier commit, découpé en rubriques par deploy/deploy.py (modèle : notes/modele.md).
+// Le découpage est vérifié ici avant de pousser le tag. L'annonce sur Discord se fait ensuite depuis l'administration
+// du site (bouton « Notifier la mise à jour »).
 
 import { execFileSync, spawnSync } from 'node:child_process'
 
@@ -14,7 +18,8 @@ const args = process.argv.slice(2)
 const dryRun = args.includes('--dry-run')
 const watch = !args.includes('--no-watch')
 const allowDirty = args.includes('--allow-dirty')
-const SITE_API = 'https://reflect-fivem.com/api'
+const SITE = 'https://reflect-fivem.com'
+const SITE_API = `${SITE}/api`
 
 const color = (code, text) => (process.stdout.isTTY ? `\x1b[${code}m${text}\x1b[0m` : text)
 const step = (m) => console.log(`\n${color('1;36', `==> ${m}`)}`)
@@ -46,6 +51,90 @@ function live(cmd, cmdArgs) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+// Rubriques des nouveautés : même découpage que deploy/deploy.py (split_changelog), qui envoie les notes à l'API.
+const SECTION_NAMES = { features: 'Nouveautés', improvements: 'Améliorations', fixes: 'Corrections de bugs', other: 'Autres changements' }
+const SECTION_TITLES = {
+  features: ['nouveautes', 'nouveaute', 'nouvelles fonctionnalites', 'fonctionnalites', 'new features', 'features'],
+  improvements: ['ameliorations', 'amelioration', 'improvements'],
+  fixes: ['corrections', 'correction', 'corrections de bugs', 'corrections de bug', 'correctifs', 'bug fixes', 'fixes'],
+  other: ['autres', 'autre', 'autres changements', 'divers', 'other', 'other changes']
+}
+/** Limites de l'API (PUT /admin/releases/{id}/changelog). */
+const LIMITS = { items: 50, item: 500, summary: 5000 }
+
+/** Rubrique d'un titre (minuscules, sans accents ni ponctuation), null s'il n'en désigne aucune. */
+function sectionOf(title) {
+  const plain = title.toLowerCase().normalize('NFKD').replace(/\p{M}/gu, '').replace(/[^a-z0-9]+/g, ' ').trim()
+  return Object.keys(SECTION_TITLES).find((key) => SECTION_TITLES[key].includes(plain)) ?? null
+}
+
+/** Introduction (texte avant le premier titre), points par rubrique et titres inconnus (rangés dans « Autres »). */
+function splitChangelog(markdown) {
+  const changelog = { summary: '', features: [], improvements: [], fixes: [], other: [] }
+  const summary = []
+  const unknown = []
+  let section = null
+  let open = false
+  for (const line of markdown.replace(/<!--[\s\S]*?-->/g, '').split(/\r?\n/)) {
+    const heading = line.match(/^#{1,6}\s+(.*?)\s*#*\s*$/)
+    if (heading) {
+      section = sectionOf(heading[1])
+      if (!section) {
+        unknown.push(heading[1])
+        section = 'other'
+      }
+      open = false
+      continue
+    }
+    if (!section) {
+      summary.push(line)
+      continue
+    }
+    if (!line.trim()) {
+      open = false
+      continue
+    }
+    const items = changelog[section]
+    const bullet = line.match(/^(?:[-*+•]|\d+[.)])\s+(.*)$/)
+    if (bullet) items.push(bullet[1].trim())
+    else if (items.length && (open || /^\s/.test(line))) items[items.length - 1] += ` ${line.trim()}`
+    else items.push(line.trim())
+    open = true
+  }
+  changelog.summary = summary.join('\n').trim()
+  for (const key of Object.keys(SECTION_NAMES)) changelog[key] = changelog[key].filter(Boolean)
+  return { changelog, unknown }
+}
+
+/** Nouveautés du dernier commit vérifiées avant de pousser le tag : titres reconnus, limites de l'API. */
+function checkNotes(version) {
+  const markdown = run('git', ['show', `HEAD:notes/${version}.md`], { quiet: true })
+  if (markdown === null) {
+    warn(`notes/${version}.md absent : les nouveautés seront la liste des commits depuis la version précédente (« ${SECTION_NAMES.other} »)`)
+    return
+  }
+  const { changelog, unknown } = splitChangelog(markdown)
+  if (unknown.length)
+    throw fail(`notes/${version}.md : titre(s) inconnu(s) ${unknown.map((t) => `« ${t} »`).join(', ')}. ` +
+      `Titres des rubriques : ${Object.values(SECTION_NAMES).map((t) => `« ## ${t} »`).join(', ')} (voir notes/modele.md)`)
+  if (changelog.summary.length > LIMITS.summary) throw fail(`notes/${version}.md : introduction trop longue (${LIMITS.summary} caractères au plus)`)
+  for (const [key, name] of Object.entries(SECTION_NAMES)) {
+    if (changelog[key].length > LIMITS.items) throw fail(`notes/${version}.md : « ${name} » a ${changelog[key].length} points (${LIMITS.items} au plus)`)
+    const long = changelog[key].find((item) => item.length > LIMITS.item)
+    if (long) throw fail(`notes/${version}.md : point trop long dans « ${name} » (${LIMITS.item} caractères au plus) : ${long.slice(0, 60)}…`)
+  }
+  const parts = [changelog.summary ? 'introduction' : null, ...Object.entries(SECTION_NAMES).filter(([key]) => changelog[key].length).map(([key, name]) => `${name} : ${changelog[key].length}`)]
+  if (!parts.some(Boolean)) throw fail(`notes/${version}.md est vide`)
+  if (Object.keys(SECTION_NAMES).every((key) => !changelog[key].length))
+    warn(`notes/${version}.md n'a aucune rubrique : tout le texte sera l'introduction (voir notes/modele.md)`)
+  ok(`nouveautés : notes/${version}.md (${parts.filter(Boolean).join(', ')})`)
+}
+
+/** Rappel de fin : l'annonce Discord n'est plus faite par la publication. */
+function discordReminder() {
+  info(`annonce Discord : à faire depuis ${SITE}/admin/versions (bouton « Notifier la mise à jour » de la version)`)
+}
+
 async function main() {
   step('Vérifications')
   run('git', ['rev-parse', '--show-toplevel'])
@@ -76,9 +165,7 @@ async function main() {
   }
   ok(`tag ${tag} libre`)
 
-  if (run('git', ['cat-file', '-e', `HEAD:notes/${version}.md`], { quiet: true }) === null) {
-    warn(`notes/${version}.md absent : les nouveautés seront la liste des commits depuis la version précédente`)
-  } else ok(`nouveautés : notes/${version}.md`)
+  checkNotes(version)
 
   const upstream = run('git', ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], { quiet: true })
   const ahead = upstream ? Number(run('git', ['rev-list', '--count', `${upstream}..HEAD`])) : null
@@ -109,6 +196,7 @@ async function main() {
 
   if (!watch) {
     info(`suivi : ${actionsUrl}`)
+    discordReminder()
     return
   }
   if (run('gh', ['--version'], { quiet: true }) === null) {
@@ -145,6 +233,7 @@ async function main() {
     warn('reflect-fivem.com injoignable pour la vérification')
   }
   step(`Version ${version} publiée`)
+  discordReminder()
 }
 
 main().catch((err) => {

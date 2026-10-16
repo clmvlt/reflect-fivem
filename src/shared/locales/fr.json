@@ -1195,7 +1195,6 @@
     "facts": {
       "added": "Ajouté le",
       "captured": "Installation existante",
-      "installedFiles": "Fichiers installés",
       "market": "Marketplace",
       "marketVersion": "Marketplace, version {{version}}",
       "preset": "Preset ReShade",

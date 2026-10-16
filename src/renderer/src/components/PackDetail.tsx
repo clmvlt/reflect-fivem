@@ -234,8 +234,6 @@ export function PackDetail({
           <dl className="facts">
             <dt>{t('packDetail.facts.size')}</dt>
             <dd>{bytes(pack.contentSize)}</dd>
-            <dt>{t('packDetail.facts.installedFiles')}</dt>
-            <dd>{num(installable.reduce((s, c) => s + c.fileCount, 0))}</dd>
             <dt>{t('packDetail.facts.added')}</dt>
             <dd>{imported}</dd>
             <dt>{t('packDetail.facts.source')}</dt>

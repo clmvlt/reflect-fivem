@@ -386,7 +386,7 @@ function Profile({ me, onOpenAuthor }: { me: AccountMe; onOpenAuthor: (slug: str
           </div>
         </div>
       ) : !draft ? (
-        <p className="muted">{t('common.loading')}</p>
+        <p className="muted loading">{t('common.loading')}</p>
       ) : (
         <form className="form-panel" onSubmit={(e) => void save(e)}>
           <Field label={t('accountView.fields.displayName')} hint={t('accountView.fields.displayNameHint')}>

@@ -308,7 +308,7 @@ export function PackReviews({
           </div>
         </div>
       ) : !ratings ? (
-        <p className="muted">{t('common.loading')}</p>
+        <p className="muted loading">{t('common.loading')}</p>
       ) : (
         <Ratings
           pack={pack}
@@ -549,7 +549,7 @@ function Comments({
           </div>
         </div>
       ) : !data ? (
-        <p className="muted">{t('common.loading')}</p>
+        <p className="muted loading">{t('common.loading')}</p>
       ) : (
         <>
           {data.canComment && !account?.muted ? (

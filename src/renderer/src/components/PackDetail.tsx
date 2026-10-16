@@ -27,6 +27,11 @@ const destinations = (): { key: string; label: string; dest: Destination | null 
 ]
 
 const keyOf = (d: Destination | null): string => (d ? `${d.root}:${d.path}` : 'none')
+
+/** Fiches en ligne déjà lues, par pack et par langue : une fiche rouverte s'affiche tout de suite (puis est relue). */
+const onlineCache = new Map<string, MarketPackDetail>()
+/** Attente maximale de la fiche en ligne, de l'analyse et des notes : au-delà, la fiche s'affiche sans elles. */
+const REVEAL_WAIT_MS = 350
 const labelOf = (d: Destination): string => `${d.root === 'fivem' ? 'FiveM' : 'GTA V'}${d.path ? ` › ${d.path.split('/').join(' › ')}` : ''}`
 
 export function PackDetail({
@@ -42,7 +47,7 @@ export function PackDetail({
   onSignIn: () => void
 }) {
   const { t, i18n } = useTranslation()
-  const { overview, task, run, changeGame } = useStore()
+  const { overview, account, task, run, changeGame } = useStore()
   const perfCtx = usePerformance()
   const confirmHeavy = usePerfConfirm()
   const [renaming, setRenaming] = useState(false)
@@ -52,13 +57,22 @@ export function PackDetail({
   // Fiche en ligne du pack de la Marketplace : sa note, ses commentaires (et sa vidéo pour un pack téléchargé avant
   // l'ajout des vidéos). null : pas de fiche (pack importé, retiré de la Marketplace, API injoignable).
   const onlineKey = marketId && !gone ? `${marketKind}:${marketId}:${i18n.language}` : null
-  const [online, setOnline] = useState<MarketPackDetail | null>(null)
+  const [online, setOnline] = useState<MarketPackDetail | null>(() => (onlineKey && onlineCache.get(onlineKey)) || null)
+  // Fiche en ligne lue, ou pas de fiche à lire.
+  const [onlineRead, setOnlineRead] = useState(() => !onlineKey || onlineCache.has(onlineKey))
   const loadOnline = useCallback(async () => {
-    if (!marketId || gone || !onlineKey) return setOnline(null)
+    if (!marketId || gone || !onlineKey) {
+      setOnline(null)
+      return setOnlineRead(true)
+    }
     try {
-      setOnline(await window.api.marketDetail(marketId, marketKind))
+      const detail = await window.api.marketDetail(marketId, marketKind)
+      onlineCache.set(onlineKey, detail)
+      setOnline(detail)
     } catch {
       /* hors ligne, maintenance : la fiche reste sans notes ni commentaires */
+    } finally {
+      setOnlineRead(true)
     }
   }, [marketId, marketKind, gone, onlineKey])
   // Langue changée : fiche relue (textes de l'API).
@@ -81,6 +95,16 @@ export function PackDetail({
   }, [downloading, loadOnline])
   const { choose, picker } = useInstallTarget()
   const perfDetail = usePerformanceDetail(pack.marketplace && pack.marketplace.kind !== 'mod' ? pack.marketplace.id : null, 'pack')
+  // Fiche montrée d'un coup quand sa fiche en ligne, son analyse (et la machine), et les notes du compte sont lues (ou
+  // après REVEAL_WAIT_MS) : la note, le verdict et l'invitation à noter n'apparaissent pas après coup en décalant la page.
+  const [shown, setShown] = useState(false)
+  useEffect(() => {
+    const timer = setTimeout(() => setShown(true), REVEAL_WAIT_MS)
+    return () => clearTimeout(timer)
+  }, [])
+  const perfRead = perfDetail !== undefined && (!perfDetail?.report || !!perfCtx)
+  const ratingsRead = !online || !account || account.muted || !!ratings.ratings || !!ratings.error
+  if (!shown && onlineRead && perfRead && ratingsRead) setShown(true)
 
   if (!overview) return null
   const active = overview.state.active?.packId === pack.id
@@ -118,7 +142,7 @@ export function PackDetail({
   }
 
   return (
-    <div className="page">
+    <div className={`page ${shown ? '' : 'is-pending'}`}>
       <div className="back-row">
         <button className="link" onClick={onBack}>
           {t('packDetail.back')}

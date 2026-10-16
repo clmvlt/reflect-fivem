@@ -177,24 +177,31 @@ export function PerfFacts({ perf }: { perf: PackPerformance | null | undefined }
 // ---------------------------------------------------------------------------
 // Détail d'une fiche de la Marketplace
 
+/** Analyses déjà lues, par fiche et par langue : une fiche rouverte affiche la sienne tout de suite (puis la relit). */
+const detailCache = new Map<string, PerformanceDetail | null>()
+
 /** Analyse détaillée (GET /…/performance) ; undefined pendant le chargement, null si l'API ne la fournit pas. */
 export function usePerformanceDetail(id: string | null | undefined, kind: MarketKind): PerformanceDetail | null | undefined {
   const { i18n } = useTranslation()
   const [detail, setDetail] = useState<{ id: string; value: PerformanceDetail | null } | null>(null)
+  const key = `${kind}:${id}:${i18n.language}`
   // Analyse traduite par l'API : relue au changement de langue.
   useEffect(() => {
     if (!id) return
     let live = true
     window.api.marketPerformance(id, kind).then(
-      (value) => live && setDetail({ id, value }),
+      (value) => {
+        detailCache.set(key, value)
+        if (live) setDetail({ id, value })
+      },
       () => live && setDetail({ id, value: null })
     )
     return () => {
       live = false
     }
-  }, [id, kind, i18n.language])
+  }, [id, kind, key])
   if (!id) return null
-  return detail?.id === id ? detail.value : undefined
+  return detail?.id === id ? detail.value : detailCache.get(key)
 }
 
 /**

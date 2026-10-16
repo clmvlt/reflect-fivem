@@ -360,7 +360,7 @@ function PackGrid({
         </p>
       </div>
     )
-  if (!page) return loading ? <p className="muted">{t('common.loading')}</p> : null
+  if (!page) return loading ? <p className="muted loading">{t('common.loading')}</p> : null
   const rest = skip ? page.items.filter((item) => !skip.includes(item.id)) : page.items
   const items = keep ? rest.filter(keep) : rest
   const hidden = rest.length - items.length
@@ -666,7 +666,7 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal, onSignIn }: Nav 
     return (
       <div className="page">
         {back}
-        <p className="muted">{t('common.loading')}</p>
+        <p className="muted loading">{t('common.loading')}</p>
       </div>
     )
 
@@ -675,8 +675,9 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal, onSignIn }: Nav 
   const modUpdate = mod && !!local && !!pack.sha256 && local.marketplace!.sha256 !== pack.sha256
   const category = mod ? categoryLabel(pack.category, categories) : null
 
+  // Clé : la fiche chargée remplace « Chargement… » par une nouvelle page, animée à son arrivée.
   return (
-    <div className="page">
+    <div className="page" key="ready">
       {back}
       <div className="store">
         <Gallery
@@ -804,7 +805,7 @@ function AuthorView({ slug, back, onOpen, onOpenLocal }: Nav & { slug: string; b
     return (
       <div className="page">
         {back}
-        <p className="muted">{t('common.loading')}</p>
+        <p className="muted loading">{t('common.loading')}</p>
       </div>
     )
 
@@ -818,7 +819,7 @@ function AuthorView({ slug, back, onOpen, onOpenLocal }: Nav & { slug: string; b
     author.createdAt && t('marketplace.author.memberSince', { date: date(author.createdAt) })
   ]
   return (
-    <div className="page">
+    <div className="page" key="ready">
       {back}
       <header className="author-head">
         <Avatar url={author.avatarUrl} name={author.displayName} size={96} />

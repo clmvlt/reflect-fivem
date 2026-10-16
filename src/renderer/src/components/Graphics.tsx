@@ -57,10 +57,11 @@ export function Graphics() {
   const recos = useMemo(() => unmet(recommendationsFor(activePack?.features ?? []), draft), [activePack, draft, i18n.language])
   const running = (overview?.games.runningProcesses.length ?? 0) > 0
 
+  // Clé « ready » : la page lue remplace la page vide par une nouvelle, animée à son arrivée.
   if (state === undefined) return <div className="page" />
   if (state === null)
     return (
-      <div className="page">
+      <div className="page" key="ready">
         <header className="page-head">
           <h1>{t('graphics.title')}</h1>
         </header>
@@ -94,7 +95,7 @@ export function Graphics() {
   }
 
   return (
-    <div className="page with-savebar">
+    <div className="page with-savebar" key="ready">
       <header className="page-head">
         <h1>{t('graphics.title')}</h1>
         <span className="page-note">{[state.videoCard, state.resolution].filter(Boolean).join(' · ')}</span>

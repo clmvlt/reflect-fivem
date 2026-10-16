@@ -28,6 +28,8 @@
   --warn-text: #9d5d00;
   --star: #e3a008;
   --star-off: rgba(0, 0, 0, 0.16);
+  --scroll-thumb: rgba(0, 0, 0, 0.22);
+  --scroll-thumb-hover: rgba(0, 0, 0, 0.36);
   accent-color: var(--accent);
 }
 
@@ -58,6 +60,8 @@
     --warn-text: #f0c75e;
     --star: #ffc83d;
     --star-off: rgba(255, 255, 255, 0.2);
+    --scroll-thumb: rgba(255, 255, 255, 0.16);
+    --scroll-thumb-hover: rgba(255, 255, 255, 0.28);
   }
 }
 
@@ -202,7 +206,59 @@ h2 {
 .page {
   flex: 1;
   overflow-y: auto;
+  /* Place de la barre de défilement toujours réservée : la page ne change pas de largeur quand elle apparaît ou disparaît. */
+  scrollbar-gutter: stable;
   padding: 24px 32px 40px;
+  animation: page-in 0.16s ease-out;
+}
+/* Page ouverte : fondu et léger glissement vers le haut. Rien ne reste après l'animation : une transformation
+   restante ferait de la page le repère des fenêtres (position: fixed) qu'elle contient. */
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+/* Page qui attend ses données (fiche d'un pack) : cachée, puis animée dès qu'elle est prête. */
+.page.is-pending {
+  opacity: 0;
+  animation: none;
+}
+/* « Chargement… » montré seulement si le chargement dure : rien ne clignote quand la réponse est rapide. */
+.loading {
+  animation: loading-in 0.2s ease-out 0.3s backwards;
+}
+@keyframes loading-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page,
+  .loading {
+    animation: none;
+  }
+}
+
+/* Barres de défilement fines aux couleurs du thème : pouce arrondi sur fond transparent, sans flèches. */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background: var(--scroll-thumb) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover) padding-box;
+}
+::-webkit-scrollbar-button {
+  display: none;
 }
 
 .page-head {

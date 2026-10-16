@@ -7,6 +7,7 @@ import { problemCount } from '@shared/insights'
 import { Cover, EmptyState, packMenuAction, packMeta, Progress, RenameInput } from './common'
 import { ModLibrary, useModActions } from './Mods'
 import { useInstallTarget } from './InstallTarget'
+import { usePerformance } from './Performance'
 
 export function Library({
   kind,
@@ -24,6 +25,8 @@ export function Library({
   const { t } = useTranslation()
   const { overview, task, run } = useStore()
   const modActions = useModActions()
+  // Machine lue dès la bibliothèque : la fiche d'un pack a son verdict « Sur votre PC » dès son ouverture.
+  usePerformance()
   const [query, setQuery] = useState('')
   const library = overview?.library
   const activeId = overview?.state.active?.packId ?? null

@@ -246,7 +246,8 @@ select:not(:disabled),
 input[type='checkbox']:not(:disabled),
 input[type='range']:not(:disabled),
 .switch,
-.card.clickable {
+.card.clickable,
+.featured-item {
   cursor: pointer;
 }
 button.primary {
@@ -1514,7 +1515,7 @@ button.google {
   gap: 6px;
 }
 
-/* Pack du moment : bandeau en haut de la Marketplace, halo et badge dans la liste */
+/* Pack du moment : vitrine en haut de la Marketplace, halo et badge dans la liste */
 .featured-badge {
   display: inline-flex;
   align-self: flex-start;
@@ -1551,12 +1552,9 @@ button.google {
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
   animation: featured-glow 3.5s ease-in-out infinite alternate;
 }
+/* Vitrine : un titre de section, puis des cartes faites de la seule couverture, le texte posé sur un dégradé sombre. */
 .featured {
-  margin-bottom: 20px;
-  padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  margin-bottom: 24px;
 }
 .featured-head {
   display: flex;
@@ -1566,56 +1564,68 @@ button.google {
   color: var(--accent-text);
   font-weight: 600;
 }
-.featured-sub {
-  color: var(--text-2);
-  font-size: 12px;
-  font-weight: 400;
-}
 /* Une seule rangée : défile de côté au-delà de la largeur de la page. */
 .featured-row {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(340px, 440px);
+  grid-auto-columns: minmax(340px, 460px);
   gap: 12px;
+  padding-bottom: 4px;
   overflow-x: auto;
   scroll-snap-type: x proximity;
 }
+/* Texte toujours clair sur l'image : la carte reprend les couleurs du thème sombre, quel que soit celui de Windows. */
 .featured-item {
-  display: grid;
-  grid-template-columns: 168px minmax(0, 1fr);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
+  --text: #ffffff;
+  --text-2: rgba(255, 255, 255, 0.78);
+  --accent-text: color-mix(in srgb, var(--accent) 40%, white);
+  --border: rgba(255, 255, 255, 0.25);
+  --btn: rgba(255, 255, 255, 0.12);
+  --btn-hover: rgba(255, 255, 255, 0.2);
+  --btn-border: rgba(255, 255, 255, 0.18);
+  --btn-border-bottom: rgba(255, 255, 255, 0.1);
+  --star-off: rgba(255, 255, 255, 0.3);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  /* Sans couverture : un fond dégradé de l'accent. */
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 55%, black), #0a0a0a);
+  color: var(--text);
   overflow: hidden;
-  cursor: pointer;
+  isolation: isolate;
   scroll-snap-align: start;
 }
-.featured-item:hover {
-  background: var(--surface-hover);
+.featured-item > .cover-img {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  transition: transform 0.4s ease;
 }
-.featured-cover {
-  min-height: 100%;
-  background: var(--media);
-  overflow: hidden;
-}
-.featured-cover .cover-empty {
-  font-size: 13px;
+.featured-item:hover > .cover-img {
+  transform: scale(1.04);
 }
 .featured-body {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  min-width: 0;
-  padding: 10px 12px;
+  padding: 56px 14px 12px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.92), rgba(0, 0, 0, 0.72) 50%, transparent);
 }
-.featured-body .meta {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.featured-name {
+  overflow: hidden;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 .featured-summary {
   display: -webkit-box;
-  margin: 4px 0 0;
+  margin: 0;
   overflow: hidden;
   color: var(--text-2);
   font-size: 12px;
@@ -1623,13 +1633,33 @@ button.google {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
-.featured-actions {
+.featured-foot {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   min-height: 32px;
-  margin-top: 6px;
+  margin-top: 8px;
+}
+.featured-foot .meta {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.featured-foot .dl-count {
+  font-size: inherit;
+}
+.featured-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  max-width: 65%;
   cursor: default;
+}
+.featured-actions .progress {
+  min-width: 160px;
 }
 .side .featured-badge {
   margin-bottom: -4px;
@@ -1638,14 +1668,14 @@ button.google {
   .featured-row {
     grid-auto-columns: minmax(280px, 1fr);
   }
-  .featured-item {
-    grid-template-columns: 120px minmax(0, 1fr);
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   .card.is-featured {
     animation: none;
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 16px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+  .featured-item > .cover-img {
+    transition: none;
   }
 }
 
@@ -1712,6 +1742,7 @@ button.google {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-height: 20px;
   margin: -6px 0 16px;
 }
 

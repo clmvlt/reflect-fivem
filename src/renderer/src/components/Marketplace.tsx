@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
-import type { AuthorProfile, AuthorSummary, MarketCategory, MarketKind, MarketPack, MarketPackDetail, MarketPage, MarketTag, PackManifest, TaskProgress } from '@shared/types'
+import type { AuthorProfile, AuthorSummary, MarketCategory, MarketKind, MarketPack, MarketPackDetail, MarketPage, PackManifest, TaskProgress } from '@shared/types'
 import { MOD_GONE, PACK_GONE, type MarketQuery } from '@shared/api'
 import { apiError, cleanError, useStore } from '../store'
 import { bytes, longDate as date, marketImageUrl, num, ratingText } from '../lib/format'
 import { Gallery } from './Gallery'
 import { Markdown } from './Markdown'
 import { Avatar, EmptyState, Progress } from './common'
-import { PackReviews, RatingLine } from './Reviews'
+import { isRated, PackReviews, RatingLine } from './Reviews'
 import { categoryLabel, localMod, ModMarketAction, useModCategories } from './Mods'
 import { PerfBadge, PerfDetails, PerfFacts, usePerfConfirm, usePerformance, type PerfContext } from './Performance'
 import { estimate, type PackPerformance } from '@shared/performance'
@@ -193,7 +193,6 @@ function MarketList({
   const { t, i18n } = useTranslation()
   const mods = catalog === 'mod'
   const [query, setQuery] = useState<MarketQuery>({ kind: catalog, sort: 'recommended', page: 0 })
-  const [tags, setTags] = useState<MarketTag[]>([])
   const [categories, setCategories] = useState<MarketCategory[]>([])
   const [authors, setAuthors] = useState<AuthorSummary[]>([])
   const [featured, setFeatured] = useState<MarketPack[]>([])
@@ -213,7 +212,6 @@ function MarketList({
 
   useEffect(() => {
     if (mods) window.api.marketCategories().then(setCategories, () => setCategories([]))
-    else window.api.marketTags('pack').then(setTags, () => setTags([]))
     window.api.marketAuthors({ sort: 'popular' }).then(
       // Auteurs qui ont publié dans ce catalogue.
       (p) => setAuthors(p.items.filter((a) => (mods ? a.modCount : a.packCount) > 0)),
@@ -229,15 +227,17 @@ function MarketList({
     setQuery((q) => ({ ...q, page: 0 }))
     onAuthor(slug)
   }
-  const searched = !!(query.q || query.tag || query.category)
+  const searched = !!(query.q || query.category)
   const filtered = searched || !!filter
-  const total = page ? t(mods ? 'marketplace.mods' : 'marketplace.packs', { count: page.total, n: num(page.total) }) : ''
+  // Du moment : sur la liste complète ou celle d'un auteur, hors recherche ; avec « Compatibles avec mon PC », seulement ceux
+  // qui passent. Retirés de la liste complète en dessous, mais gardés dans celle d'un auteur pour qu'elle montre tous ses packs.
+  const shownFeatured = searched ? [] : filter ? featured.filter(filter.keep) : featured
+  const showFeatured = shownFeatured.length > 0
 
   return (
     <div className="page">
       <header className="page-head">
         <h1>Marketplace</h1>
-        <span className="page-note">{total}</span>
         <div className="spacer" />
         <input className="search" type="search" placeholder={t('common.search')} value={search} onChange={(e) => setSearch(e.target.value)} />
         <select value={query.sort} onChange={(e) => setQuery({ ...query, sort: e.target.value as MarketQuery['sort'], page: 0 })} aria-label={t('marketplace.sort.label')}>
@@ -261,17 +261,21 @@ function MarketList({
           <span className="switch-text">{t('marketplace.compatible.label')}</span>
         </label>
       </header>
-      {/* Du moment : seulement sur la liste complète, sans recherche ni filtre. */}
-      {featured.length > 0 && !filtered && !author && <FeaturedBanner items={featured} library={overview.library} onOpen={onOpen} onOpenLocal={onOpenLocal} />}
+      {showFeatured && <FeaturedBanner items={shownFeatured} library={overview.library} onOpen={onOpen} onOpenLocal={onOpenLocal} />}
       <AuthorStrip authors={authors} author={author} catalog={catalog} onAuthor={chooseAuthor} />
-      {selected && (
-        <div className="author-filter">
-          <span className="muted">{t(mods ? 'marketplace.authorFilter.mods' : 'marketplace.authorFilter.packs', { name: selected.displayName })}</span>
-          <button className="link" onClick={() => onOpen({ kind: 'author', slug: selected.slug })}>
-            {t('marketplace.authorFilter.seePage')}
-          </button>
-        </div>
-      )}
+      {/* Toujours là, même sans auteur choisi : la liste ne se décale pas quand on passe de « Tous » à un auteur. */}
+      <div className="author-filter">
+        {selected ? (
+          <>
+            <span className="muted">{t(mods ? 'marketplace.authorFilter.mods' : 'marketplace.authorFilter.packs', { name: selected.displayName })}</span>
+            <button className="link" onClick={() => onOpen({ kind: 'author', slug: selected.slug })}>
+              {t('marketplace.authorFilter.seePage')}
+            </button>
+          </>
+        ) : (
+          <span className="muted">{t(mods ? 'marketplace.allMods' : 'marketplace.allPacks')}</span>
+        )}
+      </div>
 
       {mods && categories.length > 0 && (
         <div className="chips">
@@ -291,18 +295,6 @@ function MarketList({
           ))}
         </div>
       )}
-      {!mods && tags.length > 1 && (
-        <div className="chips">
-          <button className={`chip ${query.tag ? '' : 'is-selected'}`} onClick={() => setQuery({ ...query, tag: undefined, page: 0 })}>
-            {t('marketplace.allTags')}
-          </button>
-          {tags.map((tag) => (
-            <button key={tag.tag} className={`chip ${query.tag === tag.tag ? 'is-selected' : ''}`} onClick={() => setQuery({ ...query, tag: query.tag === tag.tag ? undefined : tag.tag, page: 0 })}>
-              {tag.tag}
-            </button>
-          ))}
-        </div>
-      )}
 
       <PackGrid
         page={page}
@@ -312,6 +304,7 @@ function MarketList({
         current={query.page ?? 0}
         onPage={(p) => setQuery({ ...query, page: p })}
         keep={filter?.keep}
+        skip={showFeatured && !author ? shownFeatured.map((f) => f.id) : undefined}
         empty={
           filter && !searched
             ? t(mods ? 'marketplace.empty.compatibleMod' : 'marketplace.empty.compatiblePack')
@@ -338,6 +331,7 @@ function PackGrid({
   onPage,
   empty,
   keep,
+  skip,
   onOpen,
   onOpenLocal
 }: Nav & {
@@ -350,6 +344,8 @@ function PackGrid({
   empty: string
   /** Filtre local (« Compatibles avec mon PC ») : les autres éléments de la page sont masqués. */
   keep?: (item: MarketPack) => boolean
+  /** Déjà affichés au-dessus (vitrine du moment) : retirés de la grille. */
+  skip?: string[]
 }) {
   const { overview, task } = useStore()
   const { t } = useTranslation()
@@ -364,9 +360,12 @@ function PackGrid({
       </div>
     )
   if (!page) return loading ? <p className="muted">{t('common.loading')}</p> : null
-  const items = keep ? page.items.filter(keep) : page.items
-  const hidden = page.items.length - items.length
+  const rest = skip ? page.items.filter((item) => !skip.includes(item.id)) : page.items
+  const items = keep ? rest.filter(keep) : rest
+  const hidden = rest.length - items.length
   const hiddenNote = hidden > 0 && <p className="hint hidden-note">{t('marketplace.hidden', { count: hidden, n: num(hidden) })}</p>
+  // Tous déjà dans la vitrine : rien de plus à montrer.
+  if (items.length === 0 && !hidden && rest.length < page.items.length && page.totalPages <= 1) return null
   if (items.length === 0 && page.totalPages <= 1)
     return (
       <EmptyState icon="search" title={empty} compact>
@@ -411,8 +410,8 @@ function FeaturedBadge({ kind, className = '' }: { kind: MarketKind; className?:
 const openItem = (item: MarketPack): MarketView => ({ kind: 'pack', id: item.id, catalog: item.kind })
 
 /**
- * Vitrine « Packs du moment » (ou « Mods du moment ») en haut de la Marketplace : une rangée de cartes horizontales
- * compactes (couverture, nom, auteur, note, résumé, action), qui défile de côté quand il y en a beaucoup.
+ * Vitrine « Packs du moment » (ou « Mods du moment ») en haut de la Marketplace : une rangée de cartes faites de la
+ * seule couverture, avec nom, résumé, auteur, note et action posés dessus, qui défile de côté quand il y en a beaucoup.
  */
 function FeaturedBanner({ items, library, onOpen, onOpenLocal }: Nav & { items: MarketPack[]; library: PackManifest[] }) {
   const { task } = useStore()
@@ -426,44 +425,64 @@ function FeaturedBanner({ items, library, onOpen, onOpenLocal }: Nav & { items: 
           <path d="M8 1.2l2.1 4.3 4.7.7-3.4 3.3.8 4.7L8 12l-4.2 2.2.8-4.7L1.2 6.2l4.7-.7z" />
         </svg>
         {title}
-        <span className="featured-sub">{t('marketplace.featured.sub')}</span>
       </div>
       <div className="featured-row">
-        {items.map((item) => {
-          const mine = task?.kind === 'download' && task.detail === item.id ? task : null
-          return (
-            <article key={item.id} className="featured-item clickable" onClick={() => onOpen(openItem(item))}>
-              <div className="featured-cover">
-                {item.cover ? (
-                  <img className="cover-img" src={marketImageUrl(item.id, item.cover.id, true, item.kind)} alt="" draggable={false} />
-                ) : (
-                  <div className="cover-empty">{item.name}</div>
-                )}
-              </div>
-              <div className="featured-body">
-                <div className="name" title={item.name}>
-                  {item.name}
-                </div>
-                <div className="meta">
-                  {item.author && (
-                    <>
-                      <Trans i18nKey="marketplace.by" components={{ author: <AuthorLink item={item} onOpen={onOpen} /> }} />
-                      {' · '}
-                    </>
-                  )}
-                  <RatingLine pack={item} />
-                </div>
-                {item.summary && <p className="featured-summary">{item.summary}</p>}
-                <div className="spacer" />
-                <div className="featured-actions" onClick={(e) => e.stopPropagation()}>
-                  {mine ? <Progress task={mine} /> : <MarketAction item={item} library={library} task={task} onOpenLocal={onOpenLocal} />}
-                </div>
-              </div>
-            </article>
-          )
-        })}
+        {items.map((item) => (
+          <FeaturedCard key={item.id} item={item} library={library} task={task} onOpen={onOpen} onOpenLocal={onOpenLocal} />
+        ))}
       </div>
     </section>
+  )
+}
+
+function FeaturedCard({ item, library, task, onOpen, onOpenLocal }: Nav & { item: MarketPack; library: PackManifest[]; task: TaskProgress | null }) {
+  const [failed, setFailed] = useState(false)
+  const mine = task?.kind === 'download' && task.detail === item.id ? task : null
+  return (
+    <article className="featured-item clickable" onClick={() => onOpen(openItem(item))}>
+      {item.cover && !failed && (
+        <img className="cover-img" src={marketImageUrl(item.id, item.cover.id, true, item.kind)} alt="" draggable={false} onError={() => setFailed(true)} />
+      )}
+      <div className="featured-body">
+        <div className="featured-name" title={item.name}>
+          {item.name}
+        </div>
+        {item.summary && <p className="featured-summary">{item.summary}</p>}
+        <div className="featured-foot">
+          <div className="meta">
+            {item.author && (
+              <>
+                <AuthorLink item={item} onOpen={onOpen} />
+                {' · '}
+              </>
+            )}
+            {isRated(item) && (
+              <>
+                <RatingLine pack={item} comments={false} />
+                {' · '}
+              </>
+            )}
+            <DownloadCount item={item} />
+          </div>
+          <div className="featured-actions" onClick={(e) => e.stopPropagation()}>
+            {mine ? <Progress task={mine} /> : <MarketAction item={item} library={library} task={task} onOpenLocal={onOpenLocal} />}
+          </div>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function DownloadCount({ item }: { item: MarketPack }) {
+  const { t } = useTranslation()
+  return (
+    <span className="dl-count" title={t('marketplace.downloads', { count: item.downloadCount, n: num(item.downloadCount) })}>
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+        <path d="M7.25 1.5h1.5v7.19l2.47-2.47 1.06 1.06L8 11.56 3.72 7.28l1.06-1.06 2.47 2.47z" />
+        <path d="M2 13h12v1.5H2z" />
+      </svg>
+      {num(item.downloadCount)}
+    </span>
   )
 }
 
@@ -537,13 +556,7 @@ function MarketCard({
             <>
               {/* Mod déjà dans la bibliothèque : son état prend la place du nombre de téléchargements. */}
               {!inLibrary && (
-                <span className="dl-count" title={t('marketplace.downloads', { count: item.downloadCount, n: num(item.downloadCount) })}>
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-                    <path d="M7.25 1.5h1.5v7.19l2.47-2.47 1.06 1.06L8 11.56 3.72 7.28l1.06-1.06 2.47 2.47z" />
-                    <path d="M2 13h12v1.5H2z" />
-                  </svg>
-                  {num(item.downloadCount)}
-                </span>
+                <DownloadCount item={item} />
               )}
               <MarketAction item={item} library={library} task={task} onOpenLocal={onOpenLocal} />
             </>
@@ -715,12 +728,12 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal, onSignIn }: Nav 
             <dd>{date(pack.archiveUpdatedAt ?? pack.updatedAt)}</dd>
             <dt>{t('marketplace.detail.downloads')}</dt>
             <dd>{num(pack.downloadCount)}</dd>
-            <dt>{t('marketplace.detail.rating')}</dt>
-            <dd>
-              {pack.rating.average !== null && pack.rating.count > 0
-                ? t('marketplace.detail.ratingValue', { rating: ratingText(pack.rating.average), count: pack.rating.count, n: num(pack.rating.count) })
-                : t('reviews.notRated')}
-            </dd>
+            {pack.rating.average !== null && pack.rating.count > 0 && (
+              <>
+                <dt>{t('marketplace.detail.rating')}</dt>
+                <dd>{t('marketplace.detail.ratingValue', { rating: ratingText(pack.rating.average), count: pack.rating.count, n: num(pack.rating.count) })}</dd>
+              </>
+            )}
             {pack.tags.length > 0 && (
               <>
                 <dt>{t('marketplace.detail.tags')}</dt>

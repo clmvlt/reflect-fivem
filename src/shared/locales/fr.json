@@ -1003,7 +1003,6 @@
     "allCategories": "Toutes",
     "allMods": "Tous les mods",
     "allPacks": "Tous les packs",
-    "allTags": "Tous",
     "author": {
       "memberSince": "membre depuis le {{date}}",
       "mods": "Mods",
@@ -1061,8 +1060,7 @@
       "mods_one": "Mod du moment",
       "mods_other": "Mods du moment",
       "packs_one": "Pack du moment",
-      "packs_other": "Packs du moment",
-      "sub": "sélectionnés par l’équipe"
+      "packs_other": "Packs du moment"
     },
     "hidden_one": "1 autre est masqué sur cette page : trop lourd pour votre PC à votre résolution.",
     "hidden_other": "{{n}} autres sont masqués sur cette page : trop lourds pour votre PC à votre résolution.",
@@ -1364,7 +1362,6 @@
     "modifiedByModerator": "(modifié par la modération)",
     "moreOptions": "Plus d’options",
     "moreReplies": "Voir plus de réponses ({{n}})",
-    "notRated": "Pas encore noté",
     "outOf5": "{{rating}} sur 5",
     "pinned": "Commentaire épinglé.",
     "placeholderMod": "Partagez votre avis sur ce mod…",

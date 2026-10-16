@@ -61,19 +61,21 @@ export function Score({ value, size = 14 }: { value: number; size?: number }) {
   )
 }
 
-/** « ★ 4,3 (12) » ou « Pas encore noté », puis le nombre de commentaires. */
+/** A reçu au moins une note. */
+export const isRated = (pack: Pick<MarketPack, 'rating'>): boolean => pack.rating.count > 0 && pack.rating.average !== null
+
+/** « ★ 4,3 (12) » (rien tant que personne n'a noté), puis le nombre de commentaires. */
 export function RatingLine({ pack, comments = true }: { pack: Pick<MarketPack, 'rating' | 'commentCount'>; comments?: boolean }) {
   const { t } = useTranslation()
   const { average, count } = pack.rating
+  if (!comments && !isRated(pack)) return null
   return (
     <span className="rating-line">
-      {count > 0 && average !== null ? (
+      {average !== null && count > 0 && (
         <span className="rating-value" title={t('reviews.ratingTitle', { rating: ratingText(average), count, n: num(count) })}>
           <Score value={average} size={14} />
           <span className="muted">({num(count)})</span>
         </span>
-      ) : (
-        <span className="muted">{t('reviews.notRated')}</span>
       )}
       {comments && (
         <span className="comment-count" title={t('reviews.comments', { count: pack.commentCount, n: num(pack.commentCount) })}>
@@ -281,7 +283,6 @@ function Ratings({
         ) : (
           <>
             <div className="ratings-average muted">–</div>
-            <div className="muted small">{t('reviews.notRated')}</div>
           </>
         )}
       </div>

@@ -32,7 +32,7 @@ const NAV: Exclude<Page, 'instances'>[] = ['library', 'market', 'graphics', 'cle
 export function App() {
   const { t } = useTranslation()
   const { overview, account, links, whatsNew, dismissWhatsNew, message, setMessage, run } = useStore()
-  const [page, setPage] = useState<Page>('library')
+  const [page, setPage] = useState<Page>('market')
   const [openPack, setOpenPack] = useState<string | null>(null)
   // Vues ouvertes dans la Marketplace (fiche, auteur...), la dernière affichée.
   const [marketStack, setMarketStack] = useState<MarketView[]>([])

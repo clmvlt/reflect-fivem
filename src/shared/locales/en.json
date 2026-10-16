@@ -1003,7 +1003,6 @@
     "allCategories": "All",
     "allMods": "All mods",
     "allPacks": "All packs",
-    "allTags": "All",
     "author": {
       "memberSince": "member since {{date}}",
       "mods": "Mods",
@@ -1061,8 +1060,7 @@
       "mods_one": "Featured mod",
       "mods_other": "Featured mods",
       "packs_one": "Featured pack",
-      "packs_other": "Featured packs",
-      "sub": "picked by the team"
+      "packs_other": "Featured packs"
     },
     "hidden_one": "1 more is hidden on this page: too heavy for your PC at your resolution.",
     "hidden_other": "{{n}} more are hidden on this page: too heavy for your PC at your resolution.",
@@ -1364,7 +1362,6 @@
     "modifiedByModerator": "(edited by a moderator)",
     "moreOptions": "More options",
     "moreReplies": "Show more replies ({{n}})",
-    "notRated": "Not rated yet",
     "outOf5": "{{rating}} out of 5",
     "pinned": "Comment pinned.",
     "placeholderMod": "Share your thoughts on this mod…",

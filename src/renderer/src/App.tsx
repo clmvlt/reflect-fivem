@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { MarketKind } from '@shared/types'
+import type { DownloadKind, MarketKind } from '@shared/types'
 import { useStore } from './store'
 import { Library } from './components/Library'
 import { PackDetail } from './components/PackDetail'
@@ -9,6 +9,7 @@ import { SettingsView } from './components/SettingsView'
 import { InstancesView } from './components/InstancesView'
 import { Graphics } from './components/Graphics'
 import { Marketplace, type MarketView } from './components/Marketplace'
+import { Builder, BuilderIcon, type BuilderRequest } from './components/Builder'
 import { AccountView } from './components/AccountView'
 import { Avatar } from './components/common'
 import { UpdatePanel } from './components/UpdatePanel'
@@ -22,7 +23,7 @@ import { MenuHost } from './components/Menu'
 import icon from './assets/icon.png'
 
 /** instances : page des instances FiveM, ouverte depuis les réglages. */
-type Page = 'library' | 'market' | 'graphics' | 'cleanup' | 'discord' | 'account' | 'settings' | 'instances'
+type Page = 'library' | 'market' | 'builder' | 'graphics' | 'cleanup' | 'discord' | 'account' | 'settings' | 'instances'
 
 /** Bibliothèque et Marketplace s'ouvrent sur les packs ; Packs et Mods s'affichent en dessous quand l'une est ouverte. */
 const SUB_NAV: { kind: MarketKind; label: 'packs' | 'mods' }[] = [
@@ -30,7 +31,7 @@ const SUB_NAV: { kind: MarketKind; label: 'packs' | 'mods' }[] = [
   { kind: 'mod', label: 'mods' }
 ]
 
-const NAV: Exclude<Page, 'instances'>[] = ['library', 'market', 'graphics', 'cleanup', 'settings']
+const NAV: Exclude<Page, 'instances'>[] = ['library', 'market', 'builder', 'graphics', 'cleanup', 'settings']
 
 export function App() {
   const { t } = useTranslation()
@@ -45,6 +46,8 @@ export function App() {
   const [catalog, setCatalog] = useState<MarketKind>('pack')
   const where = useRef({ page, catalog })
   where.current = { page, catalog }
+  // Création de « Créer ton pack » à ouvrir (fiche d'un pack construit, file des téléchargements).
+  const [builderRequest, setBuilderRequest] = useState<BuilderRequest | null>(null)
   // Connexion demandée depuis une fiche (pour noter, commenter) : page de la fiche, où revenir une fois connecté.
   const [signInFrom, setSignInFrom] = useState<Page | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -148,6 +151,7 @@ export function App() {
     setOpenPack(null)
     setMarketStack([])
     setSignInFrom(null)
+    setBuilderRequest(null)
   }
   const openLocal = (id: string): void => {
     setPage('library')
@@ -164,6 +168,14 @@ export function App() {
     setCatalog(kind)
     setMarketStack([{ kind: 'pack', id, catalog: kind }])
   }
+  /** Création de « Créer ton pack » ouverte dans l'assistant. */
+  const openBuild = (buildId: string): void => {
+    setPage('builder')
+    setOpenPack(null)
+    setBuilderRequest({ buildId, at: Date.now() })
+  }
+  /** Fiche d'un téléchargement de la file : pack ou mod de la Marketplace, ou création. */
+  const openDownload = (id: string, kind: DownloadKind): void => (kind === 'build' ? openBuild(id) : openMarketPack(id, kind))
   /** Connexion depuis une fiche de la Marketplace ou de la bibliothèque (la fiche reste ouverte pour le retour). */
   const signIn = (): void => {
     setSignInFrom(page)
@@ -171,7 +183,7 @@ export function App() {
   }
   // Maintenance (sauf pour l'admin) : écran de maintenance à la place des pages qui passent par le serveur. La connexion
   // reste possible (l'API la permet) : un admin peut se connecter pour ne plus être bloqué.
-  const serverPage = page === 'market' || (page === 'account' && !!account)
+  const serverPage = page === 'market' || page === 'builder' || (page === 'account' && !!account)
   const maintenanceScreen = maintenance.blocked && serverPage && maintenance.ongoing && maintenance.state
   // Nouveautés : jamais par-dessus un écran qui bloque (chargement, maintenance, connexion au compte) ; montrées ensuite.
   const showWhatsNew = !!whatsNew && !!overview && !maintenanceScreen && !(page === 'account' && !account)
@@ -193,7 +205,14 @@ export function App() {
             return (
               <div key={id} className="nav-group">
                 <button className={`nav ${open ? 'is-open' : selected ? 'is-selected' : ''}`} aria-expanded={open || undefined} onClick={() => go(id)}>
-                  {t(`app.nav.${id}`)}
+                  {id === 'builder' ? (
+                    <span className="nav-icon">
+                      <BuilderIcon />
+                      {t('app.nav.builder')}
+                    </span>
+                  ) : (
+                    t(`app.nav.${id}`)
+                  )}
                   {/* Packs et mods de la bibliothèque dont une nouvelle version est en ligne. */}
                   {id === 'library' && !open && updates > 0 && (
                     <span className="nav-badge" title={t('app.updatesAvailable', { count: updates })}>
@@ -286,6 +305,7 @@ export function App() {
                 onSignIn={signIn}
               />
             )}
+            {page === 'builder' && <Builder key={builderRequest?.at ?? 'page'} request={builderRequest} onSignIn={signIn} onOpenLocal={openLocal} />}
             {page === 'graphics' && <Graphics />}
             {page === 'cleanup' && <Cleanup />}
             {page === 'discord' && <DiscordView />}
@@ -311,11 +331,7 @@ export function App() {
           </div>
         )}
         {/* Téléchargements : bande en bas de la page, qui ne recouvre rien (la page se raccourcit d'autant). */}
-        <DownloadBar
-          onOpen={(id, kind) => {
-            if (kind !== 'build') openMarketPack(id, kind)
-          }}
-        />
+        <DownloadBar onOpen={openDownload} />
       </main>
       <ConfirmHost />
       <MenuHost />

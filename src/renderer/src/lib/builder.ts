@@ -1,63 +1,79 @@
-// « Créer ton pack » côté interface : composition en cours (brouillon), règles de choix, conflits en direct, réglages
-// ReShade (seulement ce que le joueur change) et contrôles des paramètres d'effets.
+// « Créer ton pack » côté interface : composition en cours (brouillon : composants et outils d'ambiance), règles de
+// choix, conflits en direct, réglages des outils (seulement ce que le joueur change) et contrôles des paramètres
+// d'effets. Les règles propres aux outils d'ambiance sont dans @shared/ambiance.
 
+import { cleanTools, fromLegacy, recommendedTools, toolBases, TOOL_KEYS, toolOff } from '@shared/ambiance'
 import type {
-  BuilderBase,
+  BuilderAdjustments,
   BuilderBuild,
   BuilderBuildComponent,
   BuilderCatalog,
   BuilderCategory,
   BuilderComponentCard,
-  BuilderControl,
   BuilderControlValue,
   BuilderParam,
-  BuilderPreset,
-  BuilderReshade
+  BuilderTools
 } from '@shared/types'
 
-/** Catégorie des presets ReShade : ses réglages s'affichent quand un preset est choisi. */
-export const RESHADE = 'reshade'
 /** Étape finale de l'assistant, après les groupes du catalogue. */
 export const SUMMARY = 'summary'
-/** Onglet des réglages ReShade, dans l'étape de la catégorie des presets. */
-export const RESHADE_SETTINGS = '#reshade'
 export const NAME_MAX = 80
 
-/** Catégorie où choisir une base demandée (requires). */
-export const BASE_CATEGORY: Record<BuilderBase, string> = { quantv: 'quantv', nve: 'nve', reshade: RESHADE }
-
-export const emptyReshade = (): BuilderReshade => ({ controls: {}, techniques: {}, values: {} })
-
-/** Composition en cours. `removed` : composants retirés depuis l'enregistrement (ni choisis, ni installables). */
+/**
+ * Composition en cours : composants (hors outils d'ambiance) et choix de chaque outil. `removed` : composants retirés
+ * depuis l'enregistrement (ni choisis, ni installables).
+ */
 export interface Draft {
   id: string | null
   name: string
   components: string[]
-  reshade: BuilderReshade
+  tools: BuilderTools
   removed: BuilderBuildComponent[]
   /** Noms connus des composants (création ouverte), pour ceux absents du catalogue. */
   names: Record<string, string>
 }
 
-export function newDraft(name: string): Draft {
-  return { id: null, name, components: [], reshade: emptyReshade(), removed: [], names: {} }
+/** Nouvelle création : « Recommandé » (le choix par défaut de chaque outil). */
+export function newDraft(name: string, catalog: BuilderCatalog): Draft {
+  return { id: null, name, components: [], tools: recommendedTools(catalog), removed: [], names: {} }
 }
 
+/**
+ * Création ouverte. Ses composants d'outils sont dans `tools` (« Importé d'un pack ») ; une création d'avant les outils
+ * (preset ReShade parmi ses composants) est convertie. Un outil importé d'un composant retiré n'est plus installable :
+ * il passe sur « Aucun », le composant est signalé avec les autres composants retirés.
+ */
 export function draftOf(build: BuilderBuild): Draft {
   const known = build.components.filter((c): c is BuilderBuildComponent & { id: string } => !!c.id)
-  return {
-    id: build.id,
-    name: build.name,
-    components: known.filter((c) => c.available).map((c) => c.id),
-    reshade: build.reshade,
-    removed: build.components.filter((c) => !c.available),
-    names: Object.fromEntries(known.map((c) => [c.id, c.name]))
+  const categories = new Map(known.map((c) => [c.id, c.category]))
+  const { components, tools } = fromLegacy(
+    known.filter((c) => c.available).map((c) => c.id),
+    (id) => categories.get(id),
+    null,
+    cleanTools(build.tools)
+  )
+  const removed = build.components.filter((c) => !c.available)
+  for (const key of TOOL_KEYS) {
+    const component = tools[key].component
+    if (tools[key].mode === 'pack' && component && removed.some((c) => c.id === component)) tools[key] = toolOff()
   }
+  return { id: build.id, name: build.name, components, tools, removed, names: Object.fromEntries(known.map((c) => [c.id, c.name])) }
+}
+
+/**
+ * Brouillon gardé d'avant les outils d'ambiance (`reshade`, preset et bases parmi les composants) : ses composants
+ * d'outils deviennent leur choix « Importé d'un pack », avec ses réglages ReShade pour le preset.
+ */
+export function upgradeDraft(draft: Omit<Draft, 'tools'> & { tools?: unknown; reshade?: unknown }, categoryOf: (id: string) => string | null | undefined): Draft {
+  const { reshade, tools: rawTools, ...rest } = draft
+  if (rawTools !== undefined && reshade === undefined) return { ...rest, tools: cleanTools(rawTools) }
+  const { components, tools } = fromLegacy(draft.components, categoryOf, reshade, cleanTools(rawTools))
+  return { ...rest, components, tools }
 }
 
 /** Ce qui est enregistré d'une création : comparé pour savoir s'il reste des changements à enregistrer. */
-export function snapshot(d: Pick<Draft, 'name' | 'components' | 'reshade'>): string {
-  return JSON.stringify({ name: d.name.trim(), components: [...d.components].sort(), reshade: sortKeys(d.reshade) })
+export function snapshot(d: Pick<Draft, 'name' | 'components' | 'tools'>): string {
+  return JSON.stringify({ name: d.name.trim(), components: [...d.components].sort(), tools: sortKeys(cleanTools(d.tools)) })
 }
 
 function sortKeys(value: unknown): unknown {
@@ -95,70 +111,58 @@ export function conflictsOf(card: BuilderComponentCard, chosen: BuilderComponent
   return chosen.filter((c) => c.id !== card.id && (card.conflictsWith.includes(c.id) || c.conflictsWith.includes(card.id)))
 }
 
-/** Bases que `card` demande et qu'aucun composant choisi ne fournit. */
-export function missingBases(card: BuilderComponentCard, chosen: BuilderComponentCard[]): BuilderBase[] {
-  return card.requires.filter((base) => !chosen.some((c) => c.id !== card.id && c.provides.includes(base)))
+/** Bases que `card` demande (QuantV, NVE, ReShade) et qu'aucun composant choisi ni outil actif ne fournit. */
+export function missingBases(card: BuilderComponentCard, chosen: BuilderComponentCard[], tools: BuilderTools): string[] {
+  const bases = toolBases(tools)
+  return card.requires.filter((base) => !bases.includes(base) && !chosen.some((c) => c.id !== card.id && c.provides.includes(base)))
 }
+
+// ---------------------------------------------------------------------------
+// Réglages d'un outil : seuls les changements du joueur sont gardés
 
 /**
- * Autre preset choisi : les réglages simples communs aux deux sont gardés, le mode avancé (effets, paramètres) propre
- * à l'ancien preset est oublié.
+ * Valeurs de départ d'un outil (style ou preset du pack, réglages simples compris), relevées dans son état quand le
+ * joueur n'y avait rien changé : revenir à l'une d'elles efface le réglage.
  */
-export function keepCommonControls(reshade: BuilderReshade, preset: BuilderPreset): BuilderReshade {
-  const keys = new Set(preset.controls.map((c) => c.key))
-  return { controls: Object.fromEntries(Object.entries(reshade.controls).filter(([k]) => keys.has(k))), techniques: {}, values: {} }
+export interface Starts {
+  controls: Record<string, BuilderControlValue | null>
+  techniques: Record<string, boolean>
+  /** « fichier/paramètre » → valeur. */
+  values: Record<string, string>
 }
 
-// ---------------------------------------------------------------------------
-// Réglages simples
+export const noStarts = (): Starts => ({ controls: {}, techniques: {}, values: {} })
 
-/** Valeur affichée d'un réglage : celle du joueur, sinon celle du preset (curseur : 0). */
-export function controlValue(control: BuilderControl, reshade: BuilderReshade): BuilderControlValue | null {
-  const mine = reshade.controls[control.key]
-  if (mine !== undefined) return mine
-  return control.type === 'slider' ? 0 : control.value
+/** Change un réglage simple ; revenir à sa valeur de départ (curseur : 0) le retire. */
+export function setControl<A extends BuilderAdjustments>(a: A, key: string, value: BuilderControlValue | null, start: BuilderControlValue | null): A {
+  const controls = { ...a.controls }
+  if (value === null || value === start) delete controls[key]
+  else controls[key] = value
+  return { ...a, controls }
 }
 
-/** Change un réglage simple ; revenir à la valeur du preset retire le réglage (seuls les changements sont envoyés). */
-export function setControl(reshade: BuilderReshade, control: BuilderControl, value: BuilderControlValue | null): BuilderReshade {
-  const controls = { ...reshade.controls }
-  const neutral = control.type === 'slider' ? 0 : control.value
-  if (value === null || value === neutral) delete controls[control.key]
-  else controls[control.key] = value
-  return { ...reshade, controls }
-}
-
-// ---------------------------------------------------------------------------
-// Mode avancé
-
-export function techniqueEnabled(name: string, presetEnabled: boolean, reshade: BuilderReshade): boolean {
-  return reshade.techniques[name] ?? presetEnabled
-}
-
-export function setTechnique(reshade: BuilderReshade, name: string, presetEnabled: boolean, on: boolean): BuilderReshade {
-  const techniques = { ...reshade.techniques }
-  if (on === presetEnabled) delete techniques[name]
+/** Active ou coupe un effet ; revenir à son état de départ retire le réglage. */
+export function setTechnique<A extends BuilderAdjustments>(a: A, name: string, on: boolean, start: boolean | undefined): A {
+  const techniques = { ...a.techniques }
+  if (on === start) delete techniques[name]
   else techniques[name] = on
-  return { ...reshade, techniques }
+  return { ...a, techniques }
 }
 
-/** Valeur du preset pour un paramètre (sinon celle par défaut de l'effet). */
-export function presetValue(p: BuilderParam): string {
-  return p.value ?? p.defaultValue ?? ''
+/** Valeur de départ d'un paramètre : celle du style ou du preset du pack, sinon celle par défaut de l'effet. */
+export function baseValue(p: BuilderParam): string {
+  return p.baseValue ?? p.defaultValue ?? p.value ?? ''
 }
 
-export function paramValue(file: string, p: BuilderParam, reshade: BuilderReshade): string {
-  return reshade.values[file]?.[p.name] ?? presetValue(p)
-}
-
-export function setParam(reshade: BuilderReshade, file: string, p: BuilderParam, value: string | null): BuilderReshade {
-  const params = { ...reshade.values[file] }
-  if (value === null || sameValue(value, presetValue(p))) delete params[p.name]
-  else params[p.name] = value
-  const values = { ...reshade.values }
+/** Change un paramètre (mode avancé) ; revenir à sa valeur de départ (`start`) le retire. */
+export function setParam<A extends BuilderAdjustments>(a: A, file: string, name: string, value: string | null, start: string): A {
+  const params = { ...a.values[file] }
+  if (value === null || sameValue(value, start)) delete params[name]
+  else params[name] = value
+  const values = { ...a.values }
   if (Object.keys(params).length) values[file] = params
   else delete values[file]
-  return { ...reshade, values }
+  return { ...a, values }
 }
 
 /** Même valeur, aux arrondis près (« 1.000000 » et « 1 »). */

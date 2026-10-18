@@ -7,11 +7,12 @@ import type {
   BuilderBuildSummary,
   BuilderCatalog,
   BuilderComponentDetail,
-  BuilderPreset,
+  BuilderEffect,
   BuilderPreview,
-  BuilderReshade,
   BuilderSaveInput,
   BuilderStatus,
+  BuilderTools,
+  BuilderToolView,
   CommentPage,
   DownloadDone,
   DownloadItem,
@@ -35,6 +36,7 @@ import type {
   ReplyPage,
   RootId,
   TaskProgress,
+  ToolKey,
   UpdateState
 } from './types'
 import type { GraphicsState, GraphicsTarget } from './graphics'
@@ -224,10 +226,18 @@ export interface PackManagerApi {
    */
   builderCatalog(refresh?: boolean): Promise<BuilderCatalog>
   builderComponent(id: string): Promise<BuilderComponentDetail>
-  /** Preset ReShade d'un composant de la catégorie reshade : effets, paramètres, réglages simples. */
-  builderPreset(componentId: string): Promise<BuilderPreset>
-  /** Vérifie une composition (problèmes) et l'estime (taille, poids sur les performances), sans l'enregistrer. */
-  builderPreview(components: string[], reshade?: BuilderReshade): Promise<BuilderPreview>
+  /**
+   * État d'un outil d'ambiance pour les choix en cours : effets, paramètres, réglages simples applicables et leur
+   * valeur. À redemander quand un choix change (un interrupteur peut ajouter un effet et ses réglages).
+   */
+  builderToolView(tool: ToolKey, tools: BuilderTools): Promise<BuilderToolView>
+  /** Paramètres d'un effet ReShade ajouté en mode avancé (`component` : sinon la base de l'outil) ; null s'il est inconnu. */
+  builderToolEffect(component: string | null, file: string): Promise<BuilderEffect | null>
+  /**
+   * Vérifie une composition (problèmes) et l'estime (taille, poids sur les performances), sans l'enregistrer :
+   * composants hors outils d'ambiance, et choix de chaque outil.
+   */
+  builderPreview(components: string[], tools: BuilderTools): Promise<BuilderPreview>
   /** Créations du compte, avec leur état dans la bibliothèque. */
   builderBuilds(): Promise<BuilderBuildSummary[]>
   builderBuildGet(id: string): Promise<BuilderBuild>

@@ -1,57 +1,53 @@
 // « Créer ton pack » : le joueur connecté compose son propre pack en choisissant chaque élément (route, végétation,
-// sang, preset ReShade, base QuantV...) parmi ceux de tous les packs de la Marketplace, règle son ReShade, enregistre
-// ses créations sur son compte et les installe comme n'importe quel pack de la bibliothèque. Assistant par étapes (les
-// groupes du catalogue, puis le récapitulatif), avec un panneau qui résume la composition, son poids sur ce PC et ses
-// problèmes, revérifiés par l'API 400 ms après chaque changement.
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+// sang...) parmi ceux de tous les packs de la Marketplace, règle son ambiance (outils ReShade, QuantV, NVE, ENB : un
+// choix rapide, ou chaque outil réglé lui-même avec un style, voir BuilderAmbiance.tsx), enregistre ses créations sur son
+// compte et les installe comme n'importe quel pack de la bibliothèque. Assistant par étapes (les groupes du catalogue,
+// puis le récapitulatif), avec un panneau qui résume la composition, son poids sur ce PC et ses problèmes, revérifiés
+// par l'API 400 ms après chaque changement.
+import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type {
-  BuilderBase,
   BuilderBuild,
   BuilderBuildSummary,
   BuilderCatalog,
   BuilderCategory,
   BuilderComponentCard,
-  BuilderComponentDetail,
-  BuilderPerformance,
-  BuilderPreset,
   BuilderPreview,
   BuilderProblem,
-  BuilderReshade,
   BuilderSaveInput,
-  PackManifest
+  BuilderTools,
+  BuilderToolSettings,
+  PackManifest,
+  ToolKey,
+  ToolMode
 } from '@shared/types'
 import { SIGNED_OUT } from '@shared/api'
-import { EMBEDDED_PERFORMANCE_MODEL, estimate, tierLabel, VERDICT_LABEL, type PackPerformance } from '@shared/performance'
-import { apiError, cleanError, useStore } from '../store'
-import { builderImageUrl, bytes, longDate, num, q } from '../lib/format'
+import { estimate, VERDICT_LABEL, type PackPerformance } from '@shared/performance'
 import {
-  BASE_CATEGORY,
-  cardIndex,
-  conflictsOf,
-  draftOf,
-  keepCommonControls,
-  missingBases,
-  NAME_MAX,
-  newDraft,
-  RESHADE,
-  RESHADE_SETTINGS,
-  snapshot,
-  SUMMARY,
-  toggle,
-  type CardRef,
-  type Draft
-} from '../lib/builder'
+  ambianceChoice,
+  cleanTools,
+  enableTool,
+  isToolKey,
+  noTools,
+  recommendedTools,
+  setTool,
+  setToolMode,
+  TOOL_KEYS,
+  withKnownStyles,
+  type AmbianceChoice,
+  type ToolNote
+} from '@shared/ambiance'
+import { apiError, cleanError, useStore } from '../store'
+import { bytes, longDate, num, q } from '../lib/format'
+import { cardIndex, conflictsOf, draftOf, missingBases, NAME_MAX, newDraft, snapshot, SUMMARY, toggle, upgradeDraft, type CardRef, type Draft } from '../lib/builder'
 import { Cover, EmptyState } from './common'
 import { confirmDialog } from './Confirm'
 import { DownloadInline, useDownload } from './Downloads'
-import { Gallery } from './Gallery'
 import { useInstallTarget } from './InstallTarget'
-import { Markdown } from './Markdown'
 import { popupMenu } from './Menu'
-import { Modal } from './Modal'
 import { memText, usePerfConfirm, usePerformance, verdictReasons } from './Performance'
-import { ReshadePanel, reshadeChanges } from './BuilderReshade'
+import { activate, Check, ComponentModal, ComponentTile } from './BuilderParts'
+import { AmbianceSection, toolName, toolSummary } from './BuilderAmbiance'
 
 /** Création à ouvrir depuis une autre page (fiche d'un pack, file des téléchargements). */
 export interface BuilderRequest {
@@ -67,19 +63,26 @@ interface WizardState {
   saved: string
   step: string | null
   tabs: Record<string, string>
+  /** Choix rapide de l'ambiance (Personnalisé : un panneau par outil). */
+  ambiance: AmbianceChoice
 }
 
 /** Assistant en cours quand on passe à une autre page de l'application : retrouvé au retour. */
 let kept: (WizardState & { account: number }) | null = null
 /** Catalogues déjà lus, par langue : la page s'affiche tout de suite à son retour (puis le catalogue est revérifié). */
 const catalogs = new Map<string, BuilderCatalog>()
-/** Presets déjà lus, par composant et par langue. */
-const presets = new Map<string, BuilderPreset>()
 
 /** Pack de la bibliothèque construit à partir de la création (le plus récent). */
 export function builtPack(library: PackManifest[], buildId: string | null): PackManifest | null {
   if (!buildId) return null
   return library.filter((p) => p.built?.buildId === buildId).sort((a, b) => b.built!.builtAt.localeCompare(a.built!.builtAt))[0] ?? null
+}
+
+/** Étape qui porte les outils d'ambiance : celle de leurs catégories (null sans outil proposé). */
+function toolsGroup(catalog: BuilderCatalog): string | null {
+  if (!catalog.tools.length) return null
+  const tool = catalog.tools[0]
+  return catalog.categories.find((c) => c.tool === tool.key || c.key === tool.category)?.group ?? catalog.groups[0]?.key ?? null
 }
 
 /** Icône de la page : des calques et un « + ». */
@@ -198,10 +201,15 @@ function BuilderPage({ account, request, onSignIn, onOpenLocal }: { account: num
   const common = { catalog, account, onExit: home, onOpenLocal }
   if (view.kind === 'open') return <BuildLoader key={view.id} id={view.id} {...common} />
   if (view.kind === 'new') {
-    const draft = newDraft(t('builder.newName'))
-    return <Wizard {...common} start={{ draft, saved: snapshot(draft), step: null, tabs: {} }} />
+    // Une nouvelle création démarre sur « Recommandé ».
+    const draft = newDraft(t('builder.newName'), catalog)
+    return <Wizard {...common} start={{ draft, saved: snapshot(draft), step: null, tabs: {}, ambiance: 'recommended' }} />
   }
-  if (view.kind === 'kept' && resume) return <Wizard {...common} start={resume} />
+  if (view.kind === 'kept' && resume) {
+    const index = cardIndex(catalog)
+    const draft = upgradeDraft(resume.draft, (id) => index.get(id)?.category.key)
+    return <Wizard {...common} start={{ ...resume, draft }} />
+  }
   return <Home catalog={catalog} onNew={() => setView({ kind: 'new' })} onOpen={(id) => setView({ kind: 'open', id })} onOpenLocal={onOpenLocal} />
 }
 
@@ -278,8 +286,8 @@ function Home({ catalog, onNew, onOpen, onOpenLocal }: { catalog: BuilderCatalog
 
 /** Composition enregistrée telle quelle, sans les composants retirés (refusés à l'enregistrement). */
 async function savedInput(id: string, name: string): Promise<BuilderSaveInput> {
-  const b = await window.api.builderBuildGet(id)
-  return { name, components: b.components.filter((c) => c.available && c.id).map((c) => c.id!), reshade: b.reshade }
+  const draft = draftOf(await window.api.builderBuildGet(id))
+  return { name, components: draft.components, tools: draft.tools }
 }
 
 function BuildCard({ build, onOpen, onOpenLocal, onChanged }: { build: BuilderBuildSummary; onOpen: () => void; onOpenLocal: (packId: string) => void; onChanged: () => void }) {
@@ -421,7 +429,7 @@ function BuildLoader({ id, ...rest }: { id: string; catalog: BuilderCatalog; acc
       </div>
     )
   const draft = draftOf(build)
-  return <Wizard {...rest} start={{ draft, saved: snapshot(draft), step: SUMMARY, tabs: {} }} />
+  return <Wizard {...rest} start={{ draft, saved: snapshot(draft), step: SUMMARY, tabs: {}, ambiance: ambianceChoice(draft.tools, rest.catalog) }} />
 }
 
 // ---------------------------------------------------------------------------
@@ -429,21 +437,21 @@ function BuildLoader({ id, ...rest }: { id: string; catalog: BuilderCatalog; acc
 
 type PreviewState = { data: BuilderPreview | null; loading: boolean; error: string | null }
 
-/** Problèmes et estimation de la composition, demandés à l'API 400 ms après le dernier changement. */
-function usePreview(components: string[], reshade: BuilderReshade): PreviewState {
+/** Problèmes et estimation de la composition (composants et outils), demandés à l'API 400 ms après le dernier changement. */
+function usePreview(components: string[], tools: BuilderTools): PreviewState {
   const { i18n } = useTranslation()
-  const key = JSON.stringify({ components, reshade })
+  const key = JSON.stringify({ components, tools: cleanTools(tools) })
   const [state, setState] = useState<PreviewState>({ data: null, loading: false, error: null })
   useEffect(() => {
-    const input = JSON.parse(key) as { components: string[]; reshade: BuilderReshade }
-    if (!input.components.length) {
+    const input = JSON.parse(key) as { components: string[]; tools: BuilderTools }
+    if (!input.components.length && TOOL_KEYS.every((k) => input.tools[k].mode === 'none')) {
       setState({ data: null, loading: false, error: null })
       return
     }
     let live = true
     setState((s) => ({ ...s, loading: true }))
     const timer = setTimeout(() => {
-      window.api.builderPreview(input.components, input.reshade).then(
+      window.api.builderPreview(input.components, input.tools).then(
         (data) => live && setState({ data, loading: false, error: null }),
         (e) => live && setState((s) => ({ ...s, loading: false, error: cleanError(e) }))
       )
@@ -454,31 +462,6 @@ function usePreview(components: string[], reshade: BuilderReshade): PreviewState
     }
   }, [key, i18n.language])
   return state
-}
-
-/** Preset ReShade du composant choisi (effets, paramètres, réglages simples). */
-function usePreset(id: string | null): { preset: BuilderPreset | null; error: string | null; retry: () => void } {
-  const { i18n } = useTranslation()
-  const cacheKey = `${id}:${i18n.language}`
-  const [state, setState] = useState<{ key: string; preset: BuilderPreset | null; error: string | null } | null>(null)
-  const [attempt, setAttempt] = useState(0)
-  useEffect(() => {
-    if (!id) return
-    let live = true
-    window.api.builderPreset(id).then(
-      (preset) => {
-        presets.set(cacheKey, preset)
-        if (live) setState({ key: cacheKey, preset, error: null })
-      },
-      (e) => live && setState({ key: cacheKey, preset: null, error: cleanError(e) })
-    )
-    return () => {
-      live = false
-    }
-  }, [id, cacheKey, attempt])
-  if (!id) return { preset: null, error: null, retry: () => undefined }
-  const mine = state?.key === cacheKey ? state : null
-  return { preset: mine?.preset ?? presets.get(cacheKey) ?? null, error: mine?.error ?? null, retry: () => setAttempt((a) => a + 1) }
 }
 
 function Wizard({
@@ -501,79 +484,96 @@ function Wizard({
   const [draft, setDraft] = useState(start.draft)
   const [saved, setSaved] = useState(start.saved)
   const [tabs, setTabs] = useState(start.tabs)
+  const [ambiance, setAmbiance] = useState(start.ambiance)
+  const [note, setNote] = useState<{ tool: ToolKey; note: ToolNote } | null>(null)
+  const [focus, setFocus] = useState<{ tool: ToolKey; at: number } | null>(null)
   const [details, setDetails] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  // Étapes : les groupes qui ont au moins une catégorie non vide (catégories vides masquées), puis le récapitulatif.
+  // Étapes : les groupes qui ont au moins une catégorie non vide hors outils (catégories vides masquées), celui qui porte
+  // les outils d'ambiance, puis le récapitulatif.
+  const ambianceGroup = useMemo(() => toolsGroup(catalog), [catalog])
   const groups = useMemo(
     () =>
       catalog.groups
         .map((group) => ({
           group,
-          categories: group.categories.map((k) => catalog.categories.find((c) => c.key === k)).filter((c): c is BuilderCategory => !!c && c.components.length > 0)
+          categories: group.categories
+            .map((k) => catalog.categories.find((c) => c.key === k))
+            .filter((c): c is BuilderCategory => !!c && !c.tool && c.components.length > 0),
+          tools: group.key === ambianceGroup
         }))
-        .filter((g) => g.categories.length > 0),
-    [catalog]
+        .filter((g) => g.categories.length > 0 || g.tools),
+    [catalog, ambianceGroup]
   )
   const steps = [...groups.map((g) => g.group.key), SUMMARY]
   const [step, setStep] = useState(start.step && steps.includes(start.step) ? start.step : steps[0])
   const chosen = draft.components.map((id) => index.get(id)?.card).filter((c): c is BuilderComponentCard => !!c)
-  const reshadeId = draft.components.find((id) => index.get(id)?.category.key === RESHADE) ?? null
-  const preset = usePreset(reshadeId)
-  // Autre preset choisi : ses réglages simples communs gardés une fois le preset lu.
-  const [filterFor, setFilterFor] = useState<string | null>(null)
-  useEffect(() => {
-    const p = preset.preset
-    if (!p || filterFor !== p.componentId) return
-    setDraft((d) => ({ ...d, reshade: keepCommonControls(d.reshade, p) }))
-    setFilterFor(null)
-  }, [preset.preset, filterFor])
-  const preview = usePreview(draft.components, draft.reshade)
+  const preview = usePreview(draft.components, draft.tools)
   const dirty = snapshot(draft) !== saved
+  const activeTools = catalog.tools.filter((tool) => draft.tools[tool.key].mode !== 'none').length
 
   useEffect(() => {
-    kept = { account, draft, saved, step, tabs }
-  }, [account, draft, saved, step, tabs])
+    kept = { account, draft, saved, step, tabs, ambiance }
+  }, [account, draft, saved, step, tabs, ambiance])
 
-  const choose = (category: BuilderCategory, id: string | null): void => {
-    const components = toggle(draft.components, index, category, id)
-    let reshade = draft.reshade
-    if (category.key === RESHADE) {
-      const next = components.find((c) => index.get(c)?.category.key === RESHADE) ?? null
-      if (next !== reshadeId) {
-        // Le mode avancé ne vaut que pour l'ancien preset ; les réglages simples sont triés une fois le nouveau lu.
-        reshade = { controls: draft.reshade.controls, techniques: {}, values: {} }
-        setFilterFor(next)
-      }
-    }
-    setDraft({ ...draft, components, reshade })
-  }
+  const choose = (category: BuilderCategory, id: string | null): void => setDraft({ ...draft, components: toggle(draft.components, index, category, id) })
   const remove = (id: string): void => {
     const ref = index.get(id)
     if (ref) choose(ref.category, id)
     else setDraft({ ...draft, components: draft.components.filter((c) => c !== id) })
   }
-  /** Ouvre la catégorie (base QuantV manquante...) dans son étape. */
-  const goTo = (categoryKey: string): void => {
-    const category = catalog.categories.find((c) => c.key === categoryKey && c.components.length)
-    if (!category) return
-    setStep(category.group)
-    setTabs((tb) => ({ ...tb, [category.group]: category.key }))
+
+  // ----- outils d'ambiance
+  const applyTools = (result: { tools: BuilderTools; note: ToolNote | null }, tool: ToolKey): void => {
+    setDraft({ ...draft, tools: result.tools })
+    setNote(result.note ? { tool, note: result.note } : null)
+    // Un changement fait hors de « Personnalisé » (action d'un problème) : le choix rapide suit.
+    if (ambiance !== 'custom') setAmbiance(ambianceChoice(result.tools, catalog))
   }
-  const goToBase = (base: BuilderBase): void => goTo(BASE_CATEGORY[base])
-  /** Réglages du preset choisi, dans l'étape de sa catégorie. */
-  const openReshade = (): void => {
-    const category = catalog.categories.find((c) => c.key === RESHADE)
-    if (!category) return
-    setStep(category.group)
-    setTabs((tb) => ({ ...tb, [category.group]: RESHADE_SETTINGS }))
+  const onTool = (key: ToolKey, settings: BuilderToolSettings): void => applyTools(setTool(draft.tools, key, settings, catalog), key)
+  const onMode = (key: ToolKey, mode: ToolMode): void => applyTools(setToolMode(draft.tools, key, mode, catalog), key)
+  const chooseAmbiance = (choice: AmbianceChoice): void => {
+    setAmbiance(choice)
+    setNote(null)
+    if (choice === 'basic') setDraft({ ...draft, tools: noTools() })
+    else if (choice === 'recommended') setDraft({ ...draft, tools: recommendedTools(catalog) })
   }
+  /** Panneau d'un outil (lien du récapitulatif, problème à régler) : étape de l'ambiance, en Personnalisé. */
+  const openTool = (key: ToolKey): void => {
+    if (ambianceGroup) setStep(ambianceGroup)
+    setAmbiance('custom')
+    setFocus({ tool: key, at: Date.now() })
+  }
+  /** Base demandée par un élément ou un problème (QuantV, ReShade, NVE) : l'outil est activé. */
+  const enable = (base: string): void => {
+    if (isToolKey(base) && catalog.tools.some((x) => x.key === base)) applyTools(enableTool(draft.tools, base, catalog), base)
+  }
+  const baseLabel = (base: string): string => {
+    const tool = catalog.tools.find((x) => x.key === base)
+    return tool ? toolName(tool) : (catalog.categories.find((c) => c.key === base)?.label ?? base)
+  }
+  // Fenêtre de détails : un élément d'outil se choisit comme « Importé d'un pack ».
+  const detailsTool = details ? (index.get(details)?.category.tool ?? null) : null
+  const detailsSelected = !!details && (detailsTool ? draft.tools[detailsTool].mode === 'pack' && draft.tools[detailsTool].component === details : draft.components.includes(details))
+  const toggleDetails = (): void => {
+    if (!details) return
+    if (detailsTool) {
+      if (detailsSelected) onMode(detailsTool, 'none')
+      else onTool(detailsTool, { ...draft.tools[detailsTool], mode: 'pack', component: details, style: null, techniques: {}, values: {} })
+      return
+    }
+    const ref = index.get(details)
+    if (ref) choose(ref.category, details)
+  }
+
+  // ----- enregistrement, installation
   const leave = async (): Promise<void> => {
     if (dirty && !(await confirmDialog(t('builder.leave.title'), t('builder.leave.detail'), t('builder.leave.ok')))) return
     onExit()
   }
-  const input = (): BuilderSaveInput => ({ name: draft.name.trim() || t('builder.newName'), components: draft.components, reshade: draft.reshade })
+  const input = (): BuilderSaveInput => ({ name: draft.name.trim() || t('builder.newName'), components: draft.components, tools: withKnownStyles(draft.tools, catalog) })
   const afterSave = (id: string, name: string): void => {
-    const next = { ...draft, id, name, removed: [] }
+    const next = { ...draft, id, name, tools: withKnownStyles(draft.tools, catalog), removed: [] }
     setDraft(next)
     setSaved(snapshot(next))
   }
@@ -595,10 +595,10 @@ function Wizard({
   }
 
   const groupOf = (key: string): (typeof groups)[number] | undefined => groups.find((g) => g.group.key === key)
-  const countIn = (categories: BuilderCategory[]): number => draft.components.filter((id) => categories.some((c) => c.key === index.get(id)?.category.key)).length
+  const countIn = (g: (typeof groups)[number]): number =>
+    draft.components.filter((id) => g.categories.some((c) => c.key === index.get(id)?.category.key)).length + (g.tools ? activeTools : 0)
   const current = groupOf(step)
   const stepIndex = steps.indexOf(step)
-  const presetName = reshadeId ? (index.get(reshadeId)?.card.name ?? '') : ''
 
   return (
     <div className="page builder-page">
@@ -618,7 +618,7 @@ function Wizard({
       <nav className="builder-steps" aria-label={t('builder.stepsLabel')}>
         {steps.map((key, i) => {
           const g = groupOf(key)
-          const count = g ? countIn(g.categories) : draft.components.length
+          const count = g ? countIn(g) : draft.components.length + activeTools
           return (
             <button key={key} className={`builder-step ${key === step ? 'is-selected' : ''}`} aria-current={key === step ? 'step' : undefined} onClick={() => setStep(key)}>
               <span className="builder-step-num">{num(i + 1)}</span>
@@ -634,27 +634,34 @@ function Wizard({
           {current ? (
             <GroupStep
               categories={current.categories}
+              ambiance={
+                current.tools ? (
+                  <AmbianceSection
+                    catalog={catalog}
+                    index={index}
+                    tools={draft.tools}
+                    choice={ambiance}
+                    note={note}
+                    focus={focus}
+                    chosen={chosen}
+                    onChoice={chooseAmbiance}
+                    onTool={onTool}
+                    onMode={onMode}
+                    onBase={enable}
+                    onDetails={setDetails}
+                    baseLabel={baseLabel}
+                  />
+                ) : null
+              }
               tab={tabs[current.group.key]}
               onTab={(key) => setTabs((tb) => ({ ...tb, [current.group.key]: key }))}
               index={index}
               draft={draft}
               chosen={chosen}
-              reshade={
-                reshadeId && current.categories.some((c) => c.key === RESHADE) ? (
-                  <ReshadePanel
-                    preset={preset.preset}
-                    name={presetName}
-                    error={preset.error}
-                    onRetry={preset.retry}
-                    reshade={draft.reshade}
-                    onChange={(reshade) => setDraft({ ...draft, reshade })}
-                  />
-                ) : null
-              }
               onChoose={choose}
               onDetails={setDetails}
-              onBase={goToBase}
-              baseLabel={(b) => catalog.categories.find((c) => c.key === BASE_CATEGORY[b])?.label ?? b}
+              onBase={enable}
+              baseLabel={baseLabel}
             />
           ) : (
             <Summary
@@ -669,8 +676,8 @@ function Wizard({
               onInstall={() => void install()}
               onRemove={remove}
               onDetails={setDetails}
-              onBase={goToBase}
-              onReshade={openReshade}
+              onEnable={enable}
+              onOpenTool={openTool}
               onOpenLocal={onOpenLocal}
             />
           )}
@@ -684,80 +691,69 @@ function Wizard({
             )}
           </div>
         </div>
-        <RecapPanel catalog={catalog} index={index} draft={draft} preview={preview} onBase={goToBase} />
+        <RecapPanel catalog={catalog} index={index} draft={draft} preview={preview} ambianceGroup={ambianceGroup} onEnable={enable} onOpenTool={openTool} />
       </div>
 
-      {details && (
-        <ComponentModal
-          id={details}
-          card={index.get(details)?.card ?? null}
-          selected={draft.components.includes(details)}
-          onToggle={() => {
-            const ref = index.get(details)
-            if (ref) choose(ref.category, details)
-          }}
-          onClose={() => setDetails(null)}
-        />
-      )}
+      {details && <ComponentModal id={details} card={index.get(details)?.card ?? null} selected={detailsSelected} onToggle={toggleDetails} onClose={() => setDetails(null)} />}
     </div>
   )
 }
 
-/** Une étape : une catégorie à la fois (sous-onglets avec le nombre de choix), et les réglages ReShade. */
+/**
+ * Une étape : l'ambiance d'abord (étape des outils), puis une catégorie à la fois (sous-onglets avec le nombre de
+ * choix). Les catégories des outils ne sont pas des grilles : leurs éléments sont les choix « Importé d'un pack ».
+ */
 function GroupStep({
   categories,
+  ambiance,
   tab,
   onTab,
   index,
   draft,
   chosen,
-  reshade,
   onChoose,
   onDetails,
   onBase,
   baseLabel
 }: {
   categories: BuilderCategory[]
+  ambiance: ReactNode
   tab: string | undefined
   onTab: (key: string) => void
   index: Map<string, CardRef>
   draft: Draft
   chosen: BuilderComponentCard[]
-  /** Réglages du preset choisi (étape de la catégorie des presets), null sans preset. */
-  reshade: ReactNode
   onChoose: (category: BuilderCategory, id: string | null) => void
   onDetails: (id: string) => void
-  onBase: (base: BuilderBase) => void
-  baseLabel: (base: BuilderBase) => string
+  onBase: (base: string) => void
+  baseLabel: (base: string) => string
 }) {
   const { t } = useTranslation()
-  const settings = tab === RESHADE_SETTINGS && !!reshade
   const category = categories.find((c) => c.key === tab) ?? categories[0]
   const countOf = (key: string): number => draft.components.filter((id) => index.get(id)?.category.key === key).length
   const picked = (id: string): boolean => draft.components.includes(id)
   return (
     <>
-      <div className="chips builder-tabs" role="tablist">
-        {categories.map((c) => {
-          const n = countOf(c.key)
-          const selected = !settings && c.key === category.key
-          return (
-            <button key={c.key} role="tab" aria-selected={selected} className={`chip ${selected ? 'is-selected' : ''}`} onClick={() => onTab(c.key)}>
-              {c.label}
-              {n > 0 && <span className="chip-count">{num(n)}</span>}
-            </button>
-          )
-        })}
-        {reshade && (
-          <button role="tab" aria-selected={settings} className={`chip chip-settings ${settings ? 'is-selected' : ''}`} onClick={() => onTab(RESHADE_SETTINGS)}>
-            {t('builder.reshade.tab')}
-          </button>
-        )}
-      </div>
-      {settings ? (
-        reshade
-      ) : (
+      {ambiance}
+      {category && (
         <>
+          {ambiance && (
+            <div className="section-head">
+              <h2>{t('builder.ambiance.more')}</h2>
+            </div>
+          )}
+          <div className="chips builder-tabs" role="tablist">
+            {categories.map((c) => {
+              const n = countOf(c.key)
+              const selected = c.key === category.key
+              return (
+                <button key={c.key} role="tab" aria-selected={selected} className={`chip ${selected ? 'is-selected' : ''}`} onClick={() => onTab(c.key)}>
+                  {c.label}
+                  {n > 0 && <span className="chip-count">{num(n)}</span>}
+                </button>
+              )
+            })}
+          </div>
           <p className="hint builder-hint">{category.single ? t('builder.category.single') : t('builder.category.multiple')}</p>
           <div className="grid builder-grid">
             {category.single && (
@@ -785,7 +781,7 @@ function GroupStep({
                 card={card}
                 selected={picked(card.id)}
                 conflicts={conflictsOf(card, chosen)}
-                missing={picked(card.id) ? missingBases(card, chosen) : []}
+                missing={picked(card.id) ? missingBases(card, chosen, draft.tools) : []}
                 baseLabel={baseLabel}
                 onChoose={() => onChoose(category, card.id)}
                 onDetails={() => onDetails(card.id)}
@@ -793,122 +789,9 @@ function GroupStep({
               />
             ))}
           </div>
-          {reshade && category.key === RESHADE && (
-            <div className="builder-callout">
-              <span>{t('builder.reshade.callout')}</span>
-              <button onClick={() => onTab(RESHADE_SETTINGS)}>{t('builder.reshade.open')}</button>
-            </div>
-          )}
         </>
       )}
     </>
-  )
-}
-
-/** Entrée ou Espace sur une carte : comme un clic. */
-function activate(e: KeyboardEvent, fn: () => void): void {
-  if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return
-  e.preventDefault()
-  fn()
-}
-
-function Check() {
-  return (
-    <span className="builder-check" aria-hidden>
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="m3.5 8.5 3 3 6-7" />
-      </svg>
-    </span>
-  )
-}
-
-/** Poids sur les performances : niveau et mémoire vidéo. */
-function WeightBadge({ perf }: { perf: BuilderPerformance | null }) {
-  const { t } = useTranslation()
-  const ctx = usePerformance()
-  if (!perf) return <span className="meta">{t('builder.card.notAnalyzed')}</span>
-  const model = ctx?.profile.model ?? EMBEDDED_PERFORMANCE_MODEL
-  return (
-    <span className={`builder-tier tier-${perf.tier}`} title={t('builder.card.weightTitle')}>
-      {tierLabel(model, perf.tier)}
-      {perf.vramMb ? ` · ${memText(perf.vramMb)}` : ''}
-    </span>
-  )
-}
-
-function ComponentTile({
-  card,
-  selected,
-  conflicts,
-  missing,
-  baseLabel,
-  onChoose,
-  onDetails,
-  onBase
-}: {
-  card: BuilderComponentCard
-  selected: boolean
-  conflicts: BuilderComponentCard[]
-  missing: BuilderBase[]
-  baseLabel: (base: BuilderBase) => string
-  onChoose: () => void
-  onDetails: () => void
-  onBase: (base: BuilderBase) => void
-}) {
-  const { t } = useTranslation()
-  const [failed, setFailed] = useState(false)
-  const stop = (fn: () => void) => (e: MouseEvent) => {
-    e.stopPropagation()
-    fn()
-  }
-  return (
-    <article
-      className={`card clickable builder-card ${selected ? 'is-selected' : ''}`}
-      role="button"
-      tabIndex={0}
-      aria-pressed={selected}
-      onClick={onChoose}
-      onKeyDown={(e) => activate(e, onChoose)}
-    >
-      <div className="cover">
-        {card.cover && !failed ? (
-          <img className="cover-img" src={builderImageUrl(card.id, card.cover.id, true)} alt="" draggable={false} onError={() => setFailed(true)} />
-        ) : (
-          <div className="cover-empty">{card.name}</div>
-        )}
-        {selected && <Check />}
-      </div>
-      <div className="card-body">
-        <div className="name" title={card.name}>
-          {card.name}
-        </div>
-        {card.summary && <p className="builder-text">{card.summary}</p>}
-        {card.credits && (
-          <div className="meta" title={card.credits}>
-            {t('builder.card.credits', { credits: card.credits })}
-          </div>
-        )}
-        {card.requires.length > 0 && !missing.length && (
-          <div className="meta">{t('builder.card.requires', { bases: card.requires.map(baseLabel).join(', ') })}</div>
-        )}
-        {missing.map((b) => (
-          <div key={b} className="builder-note warn-text">
-            {t('builder.card.missing', { base: baseLabel(b) })}{' '}
-            <button className="link" onClick={stop(() => onBase(b))}>
-              {t('builder.card.chooseBase')}
-            </button>
-          </div>
-        ))}
-        {conflicts.length > 0 && <div className="builder-note warn-text">{t('builder.card.conflict', { names: conflicts.map((c) => q(c.name)).join(', ') })}</div>}
-        {card.unreadable && <div className="meta">{t('builder.card.unreadable')}</div>}
-        <div className="card-foot">
-          <WeightBadge perf={card.performance} />
-          <span className="meta">{bytes(card.size)}</span>
-          <div className="spacer" />
-          <button onClick={stop(onDetails)}>{t('builder.card.details')}</button>
-        </div>
-      </div>
-    </article>
   )
 }
 
@@ -943,70 +826,134 @@ function PcEstimate({ perf }: { perf: PackPerformance | null }) {
   )
 }
 
-function Problems({ problems, onBase }: { problems: BuilderProblem[]; onBase: (base: BuilderBase) => void }) {
+/**
+ * Problèmes, les erreurs d'abord, chacun avec de quoi le régler : activer l'outil ou la base qui manque (QuantV demande
+ * ReShade, un preset demande QuantV), choisir un autre style, revenir au réglage d'un outil indisponible.
+ */
+function Problems({
+  problems,
+  catalog,
+  tools,
+  onEnable,
+  onOpenTool
+}: {
+  problems: BuilderProblem[]
+  catalog: BuilderCatalog
+  tools: BuilderTools
+  onEnable: (tool: string) => void
+  onOpenTool: (tool: ToolKey) => void
+}) {
   const { t } = useTranslation()
   if (!problems.length) return null
   const sorted = [...problems].sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'error' ? -1 : 1))
+  const action = (p: BuilderProblem): ReactNode => {
+    const key = p.requires
+    const tool = isToolKey(key) ? catalog.tools.find((x) => x.key === key) : undefined
+    if (!tool || !isToolKey(key)) return null
+    if (p.type === 'style')
+      return (
+        <button className="link" onClick={() => onOpenTool(key)}>
+          {t('builder.problems.otherStyle')}
+        </button>
+      )
+    if (p.type === 'tool')
+      return (
+        <button className="link" onClick={() => onOpenTool(key)}>
+          {t('builder.problems.changeTool')}
+        </button>
+      )
+    if ((p.type === 'needs-tool' || p.type === 'missing') && tools[key].mode === 'none')
+      return (
+        <button className="link" onClick={() => onEnable(key)}>
+          {t('builder.problems.enable', { tool: toolName(tool) })}
+        </button>
+      )
+    return null
+  }
   return (
     <ul className="builder-problems">
-      {sorted.map((p, i) => (
-        <li key={i} className={`builder-problem is-${p.severity}`}>
-          <span className={`ins-level level-${p.severity === 'error' ? 'bad' : 'warn'}`}>{p.severity === 'error' ? t('builder.problems.error') : t('builder.problems.warning')}</span>
-          <span className="builder-problem-text">
-            {p.message || t('builder.problems.generic')}
-            {p.requires && (
-              <>
-                {' '}
-                <button className="link" onClick={() => onBase(p.requires!)}>
-                  {t('builder.card.chooseBase')}
-                </button>
-              </>
-            )}
-          </span>
-        </li>
-      ))}
+      {sorted.map((p, i) => {
+        const button = action(p)
+        return (
+          <li key={i} className={`builder-problem is-${p.severity}`}>
+            <span className={`ins-level level-${p.severity === 'error' ? 'bad' : 'warn'}`}>{p.severity === 'error' ? t('builder.problems.error') : t('builder.problems.warning')}</span>
+            <span className="builder-problem-text">
+              {p.message || t('builder.problems.generic')}
+              {button && <> {button}</>}
+            </span>
+          </li>
+        )
+      })}
     </ul>
   )
 }
 
-function RecapPanel({ catalog, index, draft, preview, onBase }: { catalog: BuilderCatalog; index: Map<string, CardRef>; draft: Draft; preview: PreviewState; onBase: (base: BuilderBase) => void }) {
+function RecapPanel({
+  catalog,
+  index,
+  draft,
+  preview,
+  ambianceGroup,
+  onEnable,
+  onOpenTool
+}: {
+  catalog: BuilderCatalog
+  index: Map<string, CardRef>
+  draft: Draft
+  preview: PreviewState
+  ambianceGroup: string | null
+  onEnable: (tool: string) => void
+  onOpenTool: (tool: ToolKey) => void
+}) {
   const { t } = useTranslation()
   const p = preview.data
+  const active = catalog.tools.filter((tool) => draft.tools[tool.key].mode !== 'none')
+  // Ambiance : un outil par ligne (« ReShade : Cinéma, réglé par toi »), ou le jeu d'origine.
+  const ambianceLines = active.length
+    ? active.map((tool) => t('builder.tool.line', { tool: toolName(tool), summary: toolSummary(t, tool, draft.tools[tool.key], index) }))
+    : [t('builder.recap.basic')]
   const byGroup = catalog.groups
-    .map((g) => ({ label: g.label, names: draft.components.filter((id) => index.get(id)?.category.group === g.key).map((id) => index.get(id)!.card.name) }))
-    .filter((g) => g.names.length)
+    .map((g) => ({
+      key: g.key,
+      label: g.label,
+      lines: [...(g.key === ambianceGroup ? ambianceLines : []), ...draft.components.filter((id) => index.get(id)?.category.group === g.key).map((id) => index.get(id)!.card.name)]
+    }))
+    .filter((g) => g.lines.length)
   const unknown = draft.components.filter((id) => !index.has(id)).map((id) => draft.names[id] ?? id)
+  const empty = !draft.components.length && !active.length
   return (
     <aside className="builder-recap" aria-label={t('builder.recap.title')}>
       <div className="builder-recap-head">
         <h2>{t('builder.recap.title')}</h2>
         {preview.loading && <span className="muted small">{t('builder.recap.checking')}</span>}
       </div>
-      {draft.components.length === 0 ? (
+      <ul className="builder-recap-list">
+        {byGroup.map((g) => (
+          <li key={g.key}>
+            <span className="muted small">{g.label}</span>
+            {g.lines.map((line, i) => (
+              <span key={i}>{line}</span>
+            ))}
+          </li>
+        ))}
+        {unknown.length > 0 && (
+          <li>
+            <span className="muted small">{t('builder.recap.other')}</span>
+            <span>{unknown.join(', ')}</span>
+          </li>
+        )}
+      </ul>
+      {empty ? (
         <p className="muted">{t('builder.recap.empty')}</p>
       ) : (
         <>
-          <ul className="builder-recap-list">
-            {byGroup.map((g) => (
-              <li key={g.label}>
-                <span className="muted small">{g.label}</span>
-                <span>{g.names.join(', ')}</span>
-              </li>
-            ))}
-            {unknown.length > 0 && (
-              <li>
-                <span className="muted small">{t('builder.recap.other')}</span>
-                <span>{unknown.join(', ')}</span>
-              </li>
-            )}
-          </ul>
           <dl className="facts builder-facts">
             <dt>{t('builder.recap.size')}</dt>
             <dd>{p ? bytes(p.estimate.size) : '—'}</dd>
           </dl>
           {p && <PcEstimate perf={p.estimate.performance} />}
           {preview.error && <p className="warn-text small">{preview.error}</p>}
-          {p && <Problems problems={p.problems} onBase={onBase} />}
+          {p && <Problems problems={p.problems} catalog={catalog} tools={draft.tools} onEnable={onEnable} onOpenTool={onOpenTool} />}
         </>
       )}
     </aside>
@@ -1025,8 +972,8 @@ function Summary({
   onInstall,
   onRemove,
   onDetails,
-  onBase,
-  onReshade,
+  onEnable,
+  onOpenTool,
   onOpenLocal
 }: {
   catalog: BuilderCatalog
@@ -1040,19 +987,19 @@ function Summary({
   onInstall: () => void
   onRemove: (id: string) => void
   onDetails: (id: string) => void
-  onBase: (base: BuilderBase) => void
-  onReshade: () => void
+  onEnable: (tool: string) => void
+  onOpenTool: (tool: ToolKey) => void
   onOpenLocal: (packId: string) => void
 }) {
   const { t } = useTranslation()
   const { overview } = useStore()
   const dl = useDownload(draft.id)
-  const changes = reshadeChanges(draft.reshade)
   const local = builtPack(overview?.library ?? [], draft.id)
   const update = !!local && !!overview?.market.updates.includes(local.id)
   const p = preview.data
   const errors = p?.problems.filter((x) => x.severity === 'error') ?? []
   const unknown = draft.components.filter((id) => !index.has(id))
+  const anything = draft.components.length > 0 || catalog.tools.some((tool) => draft.tools[tool.key].mode !== 'none')
   const checked = !!p && !preview.loading
   const upToDate = !!local && !dirty && !update
   const installLabel = !local ? t('builder.summary.install') : upToDate ? t('builder.summary.upToDate') : t('builder.update')
@@ -1065,11 +1012,31 @@ function Summary({
         <span className="field-hint">{t('builder.summary.nameHint', { n: num(NAME_MAX - draft.name.length) })}</span>
       </label>
 
+      {catalog.tools.length > 0 && (
+        <>
+          <div className="section-head">
+            <h2>{t('builder.summary.ambiance')}</h2>
+          </div>
+          <ul className="list compact">
+            {catalog.tools.map((tool) => (
+              <li key={tool.key} className="row">
+                <span className="row-main">{t('builder.tool.line', { tool: toolName(tool), summary: toolSummary(t, tool, draft.tools[tool.key], index) })}</span>
+                <button className="link" onClick={() => onOpenTool(tool.key)}>
+                  {t('builder.summary.changeTool')}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
       <div className="section-head">
         <h2>{t('builder.summary.components')}</h2>
       </div>
-      {draft.components.length === 0 ? (
+      {!anything ? (
         <EmptyState icon="pack" title={t('builder.summary.emptyTitle')} text={t('builder.summary.emptyText')} compact />
+      ) : !draft.components.length ? (
+        <p className="muted">{t('builder.summary.noComponents')}</p>
       ) : (
         <div className="builder-summary-list">
           {catalog.categories
@@ -1095,16 +1062,6 @@ function Summary({
                     )
                   })}
                 </ul>
-                {category.key === RESHADE && (
-                  <div className="builder-summary-reshade">
-                    <span className="muted small">
-                      {changes ? t('builder.summary.reshadeChanged', { count: changes, n: num(changes) }) : t('builder.summary.reshadeAsIs')}
-                    </span>
-                    <button className="link small" onClick={onReshade}>
-                      {t('builder.reshade.open')}
-                    </button>
-                  </div>
-                )}
               </div>
             ))}
           {unknown.length > 0 && (
@@ -1132,7 +1089,7 @@ function Summary({
         </div>
       )}
 
-      {draft.components.length > 0 && (
+      {anything && (
         <>
           <div className="section-head">
             <h2>{t('builder.summary.check')}</h2>
@@ -1143,7 +1100,12 @@ function Summary({
               <span className="bar-text">{preview.error}</span>
             </div>
           )}
-          {p && (p.problems.length ? <Problems problems={p.problems} onBase={onBase} /> : <p className="ok-text">{t('builder.summary.noProblem')}</p>)}
+          {p &&
+            (p.problems.length ? (
+              <Problems problems={p.problems} catalog={catalog} tools={draft.tools} onEnable={onEnable} onOpenTool={onOpenTool} />
+            ) : (
+              <p className="ok-text">{t('builder.summary.noProblem')}</p>
+            ))}
           {p && (
             <dl className="facts builder-facts">
               <dt>{t('builder.recap.size')}</dt>
@@ -1164,7 +1126,7 @@ function Summary({
             <button onClick={onSave} disabled={busy || !dirty}>
               {t('common.save')}
             </button>
-            <button className="primary" onClick={onInstall} disabled={busy || !draft.components.length || !checked || errors.length > 0 || upToDate}>
+            <button className="primary" onClick={onInstall} disabled={busy || !anything || !checked || errors.length > 0 || upToDate}>
               {installLabel}
             </button>
           </>
@@ -1213,118 +1175,5 @@ function LocalPack({ pack, update, performance, onOpenLocal }: { pack: PackManif
       </div>
       {picker}
     </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Détails d'un composant
-
-function ComponentModal({ id, card, selected, onToggle, onClose }: { id: string; card: BuilderComponentCard | null; selected: boolean; onToggle: () => void; onClose: () => void }) {
-  const { t, i18n } = useTranslation()
-  const { run } = useStore()
-  const [detail, setDetail] = useState<BuilderComponentDetail | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  useEffect(() => {
-    let live = true
-    window.api.builderComponent(id).then(
-      (d) => live && setDetail(d),
-      (e) => live && setError(cleanError(e))
-    )
-    return () => {
-      live = false
-    }
-  }, [id, i18n.language])
-  const name = detail?.name ?? card?.name ?? ''
-  return (
-    <Modal
-      className="builder-modal"
-      title={name}
-      onClose={onClose}
-      actions={
-        <>
-          {card && (
-            <button
-              className={selected ? '' : 'primary'}
-              data-autofocus
-              onClick={() => {
-                onToggle()
-                onClose()
-              }}
-            >
-              {selected ? t('builder.details.remove') : t('builder.details.choose')}
-            </button>
-          )}
-          <button onClick={onClose}>{t('common.close')}</button>
-        </>
-      }
-    >
-      {error ? (
-        <p>{error}</p>
-      ) : !detail ? (
-        <p className="muted loading">{t('common.loading')}</p>
-      ) : (
-        <div className="builder-detail">
-          <Gallery
-            key={detail.id}
-            images={detail.images.map((i) => i.id)}
-            image={(imageId) => <img className="cover-img contain" src={builderImageUrl(detail.id, imageId)} alt="" draggable={false} />}
-            thumb={(imageId) => builderImageUrl(detail.id, imageId, true)}
-            empty={<div className="cover-empty">{detail.name}</div>}
-          />
-          {detail.summary && <p className="summary">{detail.summary}</p>}
-          <dl className="facts">
-            <dt>{t('builder.details.size')}</dt>
-            <dd>{bytes(detail.size)}</dd>
-            <dt>{t('builder.details.files')}</dt>
-            <dd>{num(detail.fileCount)}</dd>
-            <dt>{t('builder.details.weight')}</dt>
-            <dd>
-              <WeightBadge perf={detail.performance} />
-            </dd>
-            {detail.credits && (
-              <>
-                <dt>{t('builder.details.credits')}</dt>
-                <dd className="builder-credits">{detail.credits}</dd>
-              </>
-            )}
-            {detail.tags.length > 0 && (
-              <>
-                <dt>{t('builder.details.tags')}</dt>
-                <dd>{detail.tags.join(', ')}</dd>
-              </>
-            )}
-          </dl>
-          {detail.unreadable && <p className="hint">{t('builder.details.unreadable')}</p>}
-          {detail.description.trim() && <Markdown text={detail.description} />}
-          {detail.sourceUrl && (
-            <div className="side-links">
-              <button onClick={() => void run(() => window.api.openLink(detail.sourceUrl!))}>{t('builder.details.source')}</button>
-            </div>
-          )}
-          {detail.foundIn.length > 0 && (
-            <>
-              <div className="section-head">
-                <h2>{t('builder.details.foundIn')}</h2>
-              </div>
-              <ul className="list compact">
-                {detail.foundIn.map((s, i) => (
-                  <li key={`${s.packId}-${i}`} className="row">
-                    <span className="row-main">
-                      <span>{s.packName}</span>
-                      {s.packAuthor && <span className="meta"> · {t('packDetail.byAuthor', { author: s.packAuthor })}</span>}
-                    </span>
-                    {s.packSlug && (
-                      <button className="link" onClick={() => void run(() => window.api.openSite(`/packs/${s.packSlug}/`))}>
-                        {t('builder.details.viewPack')}
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </div>
-      )}
-    </Modal>
   )
 }

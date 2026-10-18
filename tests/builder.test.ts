@@ -1,6 +1,8 @@
 // « Créer ton pack » : catalogue gardé sur le disque (ETag, 304), contrôle des chemins du manifeste et des entrées des
 // zips, téléchargement des fichiers (SHA-256 vérifié, reprise d'un fichier partiel), construction du pack dans la
-// bibliothèque (zips, puis fichiers, puis fichiers écrits), et nouvelle révision proposée comme une mise à jour.
+// bibliothèque (zips, puis fichiers, puis fichiers écrits, dont ceux de chaque outil d'ambiance sous leur racine), et
+// nouvelle révision proposée comme une mise à jour. Outils d'ambiance : conversion des créations d'avant les outils,
+// règles QuantV / ReShade, choix rapide (Basique, Recommandé) et aperçu d'un style.
 import { createHash } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
@@ -21,7 +23,9 @@ vi.mock('../src/main/archive', async () => {
   }
 })
 
-const { Builder, checkManifest, extractBundle, isSafeInstallPath } = await import('../src/main/core/builder')
+const { Builder, checkManifest, extractBundle, isSafeInstallPath, styleImageVersion, toCatalog } = await import('../src/main/core/builder')
+const { ambianceChoice, cleanTools, enableTool, fromLegacy, noTools, previewLook, recommendedTools, setTool, setToolMode, styleOf, toolOff, withKnownStyles } =
+  await import('@shared/ambiance')
 const { ApiError } = await import('../src/main/core/http')
 const { Library } = await import('../src/main/core/library')
 
@@ -194,7 +198,7 @@ function setup() {
   const fetch = vi.fn(async (url: string, init?: RequestInit): Promise<Response> => {
     const headers = Object.fromEntries(new Headers(init?.headers).entries())
     requests.push({ url, headers })
-    if (url.includes('/images/')) return new Response(new Uint8Array(JPEG), { status: 200 })
+    if (url.includes('/images/') || url.includes('/builder/styles/')) return new Response(new Uint8Array(JPEG), { status: 200 })
     const m = /\/builder\/files\/([0-9a-f]{64})$/.exec(url)
     const served = m && blobs.get(m[1])
     if (!served) return json({ detail: 'Fichier introuvable.' }, { status: 404 })
@@ -480,5 +484,369 @@ describe('mises à jour', () => {
     const pack = await s.library.get(first.packId)
     for (const sha256 of pack.builtBlobs!) await expect(fs.stat(s.builder.blobFile(sha256))).resolves.toBeTruthy()
     expect((await s.builder.cacheInfo()).size).toBeGreaterThan(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Outils d'ambiance
+
+const QUANTV_ID = 'aaaaaaaa-0000-4000-8000-000000000003'
+const ENB_ID = 'aaaaaaaa-0000-4000-8000-000000000004'
+const REFERENCE_ID = 'aaaaaaaa-0000-4000-8000-000000000005'
+const STYLE_REAL = 'cccccccc-0000-4000-8000-000000000001'
+const STYLE_CINEMA = 'cccccccc-0000-4000-8000-000000000002'
+const STYLE_QUANTV = 'cccccccc-0000-4000-8000-000000000003'
+
+const card = (id: string, category: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+  id,
+  slug: category,
+  category,
+  name: `Élément ${category}`,
+  conflictsWith: [],
+  provides: [],
+  requires: [],
+  ...extra
+})
+
+/** Catalogue avec les quatre outils : ReShade et QuantV réglables, NVE sans rien, ENB importé d'un pack. */
+const toolsCatalog = (opts: { reshadeCustom?: boolean; reshadePacks?: boolean } = {}): Record<string, unknown> => ({
+  version: 'v-outils',
+  groups: [{ key: 'ambiance', label: 'Ambiance graphique', categories: ['quantv', 'reshade', 'nve', 'enb', 'timecycle'] }],
+  categories: [
+    { key: 'quantv', label: 'Base QuantV', group: 'ambiance', single: true, tool: 'quantv', components: [card(QUANTV_ID, 'quantv', { provides: ['quantv', 'reshade'] })] },
+    {
+      key: 'reshade',
+      label: 'Preset ReShade',
+      group: 'ambiance',
+      single: true,
+      tool: 'reshade',
+      components: opts.reshadePacks === false ? [] : [card(PRESET_ID, 'reshade', { requires: ['quantv'] })]
+    },
+    { key: 'nve', label: 'NVE', group: 'ambiance', single: true, tool: 'nve', components: [] },
+    { key: 'enb', label: 'ENB', group: 'ambiance', single: true, tool: 'enb', components: [card(ENB_ID, 'enb')] },
+    { key: 'timecycle', label: 'Météo et lumière', group: 'ambiance', single: false, tool: null, components: [] }
+  ],
+  tools: [
+    {
+      key: 'reshade',
+      label: 'ReShade (filtres de l’image)',
+      description: 'Couleurs et contraste.',
+      category: 'reshade',
+      defaultMode: opts.reshadeCustom === false ? 'pack' : 'custom',
+      defaultStyle: STYLE_REAL,
+      custom: opts.reshadeCustom !== false,
+      packs: opts.reshadePacks === false ? 0 : 1,
+      referenceComponent: REFERENCE_ID,
+      reference: { id: IMAGE_ID, width: 1280, height: 720 },
+      styles: [
+        {
+          id: STYLE_REAL,
+          key: 'realiste',
+          label: 'Réaliste',
+          description: 'Couleurs justes.',
+          imageUrl: `/builder/styles/${STYLE_REAL}/image?v=3`,
+          thumbUrl: `/builder/styles/${STYLE_REAL}/image?v=3&size=thumb`,
+          costMs: 1.2,
+          costLabel: 'Léger',
+          byDefault: true
+        },
+        { id: STYLE_CINEMA, key: 'cinema', label: 'Cinéma', preview: { brightness: 0.95, contrast: 1.2, tint: '#ffaa55', tintOpacity: 0.2 }, costMs: 2, costLabel: 'Moyen', byDefault: false }
+      ],
+      requires: []
+    },
+    {
+      key: 'quantv',
+      label: 'QuantV (lumière et météo)',
+      category: 'quantv',
+      defaultMode: 'custom',
+      defaultStyle: STYLE_QUANTV,
+      custom: true,
+      packs: 1,
+      styles: [{ id: STYLE_QUANTV, key: 'equilibre', label: 'Équilibré', byDefault: true }],
+      requires: ['reshade']
+    },
+    { key: 'nve', label: 'NVE', category: 'nve', defaultMode: 'none', custom: false, packs: 0, styles: [], requires: [] },
+    { key: 'enb', label: 'ENB', category: 'enb', defaultMode: 'pack', custom: false, packs: 1, styles: [], requires: [] }
+  ],
+  controls: [{ key: 'brightness', label: 'Luminosité', type: 'slider', min: -100, max: 100, step: 1, group: 'image', groupLabel: 'Image', tool: 'reshade' }]
+})
+
+const parsed = (opts?: Parameters<typeof toolsCatalog>[0]) => toCatalog(toolsCatalog(opts), { offline: false, checked: true })
+
+describe('catalogue des outils d’ambiance', () => {
+  it('lit les outils, leurs styles et l’adresse de leurs images', () => {
+    const catalog = parsed()
+    expect(catalog.tools.map((t) => [t.key, t.defaultMode, t.custom])).toEqual([
+      ['reshade', 'custom', true],
+      ['quantv', 'custom', true],
+      ['nve', 'none', false],
+      ['enb', 'pack', false]
+    ])
+    expect(catalog.categories.find((c) => c.key === 'reshade')?.tool).toBe('reshade')
+    expect(catalog.categories.find((c) => c.key === 'timecycle')?.tool).toBeNull()
+    expect(catalog.controls[0].tool).toBe('reshade')
+    const [real, cinema] = catalog.tools[0].styles
+    expect(real.imageVersion).toBe('3')
+    expect(cinema).toMatchObject({ imageVersion: null, preview: { brightness: 0.95, contrast: 1.2, tint: '#ffaa55', tintOpacity: 0.2, sepia: null } })
+    // Adresse d'un autre style ou d'un autre serveur : pas d'image.
+    expect(styleImageVersion(STYLE_REAL, `/builder/styles/${STYLE_CINEMA}/image?v=3`)).toBeNull()
+    expect(styleImageVersion(STYLE_REAL, `https://ailleurs.test/builder/styles/${STYLE_REAL}/image?v=3`)).toBeNull()
+  })
+})
+
+describe('conversion des créations d’avant les outils', () => {
+  const categories: Record<string, string> = { [PRESET_ID]: 'reshade', [QUANTV_ID]: 'quantv', [ENB_ID]: 'enb', [ROADS_ID]: 'roads' }
+
+  it('le preset et les bases deviennent « Importé d’un pack », avec les réglages ReShade', () => {
+    const reshade = { controls: { brightness: 20 }, techniques: { 'Bloom@Bloom.fx': false }, values: { 'Bloom.fx': { Intensity: '0.8' } } }
+    const { components, tools } = fromLegacy([PRESET_ID, ROADS_ID, QUANTV_ID, ENB_ID], (id) => categories[id], reshade)
+    expect(components).toEqual([ROADS_ID])
+    expect(tools.reshade).toEqual({ mode: 'pack', component: PRESET_ID, style: null, ...reshade })
+    expect(tools.quantv).toMatchObject({ mode: 'pack', component: QUANTV_ID, controls: {} })
+    expect(tools.enb).toMatchObject({ mode: 'pack', component: ENB_ID })
+    expect(tools.nve).toEqual(toolOff())
+  })
+
+  it('garde un choix d’outil déjà fait', () => {
+    const known = { ...noTools(), reshade: { ...toolOff(), mode: 'custom' as const, style: STYLE_CINEMA } }
+    const { components, tools } = fromLegacy([PRESET_ID, ROADS_ID], (id) => categories[id], null, known)
+    expect(components).toEqual([ROADS_ID])
+    expect(tools.reshade).toMatchObject({ mode: 'custom', style: STYLE_CINEMA })
+  })
+
+  it('choix reçus nettoyés : outil absent ou incomplet sur « Aucun », valeurs du bon type seulement', () => {
+    const tools = cleanTools({ reshade: { mode: 'custom', style: STYLE_REAL, controls: { brightness: 10, bad: {} } }, quantv: { mode: 'pack' }, enb: { mode: 'bizarre' } })
+    expect(tools.reshade).toEqual({ mode: 'custom', component: null, style: STYLE_REAL, controls: { brightness: 10 }, techniques: {}, values: {} })
+    expect(tools.quantv).toEqual(toolOff())
+    expect(tools.enb).toEqual(toolOff())
+    expect(tools.nve).toEqual(toolOff())
+  })
+
+  it('une création vue par une API d’avant les outils : son preset est importé d’un pack', async () => {
+    const s = setup()
+    s.routes.set(`GET /builder/builds/${BUILD}`, {
+      id: BUILD,
+      name: 'Ancien pack',
+      components: [
+        { id: PRESET_ID, name: 'Preset', category: 'reshade', available: true },
+        { id: ROADS_ID, name: 'Routes', category: 'roads', available: true }
+      ],
+      reshade: { controls: { brightness: 20 }, techniques: {}, values: {} },
+      problems: []
+    })
+    const build = await s.builder.build(BUILD)
+    expect(build.tools.reshade).toMatchObject({ mode: 'pack', component: PRESET_ID, controls: { brightness: 20 } })
+    expect(build.tools.quantv.mode).toBe('none')
+  })
+})
+
+describe('règles entre outils et choix rapide', () => {
+  it('« Recommandé » prend le choix par défaut de chaque outil', () => {
+    const tools = recommendedTools(parsed())
+    expect(tools.reshade).toMatchObject({ mode: 'custom', style: STYLE_REAL, component: null })
+    expect(tools.quantv).toMatchObject({ mode: 'custom', style: STYLE_QUANTV })
+    expect(tools.nve.mode).toBe('none')
+    expect(tools.enb).toMatchObject({ mode: 'pack', component: ENB_ID })
+  })
+
+  it('reconnaît Basique, Recommandé et Personnalisé', () => {
+    const catalog = parsed()
+    expect(ambianceChoice(noTools(), catalog)).toBe('basic')
+    const recommended = recommendedTools(catalog)
+    expect(ambianceChoice(recommended, catalog)).toBe('recommended')
+    expect(ambianceChoice({ ...recommended, reshade: { ...recommended.reshade, controls: { brightness: 10 } } }, catalog)).toBe('custom')
+    expect(ambianceChoice({ ...recommended, reshade: { ...recommended.reshade, style: STYLE_CINEMA } }, catalog)).toBe('custom')
+  })
+
+  it('activer QuantV active ReShade (réglé par le joueur, style par défaut)', () => {
+    const catalog = parsed()
+    const on = setToolMode(noTools(), 'quantv', 'custom', catalog)
+    expect(on.note).toBe('reshade-on')
+    expect(on.tools.quantv).toMatchObject({ mode: 'custom', style: STYLE_QUANTV })
+    expect(on.tools.reshade).toMatchObject({ mode: 'custom', style: STYLE_REAL })
+    // Un preset importé qui demande QuantV : l'activer active aussi ReShade s'il le faut.
+    expect(enableTool(noTools(), 'quantv', catalog).tools.reshade.mode).toBe('custom')
+    // ReShade déjà choisi : rien d'autre ne change.
+    const pack = { ...noTools(), reshade: { ...toolOff(), mode: 'pack' as const, component: PRESET_ID } }
+    const kept = setToolMode(pack, 'quantv', 'pack', catalog)
+    expect(kept.note).toBeNull()
+    expect(kept.tools.reshade).toMatchObject({ mode: 'pack', component: PRESET_ID })
+    expect(kept.tools.quantv).toMatchObject({ mode: 'pack', component: QUANTV_ID })
+  })
+
+  it('ReShade sur Aucun coupe QuantV', () => {
+    const catalog = parsed()
+    const off = setToolMode(recommendedTools(catalog), 'reshade', 'none', catalog)
+    expect(off.note).toBe('quantv-off')
+    expect(off.tools.reshade.mode).toBe('none')
+    expect(off.tools.quantv.mode).toBe('none')
+    expect(off.tools.enb.mode).toBe('pack')
+  })
+
+  it('ReShade importé d’un pack quand il ne se règle pas, signalé quand il n’existe pas', () => {
+    const packOnly = parsed({ reshadeCustom: false })
+    expect(setToolMode(noTools(), 'quantv', 'custom', packOnly).tools.reshade).toMatchObject({ mode: 'pack', component: PRESET_ID })
+    const none = parsed({ reshadeCustom: false, reshadePacks: false })
+    const missing = setTool(noTools(), 'quantv', { ...toolOff(), mode: 'custom', style: STYLE_QUANTV }, none)
+    expect(missing.note).toBe('reshade-missing')
+    expect(missing.tools.reshade.mode).toBe('none')
+  })
+
+  it('un style retiré est remplacé par le style par défaut', () => {
+    const catalog = parsed()
+    const reshade = catalog.tools.find((x) => x.key === 'reshade')!
+    const retired = 'cccccccc-0000-4000-8000-000000000999'
+    const tools = { ...noTools(), reshade: { ...toolOff(), mode: 'custom' as const, style: retired, controls: { brightness: 10 } } }
+    expect(styleOf(reshade, tools.reshade)?.id).toBe(STYLE_REAL)
+    expect(styleOf(reshade, { ...tools.reshade, style: STYLE_CINEMA })?.id).toBe(STYLE_CINEMA)
+    expect(styleOf(reshade, toolOff())).toBeNull()
+    // À l'enregistrement : null (style par défaut de l'API), réglages gardés ; hors ligne, rien ne change.
+    expect(withKnownStyles(tools, catalog).reshade).toMatchObject({ mode: 'custom', style: null, controls: { brightness: 10 } })
+    expect(withKnownStyles({ ...tools, reshade: { ...tools.reshade, style: STYLE_CINEMA } }, catalog).reshade.style).toBe(STYLE_CINEMA)
+    expect(withKnownStyles(tools, { ...catalog, offline: true }).reshade.style).toBe(retired)
+  })
+})
+
+describe('aperçu d’un style', () => {
+  it('sans style : l’image telle quelle', () => {
+    expect(previewLook(null)).toEqual({
+      filter: 'brightness(1) contrast(1) saturate(1) sepia(0) grayscale(0) hue-rotate(0deg)',
+      tint: null,
+      warmth: null,
+      vignette: 0,
+      grain: 0
+    })
+  })
+
+  it('valeurs bornées, curseurs du joueur compris', () => {
+    const look = previewLook(
+      {
+        brightness: 5,
+        contrast: -1,
+        saturate: 1.5,
+        sepia: 2,
+        grayscale: -1,
+        hueRotate: 999,
+        tint: '#ff0000',
+        tintOpacity: 3,
+        vignette: 0.5,
+        grain: 9
+      },
+      { brightness: 500, saturation: 50, temperature: -50 }
+    )
+    expect(look.filter).toBe('brightness(3) contrast(0) saturate(2.25) sepia(1) grayscale(0) hue-rotate(360deg)')
+    expect(look.tint).toEqual({ color: '#ff0000', opacity: 1 })
+    expect(look.warmth).toEqual({ color: '#4c9bff', opacity: 0.175 })
+    expect(look.vignette).toBe(0.5)
+    expect(look.grain).toBe(1)
+    // Couleur mal formée : pas de calque.
+    const flat = { brightness: null, contrast: null, saturate: null, sepia: null, grayscale: null, hueRotate: null, vignette: null, grain: null }
+    expect(previewLook({ ...flat, tint: 'red', tintOpacity: 0.5 }).tint).toBeNull()
+  })
+})
+
+describe('création avec des outils d’ambiance', () => {
+  it('envoie les choix d’outils à l’aperçu et lit l’état d’un outil', async () => {
+    const s = setup()
+    s.routes.set('POST /builder/preview', { components: [ROADS_ID], valid: true, problems: [{ type: 'needs-tool', severity: 'error', message: 'QuantV a besoin de ReShade.', requires: 'reshade' }], estimate: { size: 10 } })
+    const tools = { ...noTools(), quantv: { ...toolOff(), mode: 'custom' as const, style: STYLE_QUANTV } }
+    const preview = await s.builder.preview([ROADS_ID], tools)
+    expect(preview.problems[0]).toMatchObject({ type: 'needs-tool', requires: 'reshade' })
+    const sent = s.account.call.mock.calls.at(-1) as unknown as [string, string, { json: { components: string[]; tools: Record<string, { mode: string }> } }]
+    expect(sent[2].json.components).toEqual([ROADS_ID])
+    expect(Object.keys(sent[2].json.tools)).toEqual(['reshade', 'quantv', 'nve', 'enb'])
+    expect(sent[2].json.tools.quantv.mode).toBe('custom')
+
+    s.routes.set('POST /builder/tools/view', {
+      tool: 'reshade',
+      mode: 'custom',
+      componentId: REFERENCE_ID,
+      styleId: STYLE_REAL,
+      path: 'plugins/Reflect.ini',
+      techniques: [{ name: 'Bloom@Bloom.fx', effect: 'Bloom.fx', enabled: true, costMs: 0.4, costLabel: 'Léger' }],
+      available: ['Bloom@Bloom.fx', 'Vignette@Vignette.fx'],
+      effects: [{ file: 'Bloom.fx', params: [{ name: 'Intensity', type: 'float', value: '0.6', defaultValue: '0.3', baseValue: '0.5' }] }],
+      controls: [{ key: 'brightness', label: 'Luminosité', type: 'slider', value: 0, tool: 'reshade' }],
+      problems: []
+    })
+    const view = await s.builder.toolView('reshade', recommendedTools(parsed()))
+    expect(view).toMatchObject({ mode: 'custom', styleId: STYLE_REAL, available: ['Bloom@Bloom.fx', 'Vignette@Vignette.fx'] })
+    expect(view.effects[0].params[0]).toMatchObject({ value: '0.6', baseValue: '0.5', defaultValue: '0.3' })
+    expect(view.controls[0].tool).toBe('reshade')
+
+    // Effet inconnu : réponse vide.
+    s.account.fetchAuthed.mockResolvedValueOnce(new Response('', { status: 200 }))
+    expect(await s.builder.toolEffect(REFERENCE_ID, 'Inconnu.fx')).toBeNull()
+    s.account.fetchAuthed.mockResolvedValueOnce(json({ file: 'Vignette.fx', params: [{ name: 'Amount', type: 'float', min: 0, max: 1 }] }))
+    expect(await s.builder.toolEffect(REFERENCE_ID, 'Vignette.fx')).toMatchObject({ file: 'Vignette.fx', params: [{ name: 'Amount', min: 0, max: 1 }] })
+    expect(s.account.fetchAuthed).toHaveBeenLastCalledWith('GET', `/builder/tools/reshade/effects?file=Vignette.fx&component=${REFERENCE_ID}`)
+    // Nom de fichier refusé : pas de requête.
+    expect(await s.builder.toolEffect(null, '../secret.fx')).toBeNull()
+  })
+
+  it('écrit chaque fichier de réglages sous sa racine, après les fichiers des composants', async () => {
+    const s = setup()
+    // Catalogue gardé sur ce PC : image du style ReShade choisi pour la couverture.
+    s.account.fetchAuthed.mockResolvedValueOnce(json(toolsCatalog(), { headers: { ETag: '"v-outils"' } }))
+    await s.builder.catalog(true)
+    const quantvBase = s.serve('RPF7 quantv')
+    const quantvIni = s.serve('[LIGHTS]\r\nCoronas=1\r\n')
+    const enbIni = s.serve('[EFFECT]\r\nEnableBloom=false\r\n')
+    const entry = (f: { sha256: string; size: number }, extra: Record<string, unknown>) => ({ ...f, url: `/builder/files/${f.sha256}`, entryCount: 1, kind: 'file', ...extra })
+    const preset = 'Techniques=QuantV@QuantV.fx,Lightroom@qUINT_lightroom.fx\r\n\r\n[qUINT_lightroom.fx]\r\nLIGHTROOM_GLOBAL_CONTRAST=0.080000\r\n'
+    s.routes.set(`GET /builder/builds/${BUILD}/manifest`, {
+      buildId: BUILD,
+      name: 'Nuit bleue',
+      revision: 'rev-outils',
+      files: [
+        entry(quantvBase, { componentId: QUANTV_ID, root: 'fivem', path: 'mods/aQuantV.rpf' }),
+        entry(quantvIni, { componentId: QUANTV_ID, root: 'fivem', path: 'plugins/QuantV.ini' }),
+        entry(enbIni, { componentId: ENB_ID, root: 'gta', path: 'enbseries.ini' })
+      ],
+      generated: [
+        { componentId: REFERENCE_ID, root: 'fivem', path: 'plugins/Reflect.ini', content: preset },
+        { componentId: QUANTV_ID, root: 'fivem', path: 'plugins/QuantV.ini', content: '[LIGHTS]\r\nCoronas=0\r\n' },
+        { componentId: null, root: 'fivem', path: 'plugins/NVE.ini', content: 'Techniques=NVE@NVE.fx\r\n' },
+        { componentId: ENB_ID, root: 'gta', path: 'enbseries.ini', content: '[EFFECT]\r\nEnableBloom=true\r\n' }
+      ],
+      preset: 'plugins/Reflect.ini',
+      unavailable: [],
+      problems: [],
+      totalSize: 100
+    })
+    s.routes.set(`GET /builder/builds/${BUILD}`, {
+      id: BUILD,
+      name: 'Nuit bleue',
+      components: [
+        { id: QUANTV_ID, name: 'Base QuantV', category: 'quantv', available: true },
+        { id: ENB_ID, name: 'ENB du soir', category: 'enb', available: true }
+      ],
+      tools: {
+        reshade: { mode: 'custom', style: STYLE_REAL, controls: { brightness: -20 } },
+        quantv: { mode: 'pack', component: QUANTV_ID },
+        enb: { mode: 'pack', component: ENB_ID }
+      },
+      problems: []
+    })
+
+    const result = await s.builder.install(BUILD, vi.fn(), new AbortController().signal, hooks())
+    const pack = await s.library.get(result.packId)
+    const fivem = 'FiveM Application Data'
+    expect(await content(s, pack.id, fivem, 'plugins', 'Reflect.ini')).toBe(preset)
+    // Le fichier écrit par l'API remplace celui du composant, à sa racine (GTA V pour ENB).
+    expect(await content(s, pack.id, fivem, 'plugins', 'QuantV.ini')).toBe('[LIGHTS]\r\nCoronas=0\r\n')
+    expect(await content(s, pack.id, fivem, 'plugins', 'NVE.ini')).toBe('Techniques=NVE@NVE.fx\r\n')
+    expect(await content(s, pack.id, 'GTA V', 'enbseries.ini')).toBe('[EFFECT]\r\nEnableBloom=true\r\n')
+    expect(pack.files.map((f) => f.rel).sort()).toEqual([
+      `${fivem}/mods/aQuantV.rpf`,
+      `${fivem}/plugins/NVE.ini`,
+      `${fivem}/plugins/QuantV.ini`,
+      `${fivem}/plugins/Reflect.ini`,
+      'GTA V/enbseries.ini'
+    ])
+    expect(pack.reshadePreset).toBe(`${fivem}/plugins/Reflect.ini`)
+    // Couverture : l'image du style ReShade choisi.
+    expect(pack.cover).toBe(`builder-style-${STYLE_REAL}-3.jpg`)
+    expect(s.requests.some((r) => r.url === `${API}/builder/styles/${STYLE_REAL}/image?v=3`)).toBe(true)
   })
 })

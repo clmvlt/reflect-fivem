@@ -225,12 +225,29 @@
       "detail": "Tes derniers choix ne sont pas enregistrés sur ton compte.",
       "ok": "Quitter"
     },
+    "ambiance": {
+      "title": "Ambiance",
+      "intro": "Les couleurs, la lumière et la météo de ton jeu. Prends un choix tout prêt, ou règle chaque outil toi-même.",
+      "more": "Autres éléments d’ambiance",
+      "basic": {
+        "title": "Basique",
+        "text": "Le jeu d’origine, plus net. Le plus léger pour ton PC."
+      },
+      "recommended": {
+        "title": "Recommandé",
+        "text": "Les réglages conseillés : de belles couleurs et une lumière soignée, sans rien régler."
+      },
+      "custom": {
+        "title": "Personnalisé",
+        "text": "Choisis un style pour chaque outil et ajuste-le avec quelques curseurs."
+      }
+    },
     "signIn": {
       "title": "Compose ton propre pack graphique",
       "text": "Choisis chaque élément (routes, végétation, sang, preset ReShade, base QuantV, NVE, ENB…) parmi ceux de tous les packs de la Marketplace. Connecte-toi pour commencer : tes créations sont gardées sur ton compte.",
       "expired": "Ta connexion a expiré. Reconnecte-toi pour retrouver tes créations.",
       "choose": "Un élément par catégorie, ou plusieurs quand c’est possible, avec leur poids sur ton PC.",
-      "tune": "Ton ReShade réglé en quelques curseurs, ou effet par effet.",
+      "tune": "Ton ambiance en un clic : un style tout prêt, puis quelques curseurs si tu veux.",
       "install": "Installé comme n’importe quel pack de ta bibliothèque, et mis à jour quand un élément change.",
       "action": "Se connecter",
       "appOnly": "« Créer ton pack » n’existe que dans l’application."
@@ -275,12 +292,12 @@
       "credits": "Crédits : {{credits}}",
       "requires": "Demande : {{bases}}",
       "missing": "Il manque : {{base}}.",
-      "chooseBase": "Choisir",
       "conflict": "Remplace la même chose que {{names}} : un seul s’appliquera.",
       "unreadable": "Archive protégée : conflits impossibles à vérifier.",
       "details": "Détails",
       "notAnalyzed": "Pas encore analysé",
-      "weightTitle": "Poids sur les performances et mémoire vidéo ajoutée"
+      "weightTitle": "Poids sur les performances et mémoire vidéo ajoutée",
+      "enableBase": "Activer"
     },
     "details": {
       "choose": "Choisir",
@@ -303,30 +320,59 @@
       "size": "Taille à télécharger",
       "files": "Fichiers",
       "notEstimated": "Poids sur les performances pas encore estimé.",
-      "onThisPc": "Sur ce PC"
+      "onThisPc": "Sur ce PC",
+      "basic": "Basique : le jeu d’origine"
     },
     "problems": {
       "error": "Bloquant",
       "warning": "À savoir",
-      "generic": "Cette composition pose un problème."
+      "generic": "Cette composition pose un problème.",
+      "otherStyle": "Choisir un autre style",
+      "changeTool": "Changer de réglage",
+      "enable": "Activer {{tool}}"
     },
-    "reshade": {
-      "tab": "Réglages ReShade",
-      "title": "Réglages de {{name}}",
-      "intro": "Chaque curseur part du preset tel quel (0). Seuls tes changements sont gardés dans ta création.",
-      "resetAll": "Tout remettre par défaut",
-      "noControls": "Aucun réglage simple pour ce preset : utilise le mode avancé.",
-      "default": "Par défaut",
-      "advanced": "Mode avancé",
-      "advancedHint": "Effets du preset et paramètres de chaque effet. Ils l’emportent sur les réglages simples.",
-      "effects": "Effets",
+    "tool": {
+      "mode": {
+        "none": "Aucun",
+        "custom": "Réglé par moi",
+        "pack": "Importé d’un pack"
+      },
+      "note": {
+        "reshadeOn": "QuantV a besoin des filtres de l’image : ReShade est maintenant réglé par toi, avec son style par défaut.",
+        "quantvOff": "Sans ReShade, QuantV ne peut pas fonctionner : il est désactivé aussi.",
+        "reshadeMissing": "QuantV a besoin de ReShade, qui n’est pas disponible pour le moment."
+      },
+      "line": "{{tool}} : {{summary}}",
+      "lineNone": "aucun",
+      "linePack": "importé de {{name}}",
+      "lineCustom": "{{style}}, réglé par toi",
+      "lineCustomNoStyle": "réglé par toi",
+      "lineChanged_one": "{{line}} ({{n}} ajustement)",
+      "lineChanged_other": "{{line}} ({{n}} ajustements)",
+      "unknownPack": "un pack",
+      "styles": "Styles",
+      "noStyles": "Aucun style pour le moment.",
+      "byDefault": "Par défaut",
       "cost": "{{label}} · {{ms}} sur ce PC",
-      "paramCount_one": "{{n}} paramètre",
-      "paramCount_other": "{{n}} paramètres",
-      "presetValue": "Valeur du preset",
-      "presetValueTitle": "Valeur du preset : {{value}}",
-      "callout": "Ton preset se règle en quelques curseurs.",
-      "open": "Régler"
+      "adjust": "Ajuster",
+      "lookHint": "Aperçu : l’image change avec les curseurs de luminosité, contraste, saturation et température.",
+      "backToStyle": "Revenir au style",
+      "backToPack": "Revenir au réglage du pack",
+      "noControls": "Rien à ajuster ici : tout se règle dans « Avancé ».",
+      "default": "Par défaut",
+      "advanced": "Avancé",
+      "advancedHint": "Pour les connaisseurs : chaque effet et chaque réglage du fichier, un par un.",
+      "effects": "Effets",
+      "addEffect": "Ajouter un effet",
+      "addEffectCount_one": "{{n}} disponible",
+      "addEffectCount_other": "{{n}} disponibles",
+      "addEffectSearch": "Rechercher un effet",
+      "add": "Ajouter",
+      "paramCount_one": "{{n}} réglage",
+      "paramCount_other": "{{n}} réglages",
+      "startValue": "Valeur de départ",
+      "startValueTitle": "Valeur du style ou du pack : {{value}}",
+      "noAdvanced": "Ce fichier n’a rien d’autre à régler."
     },
     "summary": {
       "name": "Nom",
@@ -340,13 +386,13 @@
       "check": "Vérification",
       "noProblem": "Aucun problème : tout s’installera.",
       "install": "Installer",
-      "reshadeAsIs": "Réglages ReShade : le preset tel quel.",
-      "reshadeChanged_one": "Réglages ReShade : {{n}} changement.",
-      "reshadeChanged_other": "Réglages ReShade : {{n}} changements.",
       "upToDate": "Pack à jour",
       "installAnyway": "Installer quand même",
       "fixErrors": "Corrige les points bloquants pour pouvoir installer.",
-      "installHint": "Installer enregistre ta création, télécharge ses fichiers et l’ajoute à ta bibliothèque."
+      "installHint": "Installer enregistre ta création, télécharge ses fichiers et l’ajoute à ta bibliothèque.",
+      "ambiance": "Ambiance",
+      "changeTool": "Modifier",
+      "noComponents": "Aucun autre élément : seulement l’ambiance."
     },
     "local": {
       "inLibrary": "Dans ta bibliothèque",

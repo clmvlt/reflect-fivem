@@ -1,12 +1,13 @@
 // « Créer ton pack » : le joueur connecté compose son propre pack à partir des composants publiés (routes, végétation,
-// sang, preset ReShade, base QuantV...), règle son ReShade, enregistre sa création sur son compte (privée) et l'installe
-// comme un pack de la bibliothèque. Tout passe par /builder, réservé à une session de l'application (voir account.ts) :
-// sans compte, erreur SIGNED_OUT (l'interface invite à se connecter).
+// sang...), règle son ambiance (outils ReShade, QuantV, NVE, ENB : aucun, réglé par lui avec un style, ou importé d'un
+// pack ; voir @shared/ambiance), enregistre sa création sur son compte (privée) et l'installe comme un pack de la
+// bibliothèque. Tout passe par /builder, réservé à une session de l'application (voir account.ts) : sans compte, erreur
+// SIGNED_OUT (l'interface invite à se connecter).
 //
 // Sur le disque (<données>/builder) :
 //   catalog-<langue>.json   dernier catalogue reçu et son ETag : consultable hors ligne, revérifié par If-None-Match
 //                           (304 : rien à faire) ;
-//   images/                 images des composants (publiques, jamais modifiées), 200 Mo au plus ;
+//   images/                 images des composants et des styles (publiques, jamais modifiées), 200 Mo au plus ;
 //   blobs/<xx>/<sha256>     fichiers des composants, rangés par empreinte : un fichier partagé par plusieurs composants
 //                           n'est téléchargé qu'une fois ; <sha256>.part pendant le téléchargement (repris par Range).
 //                           Gardés tant qu'un pack construit de la bibliothèque s'en sert (reconstruction sans tout
@@ -16,7 +17,8 @@
 // avant d'écrire quoi que ce soit (racine fivem limitée à mods, plugins, addons et citizen ; racine gta sans les fichiers
 // du jeu ; pas de « .. » ni de caractère interdit ; de même pour chaque entrée des zips), fichiers manquants téléchargés
 // et vérifiés (SHA-256), puis un pack de la bibliothèque construit dans cet ordre : zips extraits, fichiers (un fichier
-// remplace celui d'un zip au même endroit), fichiers écrits par l'API (preset ReShade avec les réglages du joueur).
+// remplace celui d'un zip au même endroit), fichiers de réglages écrits par l'API, chacun sous sa racine (preset
+// ReShade, QuantV.ini, NVE.ini, enbseries.ini dans le dossier de GTA V), qui remplacent ceux des composants.
 // Une nouvelle révision (fichier d'un composant changé, création modifiée) se propose comme une nouvelle version d'un
 // pack de la Marketplace : reconstruit, même nom, mêmes réglages personnels, réinstallé s'il était installé.
 //
@@ -33,6 +35,7 @@ import { SIGNED_OUT } from '@shared/api'
 import { currentLocale } from '@shared/i18n'
 import { formatBytes as displayBytes } from '@shared/intl'
 import { parsePackPerformance } from '@shared/performance'
+import { cleanTools, fromLegacy, isToolKey, isToolMode } from '@shared/ambiance'
 import type {
   AccountMe,
   BuilderBase,
@@ -45,19 +48,25 @@ import type {
   BuilderComponentDetail,
   BuilderControl,
   BuilderControlValue,
+  BuilderEffect,
   BuilderEstimate,
   BuilderLocal,
   BuilderParam,
   BuilderPerformance,
-  BuilderPreset,
   BuilderPreview,
   BuilderProblem,
-  BuilderReshade,
   BuilderSaveInput,
   BuilderStatus,
+  BuilderStyle,
+  BuilderStylePreview,
+  BuilderTechnique,
+  BuilderTool,
+  BuilderTools,
+  BuilderToolView,
   Destination,
   MarketImage,
-  RootId
+  RootId,
+  ToolKey
 } from '@shared/types'
 import { decodeZipName } from '../archive/sanitize'
 import { ApiError, MaintenanceError, type Fetch } from './http'
@@ -69,6 +78,8 @@ import { formatBytes, freeSpace, readJson, sameVolume, walkFiles, writeJsonAtomi
 import { log } from '../util/log'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+/** Version de l'image d'un style (« ?v=… » de son adresse). */
+const STYLE_VERSION = /^[A-Za-z0-9_-]{1,64}$/
 const SHA256 = /^[0-9a-f]{64}$/
 const IMAGE_CACHE_MAX = 200 * 1024 * 1024
 const NAME_MAX = 80
@@ -329,11 +340,70 @@ function toControl(raw: unknown): BuilderControl | null {
       .map(obj)
       .filter((p) => typeof p.value === 'string')
       .map((p) => ({ value: p.value as string, label: str(p.label) || (p.value as string) })),
-    value: toControlValue(o.value)
+    value: toControlValue(o.value),
+    tool: isToolKey(o.tool) ? o.tool : null
   }
 }
 
 const present = <T>(x: T | null): x is T => x !== null
+const uuidOrNull = (x: unknown): string | null => (typeof x === 'string' && UUID.test(x) ? x : null)
+
+/** Version de l'image d'un style, lue dans son adresse (« /builder/styles/<id>/image?v=<version> ») ; null sans image. */
+export function styleImageVersion(id: string, url: unknown): string | null {
+  const m = typeof url === 'string' ? /^\/builder\/styles\/([0-9a-f-]{36})\/image\?v=([A-Za-z0-9_-]{1,64})(&|$)/i.exec(url) : null
+  return m && m[1].toLowerCase() === id.toLowerCase() ? m[2] : null
+}
+
+function toStylePreview(raw: unknown): BuilderStylePreview | null {
+  if (!isObj(raw)) return null
+  return {
+    brightness: num(raw.brightness),
+    contrast: num(raw.contrast),
+    saturate: num(raw.saturate),
+    sepia: num(raw.sepia),
+    grayscale: num(raw.grayscale),
+    hueRotate: num(raw.hueRotate),
+    tint: typeof raw.tint === 'string' && /^#[0-9a-f]{6}$/i.test(raw.tint) ? raw.tint : null,
+    tintOpacity: num(raw.tintOpacity),
+    vignette: num(raw.vignette),
+    grain: num(raw.grain)
+  }
+}
+
+function toStyle(raw: unknown): BuilderStyle | null {
+  const o = obj(raw)
+  if (typeof o.id !== 'string' || !UUID.test(o.id)) return null
+  return {
+    id: o.id,
+    key: str(o.key),
+    label: str(o.label) || str(o.key),
+    description: str(o.description),
+    imageVersion: styleImageVersion(o.id, o.imageUrl),
+    preview: toStylePreview(o.preview),
+    costMs: num(o.costMs) ?? 0,
+    costLabel: str(o.costLabel),
+    byDefault: o.byDefault === true
+  }
+}
+
+function toTool(raw: unknown): BuilderTool | null {
+  const o = obj(raw)
+  if (!isToolKey(o.key)) return null
+  return {
+    key: o.key,
+    label: str(o.label) || o.key,
+    description: str(o.description),
+    category: str(o.category) || o.key,
+    defaultMode: isToolMode(o.defaultMode) ? o.defaultMode : 'none',
+    defaultStyle: uuidOrNull(o.defaultStyle),
+    custom: o.custom === true,
+    packs: num(o.packs) ?? 0,
+    referenceComponent: uuidOrNull(o.referenceComponent),
+    reference: toImage(o.reference),
+    styles: arr(o.styles).map(toStyle).filter(present),
+    requires: strings(o.requires).filter(isToolKey)
+  }
+}
 
 /** Catalogue reçu (ou gardé sur le disque) ; erreur s'il est inutilisable. */
 export function toCatalog(raw: unknown, flags: { offline: boolean; checked: boolean }): BuilderCatalog {
@@ -354,9 +424,11 @@ export function toCatalog(raw: unknown, flags: { offline: boolean; checked: bool
           label: str(c.label) || (c.key as string),
           group: str(c.group),
           single: c.single === true,
-          components: arr(c.components).map(toCard).filter(present)
+          components: arr(c.components).map(toCard).filter(present),
+          tool: isToolKey(c.tool) ? c.tool : null
         })
       ),
+    tools: arr(r.tools).map(toTool).filter(present),
     controls: arr(r.controls).map(toControl).filter(present),
     ...flags
   }
@@ -400,31 +472,41 @@ function toParam(raw: unknown): BuilderParam | null {
     step: num(o.step),
     items: strings(o.items),
     value: typeof o.value === 'string' ? o.value : null,
-    defaultValue: typeof o.defaultValue === 'string' ? o.defaultValue : null
+    defaultValue: typeof o.defaultValue === 'string' ? o.defaultValue : null,
+    baseValue: typeof o.baseValue === 'string' ? o.baseValue : null
   }
 }
 
-function toPreset(raw: unknown): BuilderPreset {
+function toTechnique(raw: unknown): BuilderTechnique | null {
   const o = obj(raw)
-  if (typeof o.componentId !== 'string') throw badResponse()
+  if (typeof o.name !== 'string' || !o.name) return null
+  return { name: o.name, effect: strOrNull(o.effect), enabled: o.enabled === true, costMs: num(o.costMs) ?? 0, costLabel: str(o.costLabel) }
+}
+
+function toEffect(raw: unknown): BuilderEffect | null {
+  const o = obj(raw)
+  return typeof o.file === 'string' && o.file ? { file: o.file, params: arr(o.params).map(toParam).filter(present) } : null
+}
+
+function toToolView(raw: unknown, tool: ToolKey): BuilderToolView {
+  const o = obj(raw)
   return {
-    componentId: o.componentId,
-    path: str(o.path),
-    techniques: arr(o.techniques)
-      .map(obj)
-      .filter((x) => typeof x.name === 'string' && x.name)
-      .map((x) => ({ name: x.name as string, effect: strOrNull(x.effect), enabled: x.enabled === true, costMs: num(x.costMs) ?? 0, costLabel: str(x.costLabel) })),
-    effects: arr(o.effects)
-      .map(obj)
-      .filter((e) => typeof e.file === 'string' && e.file)
-      .map((e) => ({ file: e.file as string, params: arr(e.params).map(toParam).filter(present) })),
-    controls: arr(o.controls).map(toControl).filter(present)
+    tool,
+    mode: isToolMode(o.mode) ? o.mode : 'none',
+    componentId: uuidOrNull(o.componentId),
+    styleId: uuidOrNull(o.styleId),
+    path: strOrNull(o.path),
+    techniques: Array.isArray(o.techniques) ? o.techniques.map(toTechnique).filter(present) : null,
+    available: Array.isArray(o.available) ? strings(o.available) : null,
+    effects: arr(o.effects).map(toEffect).filter(present),
+    controls: arr(o.controls).map(toControl).filter(present),
+    problems: arr(o.problems).map(toProblem)
   }
 }
 
 function toProblem(raw: unknown): BuilderProblem {
   const o = obj(raw)
-  const requires = typeof o.requires === 'string' && BASES.includes(o.requires) ? (o.requires as BuilderBase) : null
+  const requires = isToolKey(o.requires) ? o.requires : null
   return {
     type: str(o.type),
     severity: o.severity === 'error' ? 'error' : 'warning',
@@ -451,23 +533,6 @@ function toBuildComponent(raw: unknown): BuilderBuildComponent {
   return { id, name: str(o.name), category: str(o.category), available: id !== null && o.available !== false }
 }
 
-function toReshade(raw: unknown): BuilderReshade {
-  const o = obj(raw)
-  const controls: BuilderReshade['controls'] = {}
-  for (const [k, v] of Object.entries(obj(o.controls))) {
-    const value = toControlValue(v)
-    if (value !== null) controls[k] = value
-  }
-  const techniques: BuilderReshade['techniques'] = {}
-  for (const [k, v] of Object.entries(obj(o.techniques))) if (typeof v === 'boolean') techniques[k] = v
-  const values: BuilderReshade['values'] = {}
-  for (const [file, params] of Object.entries(obj(o.values))) {
-    const kept = Object.entries(obj(params)).filter((e): e is [string, string] => typeof e[1] === 'string')
-    if (kept.length) values[file] = Object.fromEntries(kept)
-  }
-  return { controls, techniques, values }
-}
-
 function toSummary(raw: unknown): Omit<BuilderBuildSummary, keyof BuilderLocal> | null {
   const o = obj(raw)
   if (typeof o.id !== 'string' || !UUID.test(o.id)) return null
@@ -484,11 +549,20 @@ function toSummary(raw: unknown): Omit<BuilderBuildSummary, keyof BuilderLocal> 
 function toBuild(raw: unknown): Omit<BuilderBuild, keyof BuilderLocal> {
   const o = obj(raw)
   if (typeof o.id !== 'string' || !UUID.test(o.id)) throw badResponse()
+  const components = arr(o.components).map(toBuildComponent)
+  // Création vue par une API d'avant les outils d'ambiance (réglages ReShade seulement) : son preset est importé d'un pack.
+  const tools = isObj(o.tools)
+    ? cleanTools(o.tools)
+    : fromLegacy(
+        components.filter((c) => c.available && c.id).map((c) => c.id!),
+        (id) => components.find((c) => c.id === id)?.category,
+        o.reshade
+      ).tools
   return {
     id: o.id,
     name: str(o.name),
-    components: arr(o.components).map(toBuildComponent),
-    reshade: toReshade(o.reshade),
+    components,
+    tools,
     problems: arr(o.problems).map(toProblem),
     estimate: isObj(o.estimate) ? toEstimate(o.estimate) : null,
     createdAt: str(o.createdAt),
@@ -558,10 +632,13 @@ export interface BuildInstallResult {
   note?: string
 }
 
-/** Image d'un composant (couverture d'un pack construit, vignette de la file des téléchargements). */
-export interface CoverRef {
-  componentId: string
-  imageId: string
+/** Image d'un composant ou d'un style (couverture d'un pack construit, vignette de la file des téléchargements). */
+export type CoverRef = { kind: 'component'; componentId: string; imageId: string } | { kind: 'style'; styleId: string; version: string }
+
+/** Adresse pm-media de l'image (servie par Builder.image ou Builder.styleImage). */
+export function coverUrl(ref: CoverRef, thumb: boolean): string {
+  const size = thumb ? '?size=thumb' : ''
+  return ref.kind === 'style' ? `pm-media://builder-style/${ref.styleId}/${ref.version}${size}` : `pm-media://builder/${ref.componentId}/${ref.imageId}${size}`
 }
 
 interface CachedCatalog {
@@ -656,13 +733,36 @@ export class Builder {
     return toDetail(await this.call<unknown>('GET', `/builder/components/${id}`))
   }
 
-  async preset(componentId: string): Promise<BuilderPreset> {
-    if (!UUID.test(componentId)) throw new Error(t('builder.errors.componentGone'))
-    return toPreset(await this.call<unknown>('GET', `/builder/components/${componentId}/preset`))
+  /** Vérifie et estime une composition : composants (hors outils d'ambiance) et choix de chaque outil. */
+  async preview(components: string[], tools: BuilderTools): Promise<BuilderPreview> {
+    return toPreview(await this.call<unknown>('POST', '/builder/preview', { components: components.filter((c) => UUID.test(c)), tools: cleanTools(tools) }))
   }
 
-  async preview(components: string[], reshade?: BuilderReshade): Promise<BuilderPreview> {
-    return toPreview(await this.call<unknown>('POST', '/builder/preview', { components: components.filter((c) => UUID.test(c)), reshade: cleanReshade(reshade) }))
+  /**
+   * État d'un outil d'ambiance pour ces choix : effets, paramètres, réglages simples applicables et leur valeur. À
+   * redemander quand un choix change (un interrupteur peut ajouter un effet et ses réglages).
+   */
+  async toolView(tool: ToolKey, tools: BuilderTools): Promise<BuilderToolView> {
+    if (!isToolKey(tool)) throw badResponse()
+    return toToolView(await this.call<unknown>('POST', '/builder/tools/view', { tool, tools: cleanTools(tools) }), tool)
+  }
+
+  /**
+   * Paramètres d'un effet ReShade que le joueur ajoute en mode avancé, lus dans les shaders du composant (sinon de la
+   * base de l'outil) ; null si l'effet est inconnu.
+   */
+  async toolEffect(component: string | null, file: string): Promise<BuilderEffect | null> {
+    this.requireAccount()
+    if ((component !== null && !UUID.test(component)) || !/^[^\\/:*?"<>|\x00-\x1f]{1,200}\.fx$/i.test(file)) return null
+    const params = new URLSearchParams({ file })
+    if (component) params.set('component', component)
+    const response = await this.deps.account.fetchAuthed('GET', `/builder/tools/reshade/effects?${params}`)
+    const text = await response.text()
+    try {
+      return text.trim() ? toEffect(JSON.parse(text)) : null
+    } catch {
+      return null
+    }
   }
 
   // ---------------------------------------------------------------- créations
@@ -688,7 +788,7 @@ export class Builder {
     const body = {
       name: input.name.replace(/\s+/g, ' ').trim().slice(0, NAME_MAX),
       components: [...new Set(input.components.filter((c) => UUID.test(c)))],
-      reshade: cleanReshade(input.reshade)
+      tools: cleanTools(input.tools)
     }
     const raw = id ? await this.call<unknown>('PUT', `/builder/builds/${id}`, body) : await this.call<unknown>('POST', '/builder/builds', body)
     const b = toBuild(raw)
@@ -771,13 +871,33 @@ export class Builder {
     }
   }
 
-  private async imageData(componentId: string, imageId: string, thumb: boolean): Promise<Buffer> {
-    const file = path.join(this.imageDir, `${imageId}${thumb ? '-thumb' : ''}.jpg`)
+  private imageData(componentId: string, imageId: string, thumb: boolean): Promise<Buffer> {
+    return this.cachedImage(`${imageId}${thumb ? '-thumb' : ''}.jpg`, `/builder/components/${componentId}/images/${imageId}${thumb ? '?size=thumb' : ''}`)
+  }
+
+  /**
+   * pm-media://builder-style/<style>/<version>[?size=thumb] : image publique d'un style, en cache sur le disque (une
+   * nouvelle image change la version, donc l'adresse).
+   */
+  async styleImage(styleId: string, version: string, thumb: boolean): Promise<Response> {
+    if (!UUID.test(styleId) || !STYLE_VERSION.test(version)) return new Response('Interdit', { status: 403 })
+    try {
+      return new Response(new Uint8Array(await this.styleImageData(styleId, version, thumb)), { headers: { 'Content-Type': 'image/jpeg' } })
+    } catch {
+      return new Response('', { status: 404 })
+    }
+  }
+
+  private styleImageData(styleId: string, version: string, thumb: boolean): Promise<Buffer> {
+    return this.cachedImage(`style-${styleId}-${version}${thumb ? '-thumb' : ''}.jpg`, `/builder/styles/${styleId}/image?v=${version}${thumb ? '&size=thumb' : ''}`)
+  }
+
+  /** Image du cache (`name`), sinon demandée à l'API (`pathname`) puis gardée. */
+  private async cachedImage(name: string, pathname: string): Promise<Buffer> {
+    const file = path.join(this.imageDir, name)
     const cached = await fs.readFile(file).catch(() => null)
     if (cached) return cached
-    const response = await this.deps.fetch(`${this.deps.apiUrl}/builder/components/${componentId}/images/${imageId}${thumb ? '?size=thumb' : ''}`, {
-      signal: AbortSignal.timeout(30_000)
-    })
+    const response = await this.deps.fetch(`${this.deps.apiUrl}${pathname}`, { signal: AbortSignal.timeout(30_000) })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const data = Buffer.from(await response.arrayBuffer())
     // Toujours du JPEG (ré-encodé par le serveur).
@@ -801,20 +921,31 @@ export class Builder {
     }
   }
 
-  /** Image de la création : celle de son preset ReShade, sinon du premier composant qui en a une. */
-  async coverOf(build: Pick<BuilderBuild, 'components'>): Promise<CoverRef | null> {
+  /**
+   * Image de la création : celle du style ReShade choisi (« Réglé par moi »), sinon l'image de référence de ReShade,
+   * sinon celle de son preset importé, sinon du premier composant qui en a une.
+   */
+  async coverOf(build: Pick<BuilderBuild, 'components' | 'tools'>): Promise<CoverRef | null> {
+    const catalog = await this.cachedCatalog()
+    const reshade = build.tools.reshade
+    const tool = catalog?.tools.find((x) => x.key === 'reshade')
+    if (reshade.mode === 'custom' && tool) {
+      const style = tool.styles.find((s) => s.id === (reshade.style ?? tool.defaultStyle))
+      if (style?.imageVersion) return { kind: 'style', styleId: style.id, version: style.imageVersion }
+      if (tool.referenceComponent && tool.reference) return { kind: 'component', componentId: tool.referenceComponent, imageId: tool.reference.id }
+    }
     const available = build.components.filter((c): c is BuilderBuildComponent & { id: string } => c.available && !!c.id)
     const ordered = [...available.filter((c) => c.category === 'reshade'), ...available.filter((c) => c.category !== 'reshade')]
-    const cards = new Map((await this.cachedCatalog())?.categories.flatMap((c) => c.components).map((c) => [c.id, c]) ?? [])
+    const cards = new Map(catalog?.categories.flatMap((c) => c.components).map((c) => [c.id, c]) ?? [])
     for (const c of ordered) {
       const cover = cards.get(c.id)?.cover
-      if (cover) return { componentId: c.id, imageId: cover.id }
+      if (cover) return { kind: 'component', componentId: c.id, imageId: cover.id }
     }
     // Catalogue pas encore lu sur ce PC : la fiche du premier composant.
     const first = ordered[0]
     if (!first || cards.size) return null
     const image = (await this.component(first.id).catch(() => null))?.images[0]
-    return image ? { componentId: first.id, imageId: image.id } : null
+    return image ? { kind: 'component', componentId: first.id, imageId: image.id } : null
   }
 
   // ---------------------------------------------------------------- fichiers des composants
@@ -1083,15 +1214,20 @@ export class Builder {
     }
   }
 
-  /** Image du composant enregistrée dans le dossier du pack (builder-<image>.jpg) ; null si elle n'a pas pu l'être. */
+  /**
+   * Image du composant ou du style enregistrée dans le dossier du pack (builder-<image>.jpg) ; null si elle n'a pas pu
+   * l'être.
+   */
   private async saveCover(packDir: string, ref: CoverRef): Promise<string | null> {
+    const name = ref.kind === 'style' ? `style-${ref.styleId}-${ref.version}` : ref.imageId
     try {
-      const rel = `builder-${ref.imageId}.jpg`
+      const data = ref.kind === 'style' ? await this.styleImageData(ref.styleId, ref.version, false) : await this.imageData(ref.componentId, ref.imageId, false)
+      const rel = `builder-${name}.jpg`
       await fs.mkdir(packDir, { recursive: true })
-      await fs.writeFile(path.join(packDir, rel), await this.imageData(ref.componentId, ref.imageId, false))
+      await fs.writeFile(path.join(packDir, rel), data)
       return rel
     } catch (err) {
-      log.warn(`Image ${ref.imageId} non récupérée : ${(err as Error).message}`)
+      log.warn(`Image ${name} non récupérée : ${(err as Error).message}`)
       return null
     }
   }
@@ -1140,9 +1276,4 @@ export class Builder {
     }
     return out
   }
-}
-
-/** Réglages ReShade envoyés à l'API : seulement des valeurs du bon type (ce que le joueur a changé). */
-export function cleanReshade(reshade: BuilderReshade | undefined): BuilderReshade {
-  return toReshade(reshade ?? {})
 }

@@ -225,12 +225,29 @@
       "detail": "Your latest choices aren’t saved to your account.",
       "ok": "Leave"
     },
+    "ambiance": {
+      "title": "Ambiance",
+      "intro": "The colors, lighting and weather of your game. Take a ready-made choice, or tune each tool yourself.",
+      "more": "Other ambiance elements",
+      "basic": {
+        "title": "Basic",
+        "text": "The original game, sharper. The lightest for your PC."
+      },
+      "recommended": {
+        "title": "Recommended",
+        "text": "The suggested settings: nice colors and polished lighting, nothing to tune."
+      },
+      "custom": {
+        "title": "Custom",
+        "text": "Pick a style for each tool and adjust it with a few sliders."
+      }
+    },
     "signIn": {
       "title": "Build your own graphics pack",
       "text": "Pick every element (roads, vegetation, blood, ReShade preset, QuantV base, NVE, ENB…) from all the packs on the Marketplace. Sign in to start: your creations are kept in your account.",
       "expired": "Your session has expired. Sign in again to get your creations back.",
       "choose": "One element per category, or several when possible, with their weight on your PC.",
-      "tune": "Your ReShade tuned with a few sliders, or effect by effect.",
+      "tune": "Your ambiance in one click: a ready-made style, then a few sliders if you like.",
       "install": "Installed like any pack in your library, and updated when an element changes.",
       "action": "Sign in",
       "appOnly": "“Create your pack” is only available in the app."
@@ -275,12 +292,12 @@
       "credits": "Credits: {{credits}}",
       "requires": "Needs: {{bases}}",
       "missing": "Missing: {{base}}.",
-      "chooseBase": "Choose",
       "conflict": "Replaces the same thing as {{names}}: only one will apply.",
       "unreadable": "Protected archive: conflicts can’t be checked.",
       "details": "Details",
       "notAnalyzed": "Not analyzed yet",
-      "weightTitle": "Weight on performance and added video memory"
+      "weightTitle": "Weight on performance and added video memory",
+      "enableBase": "Turn on"
     },
     "details": {
       "choose": "Choose",
@@ -303,30 +320,59 @@
       "size": "Download size",
       "files": "Files",
       "notEstimated": "Performance weight not estimated yet.",
-      "onThisPc": "On this PC"
+      "onThisPc": "On this PC",
+      "basic": "Basic: the original game"
     },
     "problems": {
       "error": "Blocking",
       "warning": "Good to know",
-      "generic": "This composition has a problem."
+      "generic": "This composition has a problem.",
+      "otherStyle": "Pick another style",
+      "changeTool": "Change setting",
+      "enable": "Turn on {{tool}}"
     },
-    "reshade": {
-      "tab": "ReShade settings",
-      "title": "{{name}} settings",
-      "intro": "Each slider starts from the preset as it is (0). Only your changes are kept in your creation.",
-      "resetAll": "Reset everything",
-      "noControls": "No simple setting for this preset: use the advanced mode.",
-      "default": "Default",
-      "advanced": "Advanced mode",
-      "advancedHint": "The preset’s effects and each effect’s parameters. They take precedence over simple settings.",
-      "effects": "Effects",
+    "tool": {
+      "mode": {
+        "none": "None",
+        "custom": "Tuned by me",
+        "pack": "Imported from a pack"
+      },
+      "note": {
+        "reshadeOn": "QuantV needs the image filters: ReShade is now tuned by you, with its default style.",
+        "quantvOff": "Without ReShade, QuantV can’t work: it’s turned off too.",
+        "reshadeMissing": "QuantV needs ReShade, which isn’t available right now."
+      },
+      "line": "{{tool}}: {{summary}}",
+      "lineNone": "none",
+      "linePack": "imported from {{name}}",
+      "lineCustom": "{{style}}, tuned by you",
+      "lineCustomNoStyle": "tuned by you",
+      "lineChanged_one": "{{line}} ({{n}} adjustment)",
+      "lineChanged_other": "{{line}} ({{n}} adjustments)",
+      "unknownPack": "a pack",
+      "styles": "Styles",
+      "noStyles": "No style yet.",
+      "byDefault": "Default",
       "cost": "{{label}} · {{ms}} on this PC",
-      "paramCount_one": "{{n}} parameter",
-      "paramCount_other": "{{n}} parameters",
-      "presetValue": "Preset value",
-      "presetValueTitle": "Preset value: {{value}}",
-      "callout": "Your preset can be tuned with a few sliders.",
-      "open": "Tune"
+      "adjust": "Adjust",
+      "lookHint": "Preview: the image changes with the brightness, contrast, saturation and temperature sliders.",
+      "backToStyle": "Back to the style",
+      "backToPack": "Back to the pack’s settings",
+      "noControls": "Nothing to adjust here: everything is in “Advanced”.",
+      "default": "Default",
+      "advanced": "Advanced",
+      "advancedHint": "For experts: every effect and every setting of the file, one by one.",
+      "effects": "Effects",
+      "addEffect": "Add an effect",
+      "addEffectCount_one": "{{n}} available",
+      "addEffectCount_other": "{{n}} available",
+      "addEffectSearch": "Search for an effect",
+      "add": "Add",
+      "paramCount_one": "{{n}} setting",
+      "paramCount_other": "{{n}} settings",
+      "startValue": "Starting value",
+      "startValueTitle": "Value of the style or pack: {{value}}",
+      "noAdvanced": "This file has nothing else to tune."
     },
     "summary": {
       "name": "Name",
@@ -340,13 +386,13 @@
       "check": "Check",
       "noProblem": "No problem: everything will be installed.",
       "install": "Install",
-      "reshadeAsIs": "ReShade settings: the preset as it is.",
-      "reshadeChanged_one": "ReShade settings: {{n}} change.",
-      "reshadeChanged_other": "ReShade settings: {{n}} changes.",
       "upToDate": "Pack up to date",
       "installAnyway": "Install anyway",
       "fixErrors": "Fix the blocking issues to be able to install.",
-      "installHint": "Install saves your creation, downloads its files and adds it to your library."
+      "installHint": "Install saves your creation, downloads its files and adds it to your library.",
+      "ambiance": "Ambiance",
+      "changeTool": "Change",
+      "noComponents": "No other element: only the ambiance."
     },
     "local": {
       "inLibrary": "In your library",

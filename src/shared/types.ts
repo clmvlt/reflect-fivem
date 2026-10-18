@@ -374,8 +374,8 @@ export interface DownloadItem {
   name: string
   /** Image de couverture de la fiche (null sans image). */
   coverId: string | null
-  /** Création : composant à qui appartient l'image {@link coverId}. */
-  coverComponent?: string | null
+  /** Création : adresse pm-media de sa vignette (image d'un composant ou d'un style), à la place de {@link coverId}. */
+  coverUrl?: string | null
   /** Pack déjà dans la bibliothèque, téléchargé de nouveau au nom du compte (rien n'est ajouté). */
   claim: boolean
   /**
@@ -793,13 +793,15 @@ export interface BuilderCategory {
   /** Un seul composant de cette catégorie par pack. */
   single: boolean
   components: BuilderComponentCard[]
+  /** Outil d'ambiance dont ces composants sont les choix « Importé d'un pack » (null pour les autres catégories). */
+  tool: ToolKey | null
 }
 
 export type BuilderControlValue = number | boolean | string
 
 /**
- * Réglage simple de ReShade, dans la langue affichée. Curseur : de `min` à `max`, 0 = le preset tel quel. `value` : sa
- * valeur pour le preset choisi (null dans le catalogue).
+ * Réglage simple d'un outil d'ambiance, dans la langue affichée. Curseur : de `min` à `max`, 0 = la valeur de départ.
+ * `value` : celle du joueur, sinon celle de départ (null dans le catalogue).
  */
 export interface BuilderControl {
   key: string
@@ -814,12 +816,75 @@ export interface BuilderControl {
   step: number | null
   options: { value: string; label: string }[]
   value: BuilderControlValue | null
+  /** Outil auquel il appartient. */
+  tool: ToolKey | null
+}
+
+/**
+ * Outil d'ambiance : reshade (filtres de l'image), quantv (lumière et météo, a besoin de ReShade), nve, enb. Le joueur
+ * n'en prend aucun (none), le règle lui-même avec un style (custom) ou l'importe d'un pack (pack).
+ */
+export type ToolKey = 'reshade' | 'quantv' | 'nve' | 'enb'
+export type ToolMode = 'none' | 'custom' | 'pack'
+
+/**
+ * Aperçu d'un style sans image, dessiné sur l'image de référence de son outil : filtres (1 : inchangé ; sepia et
+ * grayscale de 0 à 1, hueRotate en degrés), calque de couleur `tint` à l'opacité `tintOpacity`, vignettage et grain (0 à 1).
+ */
+export interface BuilderStylePreview {
+  brightness: number | null
+  contrast: number | null
+  saturate: number | null
+  sepia: number | null
+  grayscale: number | null
+  hueRotate: number | null
+  tint: string | null
+  tintOpacity: number | null
+  vignette: number | null
+  grain: number | null
+}
+
+/** Style d'un outil (« Cinéma », « Équilibré »...) : son image ou, sans image, son aperçu. */
+export interface BuilderStyle {
+  id: string
+  key: string
+  label: string
+  description: string
+  /** Version de l'image (pm-media://builder-style/<style>/<version>) ; null sans image : dessiner `preview`. */
+  imageVersion: string | null
+  preview: BuilderStylePreview | null
+  costMs: number
+  costLabel: string
+  byDefault: boolean
+}
+
+export interface BuilderTool {
+  key: ToolKey
+  label: string
+  description: string
+  /** Catégorie de ses composants « Importé d'un pack ». */
+  category: string
+  /** Choix proposé d'abord (« Recommandé »). */
+  defaultMode: ToolMode
+  defaultStyle: string | null
+  /** « Réglé par moi » possible. */
+  custom: boolean
+  /** Composants publiés à importer d'un pack. */
+  packs: number
+  /** Image de référence pour l'aperçu des styles (image du composant `referenceComponent`). */
+  referenceComponent: string | null
+  reference: MarketImage | null
+  styles: BuilderStyle[]
+  /** Outils dont il a besoin (QuantV : ReShade). */
+  requires: ToolKey[]
 }
 
 export interface BuilderCatalog {
   version: string
   groups: BuilderGroup[]
   categories: BuilderCategory[]
+  /** Outils d'ambiance proposés, dans l'ordre reshade, quantv, nve, enb. */
+  tools: BuilderTool[]
   controls: BuilderControl[]
   /** Copie gardée sur le disque, l'API n'ayant pas pu être jointe. */
   offline: boolean
@@ -827,7 +892,7 @@ export interface BuilderCatalog {
   checked: boolean
 }
 
-/** Effet d'un preset ReShade : `name` (« Nom@fichier.fx ») activé ou non, coût estimé. */
+/** Effet d'un fichier de réglages (ReShade, NVE) : `name` (« Nom@fichier.fx ») activé ou non, coût estimé. */
 export interface BuilderTechnique {
   name: string
   effect: string | null
@@ -837,9 +902,11 @@ export interface BuilderTechnique {
 }
 
 /**
- * Paramètre d'un effet (lu dans son fichier .fx). `type` : bool, int, float, float3... ; `ui` : slider, drag, color,
- * combo, radio, list, input ; `value` : valeur du preset (null : celle par défaut de l'effet), au format des presets
- * (nombres séparés par des virgules, 0/1 pour un booléen).
+ * Paramètre d'un effet ReShade (lu dans son fichier .fx), ou clé d'une section d'un fichier .ini (QuantV, NVE, ENB :
+ * `type` deviné, `tooltip` = commentaire du fichier). `type` : bool, int, float, float3... ; `ui` : slider, drag, color,
+ * combo, radio, list, input ; `value` : valeur actuelle (null : celle par défaut de l'effet) ; `baseValue` : valeur de
+ * départ (style ou preset du pack), avant les réglages du joueur. Valeurs au format des presets (nombres séparés par des
+ * virgules, 0/1 pour un booléen).
  */
 export interface BuilderParam {
   name: string
@@ -854,36 +921,58 @@ export interface BuilderParam {
   items: string[]
   value: string | null
   defaultValue: string | null
+  baseValue: string | null
 }
 
+/** Paramètres d'un fichier d'effet (ReShade), ou d'une section d'un fichier .ini (QuantV, NVE, ENB). */
 export interface BuilderEffect {
   file: string
   params: BuilderParam[]
 }
 
-/** Preset ReShade d'un composant : effets, paramètres, réglages simples qui s'y appliquent. */
-export interface BuilderPreset {
-  componentId: string
-  path: string
-  techniques: BuilderTechnique[]
-  effects: BuilderEffect[]
-  controls: BuilderControl[]
-}
-
 /**
- * Réglages ReShade du joueur, seulement ce qu'il a changé : réglages simples, effets activés ou coupés et paramètres du
- * mode avancé (fichier d'effet → paramètre → valeur), qui l'emportent.
+ * Réglages d'un outil par le joueur, seulement ce qu'il a changé : réglages simples, puis mode avancé (effets activés
+ * ou coupés, paramètres par fichier d'effet ou section), qui l'emporte.
  */
-export interface BuilderReshade {
+export interface BuilderAdjustments {
   controls: Record<string, BuilderControlValue>
   techniques: Record<string, boolean>
   values: Record<string, Record<string, string>>
 }
 
+/** Choix d'un outil : `component` pour « Importé d'un pack », `style` pour « Réglé par moi » (null : celui par défaut). */
+export interface BuilderToolSettings extends BuilderAdjustments {
+  mode: ToolMode
+  component: string | null
+  style: string | null
+}
+
+export type BuilderTools = Record<ToolKey, BuilderToolSettings>
+
+/**
+ * État d'un outil pour les choix en cours (POST /builder/tools/view) : fichier de réglages (`path`), effets
+ * (`techniques`, ReShade et NVE ; `available` : effets qu'on peut ajouter, ReShade), paramètres (`effects`), réglages
+ * simples applicables avec leur valeur, problèmes. À redemander quand un choix change.
+ */
+export interface BuilderToolView {
+  tool: ToolKey
+  mode: ToolMode
+  componentId: string | null
+  styleId: string | null
+  path: string | null
+  techniques: BuilderTechnique[] | null
+  available: string[] | null
+  effects: BuilderEffect[]
+  controls: BuilderControl[]
+  problems: BuilderProblem[]
+}
+
 /**
  * Point à signaler dans une composition. `type` : single (deux choix d'une catégorie unique), conflict (mêmes fichiers
  * du jeu remplacés), path (même fichier installé avec deux contenus), missing (il manque la base `requires`),
- * unknown-targets (archive protégée), unavailable (composant retiré). Seules les erreurs empêchent d'installer.
+ * unknown-targets (archive protégée), unavailable (composant retiré), tool (outil `requires` indisponible), style (style
+ * retiré de l'outil `requires`), needs-tool (il faut aussi l'outil `requires` : QuantV demande ReShade). Seules les
+ * erreurs empêchent d'installer.
  */
 export interface BuilderProblem {
   type: string
@@ -891,7 +980,8 @@ export interface BuilderProblem {
   components: string[]
   message: string
   targets: string[]
-  requires: BuilderBase | null
+  /** Base ou outil concerné (quantv, nve, reshade, enb). */
+  requires: string | null
 }
 
 export interface BuilderEstimate {
@@ -937,18 +1027,18 @@ export interface BuilderBuild extends BuilderLocal {
   id: string
   name: string
   components: BuilderBuildComponent[]
-  reshade: BuilderReshade
+  tools: BuilderTools
   problems: BuilderProblem[]
   estimate: BuilderEstimate | null
   createdAt: string
   updatedAt: string
 }
 
-/** Création à enregistrer (nom de 80 caractères au plus). */
+/** Création à enregistrer (nom de 80 caractères au plus) : composants hors outils d'ambiance, et choix par outil. */
 export interface BuilderSaveInput {
   name: string
   components: string[]
-  reshade: BuilderReshade
+  tools: BuilderTools
 }
 
 /** Packs de la bibliothèque construits par « Créer ton pack » : nouvelle révision en ligne, ou création supprimée. */

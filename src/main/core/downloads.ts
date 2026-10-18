@@ -10,8 +10,8 @@ export interface DownloadJob {
   kind: DownloadKind
   name: string
   coverId: string | null
-  /** Création : composant à qui appartient l'image {@link coverId}. */
-  coverComponent?: string | null
+  /** Création : adresse pm-media de sa vignette (image d'un composant ou d'un style). */
+  coverUrl?: string | null
   claim: boolean
   /** Titre de la tâche, pendant l'ajout à la bibliothèque (« Téléchargement de... », « Mise à jour de... »). */
   title: string
@@ -80,7 +80,7 @@ export class DownloadQueue {
       kind: job.kind,
       name: job.name,
       coverId: job.coverId,
-      ...(job.coverComponent ? { coverComponent: job.coverComponent } : {}),
+      ...(job.coverUrl ? { coverUrl: job.coverUrl } : {}),
       claim: job.claim,
       status: 'queued',
       phase: '',

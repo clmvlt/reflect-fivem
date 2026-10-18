@@ -30,6 +30,11 @@ export function builderImageUrl(componentId: string, imageId: string, thumb = fa
   return `pm-media://builder/${encodeURIComponent(componentId)}/${encodeURIComponent(imageId)}${thumb ? '?size=thumb' : ''}`
 }
 
+/** Image d'un style d'ambiance (l'adresse change avec l'image), mise en cache par le processus principal. */
+export function builderStyleImageUrl(styleId: string, version: string, thumb = false): string {
+  return `pm-media://builder-style/${encodeURIComponent(styleId)}/${encodeURIComponent(version)}${thumb ? '?size=thumb' : ''}`
+}
+
 export function packImages(p: { cover: string | null; gallery?: string[] }): string[] {
   return [...new Set([p.cover, ...(p.gallery ?? [])].filter((x): x is string => !!x))]
 }

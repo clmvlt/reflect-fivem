@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { app, BrowserWindow, dialog, nativeImage, nativeTheme, net, Notification, safeStorage, screen, shell, systemPreferences } from 'electron'
 import type { AppState, FiveMInstance, GamesInfo, InstanceSummary, MarketKind, Overview, PackPatch, RootId, Settings, TaskProgress } from '@shared/types'
-import type { AccountMe, BuilderBuild, BuilderReshade, BuilderSaveInput, ProfileInput } from '@shared/types'
+import type { AccountMe, BuilderBuild, BuilderSaveInput, BuilderTools, ProfileInput, ToolKey } from '@shared/types'
 import type { AuthorQuery, CommentQuery, ComponentFile, ForeignSelection, MarketQuery, PackManagerApi } from '@shared/api'
 import { IPC, PENDING } from '@shared/api'
 import i18next, { t } from 'i18next'
@@ -29,7 +29,7 @@ import { WhatsNewWatch } from './core/changelog'
 import { httpsUrl } from '@shared/links'
 import { isThemeChoice, resolveTheme, themeBackground, type ThemeChoice } from '@shared/themes'
 import { Marketplace } from './core/marketplace'
-import { Builder } from './core/builder'
+import { Builder, coverUrl } from './core/builder'
 import { DownloadQueue, type DownloadContext, type DownloadJob } from './core/downloads'
 import { AppUpdater } from './core/updater'
 import { killProcesses, launchDetached, readVideoAdapters, runningGameProcesses } from './util/win'
@@ -803,7 +803,7 @@ export class Service {
     return result
   }
 
-  /** Met une création dans la file des téléchargements (vignette : l'image de son preset ou de son premier composant). */
+  /** Met une création dans la file des téléchargements (vignette : l'image de son style ReShade ou de ses composants). */
   private async queueBuild(build: BuilderBuild): Promise<string> {
     const cover = await this.builder.coverOf(build).catch(() => null)
     const title = t(build.localId ? 'builder.tasks.update' : 'builder.tasks.install', { name: build.name })
@@ -811,8 +811,8 @@ export class Service {
       id: build.id,
       kind: 'build',
       name: build.name,
-      coverId: cover?.imageId ?? null,
-      coverComponent: cover?.componentId ?? null,
+      coverId: null,
+      coverUrl: cover ? coverUrl(cover, true) : null,
       claim: false,
       title,
       localId: build.localId
@@ -1405,9 +1405,11 @@ export class Service {
 
     builderComponent: (id: string) => this.builder.component(id),
 
-    builderPreset: (componentId: string) => this.builder.preset(componentId),
+    builderToolView: (tool: ToolKey, tools: BuilderTools) => this.builder.toolView(tool, tools),
 
-    builderPreview: (components: string[], reshade?: BuilderReshade) => this.builder.preview(components, reshade),
+    builderToolEffect: (component: string | null, file: string) => this.builder.toolEffect(component, file),
+
+    builderPreview: (components: string[], tools: BuilderTools) => this.builder.preview(components, tools),
 
     builderBuilds: () => this.builder.builds(),
 

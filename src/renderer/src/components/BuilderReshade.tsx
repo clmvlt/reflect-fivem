@@ -1,110 +1,49 @@
-// Réglages du preset ReShade choisi dans « Créer ton pack » : réglages simples (curseurs centrés sur le preset tel
-// quel, interrupteurs, listes, couleurs), puis, repliés, les effets du preset et les paramètres de chaque effet. Seul
-// ce que le joueur change est gardé dans la création.
-import { useEffect, useState } from 'react'
+// Réglages d'un outil d'ambiance de « Créer ton pack » (ReShade, QuantV, NVE, ENB) : réglages simples (curseurs centrés
+// sur la valeur de départ, interrupteurs, listes, couleurs), puis, pour les connaisseurs, le mode avancé : effets avec
+// leur coût, ajout d'un effet (ReShade), et chaque paramètre d'effet ou clé de section du fichier de réglages. Seul ce
+// que le joueur change est gardé dans la création.
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { BuilderControl, BuilderEffect, BuilderParam, BuilderPreset, BuilderReshade, BuilderTechnique } from '@shared/types'
+import type { BuilderAdjustments, BuilderControl, BuilderEffect, BuilderParam, BuilderTechnique, BuilderToolView } from '@shared/types'
 import { costOnMachine } from '@shared/performance'
 import { formatNumber } from '@shared/intl'
 import {
+  baseValue,
   componentCount,
-  controlValue,
-  emptyReshade,
   fromHex,
+  noStarts,
   numbers,
   paramKind,
   paramStep,
-  paramValue,
-  presetValue,
   setControl,
   setParam,
   setTechnique,
-  techniqueEnabled,
-  toHex
+  toHex,
+  type Starts
 } from '../lib/builder'
 import { msText, usePerformance } from './Performance'
 
-interface Props {
-  preset: BuilderPreset | null
-  /** Nom du preset choisi. */
-  name: string
-  error: string | null
-  onRetry: () => void
-  reshade: BuilderReshade
-  onChange: (next: BuilderReshade) => void
-}
+type Change = (next: BuilderAdjustments) => void
 
-export function ReshadePanel({ preset, name, error, onRetry, reshade, onChange }: Props) {
-  const { t } = useTranslation()
-  if (error)
-    return (
-      <div className="bar bar-error">
-        <span className="bar-text">{error}</span>
-        <button onClick={onRetry}>{t('common.retry')}</button>
-      </div>
-    )
-  if (!preset) return <p className="muted loading">{t('common.loading')}</p>
-
-  // Réglages simples regroupés (Image, Effets, QuantV), dans l'ordre de l'API.
-  const groups: { key: string; label: string; controls: BuilderControl[] }[] = []
-  for (const c of preset.controls) {
-    const group = groups.find((g) => g.key === c.group) ?? groups[groups.push({ key: c.group, label: c.groupLabel || c.group, controls: [] }) - 1]
-    group.controls.push(c)
+/**
+ * Valeurs de départ de l'outil (relevées dans son état quand le joueur n'y avait rien changé) : revenir à l'une d'elles
+ * efface le réglage. `fresh` : l'état reçu correspond aux choix en cours (sinon il peut encore montrer un ancien
+ * réglage du joueur). `identity` : outil, mode, composant et style ; les valeurs de départ changent avec eux.
+ */
+export function useStarts(view: BuilderToolView | null, fresh: boolean, a: BuilderAdjustments, identity: string): Starts {
+  const ref = useRef<{ identity: string; starts: Starts }>({ identity, starts: noStarts() })
+  if (ref.current.identity !== identity) ref.current = { identity, starts: noStarts() }
+  const s = ref.current.starts
+  if (view) {
+    const take = <T,>(map: Record<string, T>, key: string, value: T, mine: boolean): void => {
+      if (!mine && (fresh || !(key in map))) map[key] = value
+    }
+    for (const c of view.controls) take(s.controls, c.key, c.type === 'slider' ? 0 : c.value, a.controls[c.key] !== undefined)
+    for (const tq of view.techniques ?? []) take(s.techniques, tq.name, tq.enabled, a.techniques[tq.name] !== undefined)
+    for (const e of view.effects)
+      for (const p of e.params) take(s.values, `${e.file}/${p.name}`, p.value ?? baseValue(p), a.values[e.file]?.[p.name] !== undefined)
   }
-  const changed = reshadeChanges(reshade)
-  const advanced = changed - Object.keys(reshade.controls).length
-
-  return (
-    <section className="reshade-panel">
-      <div className="section-head first">
-        <h2>{t('builder.reshade.title', { name })}</h2>
-        <button onClick={() => onChange(emptyReshade())} disabled={!changed}>
-          {t('builder.reshade.resetAll')}
-        </button>
-      </div>
-      <p className="hint">{t('builder.reshade.intro')}</p>
-      {groups.length ? (
-        groups.map((g) => (
-          <div key={g.key} className="reshade-group">
-            <h3>{g.label}</h3>
-            <ul className="list settings-list">
-              {g.controls.map((c) => (
-                <ControlRow key={c.key} control={c} reshade={reshade} onChange={onChange} />
-              ))}
-            </ul>
-          </div>
-        ))
-      ) : (
-        <p className="muted">{t('builder.reshade.noControls')}</p>
-      )}
-
-      <details className="reshade-advanced" open={advanced > 0 || undefined}>
-        <summary>
-          {t('builder.reshade.advanced')}
-          {advanced > 0 && <span className="chip-count">{formatNumber(advanced)}</span>}
-        </summary>
-        <p className="hint">{t('builder.reshade.advancedHint')}</p>
-        {preset.techniques.length > 0 && (
-          <div className="reshade-group">
-            <h3>{t('builder.reshade.effects')}</h3>
-            <ul className="list settings-list">
-              {preset.techniques.map((tq) => (
-                <TechniqueRow key={tq.name} technique={tq} reshade={reshade} onChange={onChange} />
-              ))}
-            </ul>
-          </div>
-        )}
-        {preset.effects.map((e) => (
-          <EffectParams key={e.file} effect={e} reshade={reshade} onChange={onChange} />
-        ))}
-      </details>
-    </section>
-  )
-}
-
-/** Nombre de réglages ReShade changés par le joueur (simples et avancés). */
-export function reshadeChanges(reshade: BuilderReshade): number {
-  return Object.keys(reshade.controls).length + Object.keys(reshade.techniques).length + Object.values(reshade.values).reduce((s, v) => s + Object.keys(v).length, 0)
+  return s
 }
 
 /** « +20 », « −15 », « 0 ». */
@@ -112,25 +51,43 @@ function signed(v: number): string {
   return v > 0 ? `+${formatNumber(v)}` : v < 0 ? `−${formatNumber(-v)}` : formatNumber(0)
 }
 
-function ControlRow({ control, reshade, onChange }: { control: BuilderControl; reshade: BuilderReshade; onChange: (next: BuilderReshade) => void }) {
+/** Réglages simples, regroupés (Image, Effets, Météo...), dans l'ordre de l'API ; description en info-bulle. */
+export function SimpleControls({ controls, adjustments, starts, onChange }: { controls: BuilderControl[]; adjustments: BuilderAdjustments; starts: Starts; onChange: Change }) {
   const { t } = useTranslation()
-  const value = controlValue(control, reshade)
-  const changed = reshade.controls[control.key] !== undefined
-  const set = (v: BuilderControl['value']): void => onChange(setControl(reshade, control, v))
+  const groups: { key: string; label: string; controls: BuilderControl[] }[] = []
+  for (const c of controls) {
+    const group = groups.find((g) => g.key === c.group) ?? groups[groups.push({ key: c.group, label: c.groupLabel || c.group, controls: [] }) - 1]
+    group.controls.push(c)
+  }
+  if (!groups.length) return <p className="muted small">{t('builder.tool.noControls')}</p>
+  return (
+    <>
+      {groups.map((g) => (
+        <div key={g.key} className="reshade-group">
+          <h4>{g.label}</h4>
+          <ul className="list settings-list">
+            {g.controls.map((c) => (
+              <ControlRow key={c.key} control={c} adjustments={adjustments} start={c.key in starts.controls ? starts.controls[c.key] : c.type === 'slider' ? 0 : c.value} onChange={onChange} />
+            ))}
+          </ul>
+        </div>
+      ))}
+    </>
+  )
+}
+
+function ControlRow({ control, adjustments, start, onChange }: { control: BuilderControl; adjustments: BuilderAdjustments; start: BuilderControl['value']; onChange: Change }) {
+  const { t } = useTranslation()
+  const mine = adjustments.controls[control.key]
+  const value = mine ?? start
+  const changed = mine !== undefined
+  const set = (v: BuilderControl['value']): void => onChange(setControl(adjustments, control.key, v, start))
   let input
   if (control.type === 'slider') {
     const v = typeof value === 'number' ? value : 0
     input = (
       <div className="range builder-slider">
-        <input
-          type="range"
-          min={control.min ?? -100}
-          max={control.max ?? 100}
-          step={control.step ?? 1}
-          value={v}
-          onChange={(e) => set(Number(e.target.value))}
-          aria-label={control.label}
-        />
+        <input type="range" min={control.min ?? -100} max={control.max ?? 100} step={control.step ?? 1} value={v} onChange={(e) => set(Number(e.target.value))} aria-label={control.label} />
         <span className="range-value">{signed(v)}</span>
       </div>
     )
@@ -171,28 +128,79 @@ function ControlRow({ control, reshade, onChange }: { control: BuilderControl; r
       </div>
       {input}
       <button className="link reset-link" onClick={() => set(null)} disabled={!changed}>
-        {t('builder.reshade.default')}
+        {t('builder.tool.default')}
       </button>
     </li>
   )
 }
 
-function TechniqueRow({ technique, reshade, onChange }: { technique: BuilderTechnique; reshade: BuilderReshade; onChange: (next: BuilderReshade) => void }) {
+/**
+ * Mode avancé : effets du fichier avec leur coût (ReShade, NVE), ajout d'un effet (ReShade), paramètres de chaque effet
+ * ou clés de chaque section (QuantV, NVE, ENB). `component` : composant dont les shaders décrivent un effet ajouté.
+ */
+export function AdvancedSettings({
+  view,
+  component,
+  adjustments,
+  starts,
+  onChange
+}: {
+  view: BuilderToolView
+  component: string | null
+  adjustments: BuilderAdjustments
+  starts: Starts
+  onChange: Change
+}) {
+  const { t } = useTranslation()
+  // Effets ajoutés à l'instant : leurs paramètres, en attendant que l'état de l'outil les donne.
+  const [added, setAdded] = useState<BuilderEffect[]>([])
+  const effects = [...view.effects, ...added.filter((e) => !view.effects.some((v) => v.file.toLowerCase() === e.file.toLowerCase()))]
+  const techniques = view.techniques ?? []
+  const add = async (name: string): Promise<void> => {
+    onChange(setTechnique(adjustments, name, true, starts.techniques[name] ?? false))
+    const file = name.split('@')[1]
+    if (!file || effects.some((e) => e.file.toLowerCase() === file.toLowerCase())) return
+    const effect = await window.api.builderToolEffect(component, file).catch(() => null)
+    if (effect) setAdded((list) => [...list.filter((e) => e.file !== effect.file), effect])
+  }
+  return (
+    <div className="tool-advanced">
+      {techniques.length > 0 && (
+        <div className="reshade-group">
+          <h4>{t('builder.tool.effects')}</h4>
+          <ul className="list settings-list">
+            {techniques.map((tq) => (
+              <TechniqueRow key={tq.name} technique={tq} adjustments={adjustments} start={starts.techniques[tq.name] ?? tq.enabled} onChange={onChange} />
+            ))}
+          </ul>
+        </div>
+      )}
+      {view.available && <AddEffect available={view.available} listed={[...techniques.map((x) => x.name), ...Object.keys(adjustments.techniques)]} onAdd={(n) => void add(n)} />}
+      {effects.map((e) => (
+        <EffectParams key={e.file} effect={e} adjustments={adjustments} starts={starts} onChange={onChange} />
+      ))}
+      {!techniques.length && !effects.length && <p className="muted small">{t('builder.tool.noAdvanced')}</p>}
+    </div>
+  )
+}
+
+function TechniqueRow({ technique, adjustments, start, onChange }: { technique: BuilderTechnique; adjustments: BuilderAdjustments; start: boolean; onChange: Change }) {
   const { t } = useTranslation()
   const ctx = usePerformance()
-  const on = techniqueEnabled(technique.name, technique.enabled, reshade)
+  const mine = adjustments.techniques[technique.name]
+  const on = mine ?? start
   const ms = ctx ? costOnMachine(ctx.profile.model, ctx.machine, technique.costMs) : technique.costMs
   // Coût négligeable sur ce PC : son niveau seulement.
-  const cost = ms >= 0.05 ? t('builder.reshade.cost', { label: technique.costLabel, ms: msText(ms) }) : technique.costLabel
+  const cost = ms >= 0.05 ? t('builder.tool.cost', { label: technique.costLabel, ms: msText(ms) }) : technique.costLabel
   const [label] = technique.name.split('@')
   return (
-    <li className={`row reshade-row ${on !== technique.enabled ? 'is-changed' : ''}`}>
+    <li className={`row reshade-row ${mine !== undefined ? 'is-changed' : ''}`}>
       <div className="row-main">
         <div>{label}</div>
         <div className="meta">{[technique.effect, cost].filter(Boolean).join(' · ')}</div>
       </div>
       <label className="switch">
-        <input type="checkbox" checked={on} onChange={(e) => onChange(setTechnique(reshade, technique.name, technique.enabled, e.target.checked))} aria-label={label} />
+        <input type="checkbox" checked={on} onChange={(e) => onChange(setTechnique(adjustments, technique.name, e.target.checked, start))} aria-label={label} />
         <span className="switch-track" />
         <span className="switch-text">{on ? t('common.enabled') : t('common.disabled')}</span>
       </label>
@@ -200,8 +208,51 @@ function TechniqueRow({ technique, reshade, onChange }: { technique: BuilderTech
   )
 }
 
-/** Paramètres d'un fichier d'effet, regroupés par catégorie (ui_category), repliés. */
-function EffectParams({ effect, reshade, onChange }: { effect: BuilderEffect; reshade: BuilderReshade; onChange: (next: BuilderReshade) => void }) {
+/** « Ajouter un effet » : recherche parmi les effets qu'on peut activer (ReShade). */
+function AddEffect({ available, listed, onAdd }: { available: string[]; listed: string[]; onAdd: (name: string) => void }) {
+  const { t } = useTranslation()
+  const [query, setQuery] = useState('')
+  const known = useMemo(() => new Set(listed.map((n) => n.toLowerCase())), [listed])
+  const candidates = available.filter((n) => !known.has(n.toLowerCase()))
+  if (!candidates.length) return null
+  const q = query.trim().toLowerCase()
+  const shown = candidates.filter((n) => !q || n.toLowerCase().includes(q)).slice(0, 20)
+  return (
+    <details className="reshade-effect add-effect">
+      <summary>
+        <span className="reshade-file">{t('builder.tool.addEffect')}</span>
+        <span className="muted small">{t('builder.tool.addEffectCount', { count: candidates.length, n: formatNumber(candidates.length) })}</span>
+      </summary>
+      <input className="input" type="search" placeholder={t('builder.tool.addEffectSearch')} value={query} onChange={(e) => setQuery(e.target.value)} />
+      {shown.length > 0 && (
+        <ul className="list compact add-effect-list">
+          {shown.map((n) => {
+          const [label, file] = n.split('@')
+          return (
+            <li key={n} className="row">
+              <span className="row-main">
+                <span>{label}</span>
+                {file && <span className="meta"> · {file}</span>}
+              </span>
+              <button
+                onClick={() => {
+                  setQuery('')
+                  onAdd(n)
+                }}
+              >
+                {t('builder.tool.add')}
+              </button>
+            </li>
+          )
+          })}
+        </ul>
+      )}
+    </details>
+  )
+}
+
+/** Paramètres d'un fichier d'effet (ou clés d'une section), regroupés par catégorie (ui_category), repliés. */
+function EffectParams({ effect, adjustments, starts, onChange }: { effect: BuilderEffect; adjustments: BuilderAdjustments; starts: Starts; onChange: Change }) {
   const { t } = useTranslation()
   const groups: [string, BuilderParam[]][] = []
   for (const p of effect.params) {
@@ -209,12 +260,12 @@ function EffectParams({ effect, reshade, onChange }: { effect: BuilderEffect; re
     const group = groups.find(([k]) => k === key) ?? groups[groups.push([key, []]) - 1]
     group[1].push(p)
   }
-  const changed = Object.keys(reshade.values[effect.file] ?? {}).length
+  const changed = Object.keys(adjustments.values[effect.file] ?? {}).length
   return (
     <details className="reshade-effect" open={changed > 0 || undefined}>
       <summary>
         <span className="reshade-file">{effect.file}</span>
-        <span className="muted small">{t('builder.reshade.paramCount', { count: effect.params.length, n: formatNumber(effect.params.length) })}</span>
+        <span className="muted small">{t('builder.tool.paramCount', { count: effect.params.length, n: formatNumber(effect.params.length) })}</span>
         {changed > 0 && <span className="chip-count">{formatNumber(changed)}</span>}
       </summary>
       {groups.map(([category, params]) => (
@@ -222,7 +273,7 @@ function EffectParams({ effect, reshade, onChange }: { effect: BuilderEffect; re
           {category && <div className="reshade-category-name">{category}</div>}
           <ul className="list settings-list">
             {params.map((p) => (
-              <ParamRow key={p.name} file={effect.file} param={p} reshade={reshade} onChange={onChange} />
+              <ParamRow key={p.name} file={effect.file} param={p} adjustments={adjustments} start={starts.values[`${effect.file}/${p.name}`] ?? p.value ?? baseValue(p)} onChange={onChange} />
             ))}
           </ul>
         </div>
@@ -231,21 +282,21 @@ function EffectParams({ effect, reshade, onChange }: { effect: BuilderEffect; re
   )
 }
 
-function ParamRow({ file, param, reshade, onChange }: { file: string; param: BuilderParam; reshade: BuilderReshade; onChange: (next: BuilderReshade) => void }) {
+function ParamRow({ file, param, adjustments, start, onChange }: { file: string; param: BuilderParam; adjustments: BuilderAdjustments; start: string; onChange: Change }) {
   const { t } = useTranslation()
-  const value = paramValue(file, param, reshade)
-  const changed = reshade.values[file]?.[param.name] !== undefined
-  const set = (v: string | null): void => onChange(setParam(reshade, file, param, v))
+  const mine = adjustments.values[file]?.[param.name]
+  const value = mine ?? start
+  const set = (v: string | null): void => onChange(setParam(adjustments, file, param.name, v, start))
   const label = param.label || param.name
   return (
-    <li className={`row reshade-row ${changed ? 'is-changed' : ''}`}>
+    <li className={`row reshade-row ${mine !== undefined ? 'is-changed' : ''}`}>
       <div className="row-main" title={param.tooltip ?? undefined}>
         <div>{label}</div>
         {param.label && <div className="meta">{param.name}</div>}
       </div>
       <ParamInput param={param} value={value} label={label} onSet={set} />
-      <button className="link reset-link" onClick={() => set(null)} disabled={!changed} title={t('builder.reshade.presetValueTitle', { value: presetValue(param) || '—' })}>
-        {t('builder.reshade.presetValue')}
+      <button className="link reset-link" onClick={() => set(null)} disabled={mine === undefined} title={t('builder.tool.startValueTitle', { value: baseValue(param) || '—' })}>
+        {t('builder.tool.startValue')}
       </button>
     </li>
   )
@@ -255,10 +306,13 @@ function ParamInput({ param, value, label, onSet }: { param: BuilderParam; value
   const { t } = useTranslation()
   const kind = paramKind(param)
   if (kind === 'bool') {
-    const on = value.trim() === '1' || value.trim().toLowerCase() === 'true'
+    const v = value.trim().toLowerCase()
+    const on = v === '1' || v === 'true'
+    // Même écriture que le fichier : 1/0 dans un preset, true/false dans un .ini.
+    const word = v === 'true' || v === 'false'
     return (
       <label className="switch">
-        <input type="checkbox" checked={on} onChange={(e) => onSet(e.target.checked ? '1' : '0')} aria-label={label} />
+        <input type="checkbox" checked={on} onChange={(e) => onSet(e.target.checked ? (word ? 'true' : '1') : word ? 'false' : '0')} aria-label={label} />
         <span className="switch-track" />
         <span className="switch-text">{on ? t('common.enabled') : t('common.disabled')}</span>
       </label>
@@ -296,19 +350,17 @@ function ParamInput({ param, value, label, onSet }: { param: BuilderParam; value
     )
   }
   if (kind === 'color') {
-    return (
-      <input type="color" className="color-input" value={toHex(value) ?? '#000000'} onChange={(e) => onSet(fromHex(e.target.value, value, componentCount(param.type)))} aria-label={label} />
-    )
+    return <input type="color" className="color-input" value={toHex(value) ?? '#000000'} onChange={(e) => onSet(fromHex(e.target.value, value, componentCount(param.type)))} aria-label={label} />
   }
   return <TextParam param={param} value={value} label={label} onSet={onSet} />
 }
 
-/** Champ texte (nombre sans bornes, plusieurs composantes) : validé à la sortie du champ ou avec Entrée. */
+/** Champ texte (nombre sans bornes, plusieurs composantes, texte) : validé à la sortie du champ ou avec Entrée. */
 function TextParam({ param, value, label, onSet }: { param: BuilderParam; value: string; label: string; onSet: (v: string) => void }) {
   const [text, setText] = useState(value)
   useEffect(() => setText(value), [value])
   const valid = (v: string): boolean => {
-    // Sur une ligne, sans crochet ni signe égal (format des presets).
+    // Sur une ligne, sans crochet ni signe égal (format des fichiers de réglages).
     if (!v.trim() || /[\r\n=[\]]/.test(v)) return false
     if (!param.type) return true
     return numbers(v)?.length === componentCount(param.type)

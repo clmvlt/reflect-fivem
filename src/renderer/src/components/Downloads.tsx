@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import type { DownloadItem, DownloadKind } from '@shared/types'
 import { useStore } from '../store'
-import { builderImageUrl, bytes, marketImageUrl, num } from '../lib/format'
+import { bytes, marketImageUrl, num } from '../lib/format'
 
 /** Téléchargement en cours ou en file d'attente de cette fiche de la Marketplace (ou de cette création), null sinon. */
 export function useDownload(id: string | null | undefined): DownloadItem | null {
@@ -50,11 +50,10 @@ function Track({ d }: { d: DownloadItem }) {
   )
 }
 
-/** Vignette : image de la fiche, ou celle d'un composant pour une création de « Créer ton pack ». */
+/** Vignette : image de la fiche, ou celle d'un composant ou d'un style pour une création de « Créer ton pack ». */
 function thumbUrl(d: DownloadItem): string | null {
-  if (!d.coverId) return null
-  if (d.kind !== 'build') return marketImageUrl(d.id, d.coverId, true, d.kind)
-  return d.coverComponent ? builderImageUrl(d.coverComponent, d.coverId, true) : null
+  if (d.kind === 'build') return d.coverUrl ?? null
+  return d.coverId ? marketImageUrl(d.id, d.coverId, true, d.kind) : null
 }
 
 function Thumb({ d, size }: { d: DownloadItem; size: number }) {

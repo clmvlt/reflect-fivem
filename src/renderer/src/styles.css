@@ -3351,10 +3351,6 @@ button.google {
 .builder-tabs {
   margin: 0 0 12px;
 }
-.chip.chip-settings:not(.is-selected) {
-  border-color: color-mix(in srgb, var(--accent-text) 55%, transparent);
-  color: var(--accent-text);
-}
 .builder-hint {
   margin: 0 0 12px;
 }
@@ -3428,19 +3424,6 @@ button.google {
 }
 .builder-tier.tier-extreme {
   color: var(--bad);
-}
-.builder-callout {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 16px;
-  padding: 10px 12px 10px 16px;
-  border: 1px solid color-mix(in srgb, var(--accent-text) 40%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
-}
-.builder-callout span {
-  flex: 1;
 }
 
 /* Panneau récapitulatif : toujours visible à côté de l'étape. */
@@ -3556,12 +3539,6 @@ button.google {
   flex-direction: column;
   gap: 4px;
 }
-.builder-summary-reshade {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 2px 4px 0;
-}
 .builder-summary-category .row {
   min-height: 40px;
 }
@@ -3627,24 +3604,17 @@ button.google {
   user-select: text;
 }
 
-/* Réglages ReShade : réglages simples, puis le mode avancé replié. */
-.reshade-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.reshade-panel .hint {
-  margin: 0;
-}
+/* Réglages d'un outil d'ambiance : réglages simples, puis le mode avancé replié. */
 .reshade-group {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-.reshade-group h3 {
+.reshade-group h4 {
   margin: 4px 0 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
+  color: var(--text-2);
 }
 .reshade-row .range,
 .reshade-row select {
@@ -3654,7 +3624,7 @@ button.google {
   width: 160px;
 }
 .builder-slider input {
-  /* Repère au milieu du curseur : le preset tel quel. */
+  /* Repère au milieu du curseur : la valeur de départ. */
   background: linear-gradient(var(--text-2), var(--text-2)) center / 1px 10px no-repeat;
 }
 .reset-link {
@@ -3680,38 +3650,51 @@ button.google {
 .param-input.is-invalid {
   border-color: var(--bad);
 }
-.reshade-advanced > summary,
+.tool-expert > summary,
 .reshade-effect > summary {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 8px;
   padding: 8px 0;
   font-weight: 600;
   cursor: pointer;
 }
-.reshade-advanced > summary::before,
+.tool-expert > summary::before,
 .reshade-effect > summary::before {
   content: '▸';
   width: 12px;
   color: var(--text-2);
 }
-.reshade-advanced[open] > summary::before,
+.tool-expert[open] > summary::before,
 .reshade-effect[open] > summary::before {
   content: '▾';
 }
-.reshade-advanced > summary::-webkit-details-marker,
+.tool-expert > summary::-webkit-details-marker,
 .reshade-effect > summary::-webkit-details-marker {
   display: none;
 }
-.reshade-advanced {
+.tool-expert > summary .muted {
+  font-weight: 400;
+}
+.tool-expert {
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.tool-advanced {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
+  padding-bottom: 4px;
 }
-.reshade-advanced > .hint {
-  margin-bottom: 4px;
+.add-effect .input {
+  margin: 4px 0 8px;
+}
+.add-effect-list {
+  margin-bottom: 10px;
+}
+.add-effect-list .row {
+  min-height: 44px;
 }
 .reshade-effect {
   border-top: 1px solid var(--border);
@@ -3750,5 +3733,280 @@ button.google {
   }
   .builder-actions {
     flex-wrap: wrap;
+  }
+}
+
+/* Ambiance : choix rapide en trois cartes, puis un panneau par outil (ReShade, QuantV, NVE, ENB). */
+.ambiance {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ambiance-intro {
+  margin: 0;
+}
+.ambiance-choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.ambiance-choice {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  height: auto;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  text-align: left;
+  white-space: normal;
+}
+.ambiance-choice:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.ambiance-choice.is-selected {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+.ambiance-choice-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-text);
+}
+.ambiance-choice-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.ambiance-choice-text {
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 16px;
+}
+.ambiance-lines {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 16px;
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  list-style: none;
+}
+.ambiance-lines li {
+  display: contents;
+}
+.ambiance-line-name {
+  font-weight: 600;
+}
+@media (max-width: 760px) {
+  .ambiance-choices {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.tool-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  scroll-margin-top: 12px;
+}
+.tool-panel.is-off {
+  background: transparent;
+}
+.tool-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.tool-title {
+  flex: 1;
+  min-width: 0;
+}
+.tool-title h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.tool-title p {
+  margin: 2px 0 0;
+}
+.tool-modes {
+  align-self: flex-start;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.tool-modes button {
+  flex: none;
+  padding: 0 14px;
+}
+.tool-note {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--info-bg);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* Styles : grandes cartes avec l'image du style ou son aperçu dessiné. */
+.style-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+}
+.style-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: auto;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  text-align: left;
+  white-space: normal;
+}
+.style-card.is-selected {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.style-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px 10px;
+}
+.style-name {
+  font-weight: 600;
+}
+.style-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.style-look {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--media);
+}
+.style-look img,
+.style-look-blank {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* Sans image de référence : un paysage simple (ciel, horizon, sol) sur lequel dessiner le style. */
+.style-look-blank {
+  background: linear-gradient(180deg, #6fa7d6 0%, #b9d4e6 45%, #d9b98c 52%, #8a9a5b 70%, #4d5c34 100%);
+}
+.look-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.look-tint {
+  mix-blend-mode: soft-light;
+}
+.look-vignette {
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, 0.85) 100%);
+}
+.look-grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+}
+
+/* « Ajuster » : aperçu en direct à côté des réglages simples (en dessous en fenêtre étroite). */
+.tool-adjust {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.tool-adjust-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tool-adjust-head h4 {
+  margin: 0;
+  font-size: 14px;
+}
+.tool-adjust .bar {
+  margin: 0;
+}
+.tool-adjust-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+.tool-adjust-body.with-look {
+  grid-template-columns: minmax(180px, 280px) minmax(0, 1fr);
+  align-items: start;
+}
+.tool-look {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+.tool-look .style-look {
+  border-radius: 8px;
+}
+.tool-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+/* À côté de l'aperçu, la place est comptée : le curseur rétrécit plutôt que le nom du réglage. */
+.tool-controls .reshade-row .row-main {
+  flex: 1 1 120px;
+  min-width: 110px;
+}
+.tool-controls .reshade-row .range {
+  flex: 1 1 120px;
+  width: auto;
+  min-width: 90px;
+  max-width: 220px;
+}
+.tool-controls .reset-link {
+  width: auto;
+  min-width: 64px;
+}
+@media (max-width: 760px) {
+  .tool-controls .reshade-row .row-main {
+    flex-basis: 100%;
+  }
+  .tool-controls .reshade-row .range {
+    max-width: none;
+  }
+}
+@media (max-width: 1000px) {
+  .tool-adjust-body.with-look {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .tool-look {
+    position: static;
+    max-width: 360px;
   }
 }

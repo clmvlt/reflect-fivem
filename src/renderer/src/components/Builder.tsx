@@ -4,7 +4,7 @@
 // compte et les installe comme n'importe quel pack de la bibliothèque. Assistant par étapes (les groupes du catalogue,
 // puis le récapitulatif), avec un panneau qui résume la composition, son poids sur ce PC et ses problèmes, revérifiés
 // par l'API 400 ms après chaque changement.
-import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type {
   BuilderBuild,
@@ -507,6 +507,12 @@ function Wizard({
   )
   const steps = [...groups.map((g) => g.group.key), SUMMARY]
   const [step, setStep] = useState(start.step && steps.includes(start.step) ? start.step : steps[0])
+  const pageRef = useRef<HTMLDivElement>(null)
+  /** Autre étape (boutons des étapes, « Précédent », « Étape suivante ») : elle s'ouvre en haut de la page. */
+  const goTo = (key: string): void => {
+    setStep(key)
+    pageRef.current?.scrollTo({ top: 0 })
+  }
   const chosen = draft.components.map((id) => index.get(id)?.card).filter((c): c is BuilderComponentCard => !!c)
   const preview = usePreview(draft.components, draft.tools)
   const dirty = snapshot(draft) !== saved
@@ -603,7 +609,7 @@ function Wizard({
   const stepIndex = steps.indexOf(step)
 
   return (
-    <div className="page builder-page">
+    <div className="page builder-page" ref={pageRef}>
       <div className="back-row">
         <button className="link" onClick={() => void leave()}>
           {t('builder.back')}
@@ -622,7 +628,7 @@ function Wizard({
           const g = groupOf(key)
           const count = g ? countIn(g) : draft.components.length + activeTools
           return (
-            <button key={key} className={`builder-step ${key === step ? 'is-selected' : ''}`} aria-current={key === step ? 'step' : undefined} onClick={() => setStep(key)}>
+            <button key={key} className={`builder-step ${key === step ? 'is-selected' : ''}`} aria-current={key === step ? 'step' : undefined} onClick={() => goTo(key)}>
               <span className="builder-step-num">{num(i + 1)}</span>
               <span className="builder-step-label">{g ? g.group.label : t('builder.summaryStep')}</span>
               {g && count > 0 && <span className="chip-count">{num(count)}</span>}
@@ -684,10 +690,10 @@ function Wizard({
             />
           )}
           <div className="builder-nav">
-            {stepIndex > 0 && <button onClick={() => setStep(steps[stepIndex - 1])}>{t('builder.previous')}</button>}
+            {stepIndex > 0 && <button onClick={() => goTo(steps[stepIndex - 1])}>{t('builder.previous')}</button>}
             <div className="spacer" />
             {stepIndex < steps.length - 1 && (
-              <button className="primary" onClick={() => setStep(steps[stepIndex + 1])}>
+              <button className="primary" onClick={() => goTo(steps[stepIndex + 1])}>
                 {stepIndex === steps.length - 2 ? t('builder.toSummary') : t('builder.next')}
               </button>
             )}

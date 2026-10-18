@@ -12,6 +12,7 @@ import type {
   BuilderComponentCard,
   BuilderControlValue,
   BuilderParam,
+  BuilderProblem,
   BuilderTools
 } from '@shared/types'
 
@@ -117,6 +118,14 @@ export function conflictsOf(card: BuilderComponentCard, chosen: BuilderComponent
  */
 export function blockersOf(card: BuilderComponentCard, single: boolean, chosen: BuilderComponentCard[]): BuilderComponentCard[] {
   return conflictsOf(card, chosen).filter((c) => !(single && c.category === card.category))
+}
+
+/**
+ * Problèmes montrés au joueur : sans les conflits (deux éléments qui remplacent les mêmes fichiers, un seul s'applique),
+ * évités au moment du choix (élément incompatible désactivé) et sans rien à régler ensuite.
+ */
+export function shownProblems(problems: BuilderProblem[]): BuilderProblem[] {
+  return problems.filter((p) => p.type !== 'conflict')
 }
 
 /** Bases que `card` demande (QuantV, NVE, ReShade) et qu'aucun composant choisi ni outil actif ne fournit. */

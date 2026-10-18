@@ -39,7 +39,7 @@ import {
 } from '@shared/ambiance'
 import { apiError, cleanError, useStore } from '../store'
 import { bytes, longDate, num, q } from '../lib/format'
-import { blockersOf, cardIndex, conflictsOf, draftOf, missingBases, NAME_MAX, newDraft, snapshot, SUMMARY, toggle, upgradeDraft, type CardRef, type Draft } from '../lib/builder'
+import { blockersOf, cardIndex, conflictsOf, shownProblems, draftOf, missingBases, NAME_MAX, newDraft, snapshot, SUMMARY, toggle, upgradeDraft, type CardRef, type Draft } from '../lib/builder'
 import { Cover, EmptyState } from './common'
 import { confirmDialog } from './Confirm'
 import { DownloadInline, useDownload } from './Downloads'
@@ -837,8 +837,9 @@ function PcEstimate({ perf }: { perf: PackPerformance | null }) {
 }
 
 /**
- * Problèmes, les erreurs d'abord, chacun avec de quoi le régler : activer l'outil ou la base qui manque (QuantV demande
- * ReShade, un preset demande QuantV), choisir un autre style, revenir au réglage d'un outil indisponible.
+ * Problèmes (sans les conflits, voir shownProblems), les erreurs d'abord, chacun avec de quoi le régler : activer
+ * l'outil ou la base qui manque (QuantV demande ReShade, un preset demande QuantV), choisir un autre style, revenir au
+ * réglage d'un outil indisponible.
  */
 function Problems({
   problems,
@@ -854,8 +855,9 @@ function Problems({
   onOpenTool: (tool: ToolKey) => void
 }) {
   const { t } = useTranslation()
-  if (!problems.length) return null
-  const sorted = [...problems].sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'error' ? -1 : 1))
+  const shown = shownProblems(problems)
+  if (!shown.length) return null
+  const sorted = shown.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'error' ? -1 : 1))
   const action = (p: BuilderProblem): ReactNode => {
     const key = p.requires
     const tool = isToolKey(key) ? catalog.tools.find((x) => x.key === key) : undefined
@@ -1111,7 +1113,7 @@ function Summary({
             </div>
           )}
           {p &&
-            (p.problems.length ? (
+            (shownProblems(p.problems).length ? (
               <Problems problems={p.problems} catalog={catalog} tools={draft.tools} onEnable={onEnable} onOpenTool={onOpenTool} />
             ) : (
               <p className="ok-text">{t('builder.summary.noProblem')}</p>

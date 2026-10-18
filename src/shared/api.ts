@@ -371,6 +371,9 @@ export const MOD_GONE = 'mod-gone'
 /** Code d'une erreur de l'API pendant une maintenance (503) : l'écran de maintenance l'explique, pas de message d'erreur. */
 export const MAINTENANCE = 'maintenance'
 
+/** Code d'une requête qui demande un compte connecté sans qu'il y en ait (401) : l'interface invite à se connecter. */
+export const SIGNED_OUT = 'signed-out'
+
 /**
  * Une erreur ne passe d'un processus à l'autre qu'avec son message : le statut HTTP et le `code` d'une erreur de l'API
  * y sont ajoutés à la fin, puis retirés par l'interface (le message seul est affiché, le code sert à la logique).

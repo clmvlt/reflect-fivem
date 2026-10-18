@@ -32,6 +32,7 @@ import type { AddressInfo } from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import type { AccountMe, AccountProfile, AuthorRef, ProfileInput, ProfileLink } from '@shared/types'
+import { SIGNED_OUT } from '@shared/api'
 import { t } from 'i18next'
 import { currentLocale } from '@shared/i18n'
 import { ApiError, MaintenanceError, maintenanceError } from './http'
@@ -315,9 +316,13 @@ interface RequestOptions {
   /** Jeton de l'en-tête Authorization (jeton d'accès, ou ancien jeton « pm_… » pour la conversion). */
   bearer?: string
   timeout?: number
+  /** En-têtes en plus (If-None-Match...). */
+  headers?: Record<string, string>
+  /** Requête conditionnelle : une réponse 304 est rendue telle quelle au lieu d'être une erreur. */
+  notModified?: boolean
 }
 
-const signedOut = (): ApiError => new ApiError(t('account.errors.signedOut'), 401, 'signed-out')
+const signedOut = (): ApiError => new ApiError(t('account.errors.signedOut'), 401, SIGNED_OUT)
 
 export class Account {
   private session: Session | null = null
@@ -520,6 +525,14 @@ export class Account {
     }
   }
 
+  /**
+   * Requête connectée dont la réponse est rendue telle quelle quand elle réussit (en-têtes lus par l'appelant : ETag...),
+   * ou vaut 304 (requête conditionnelle, If-None-Match). Sans connexion : 401 « signed-out ».
+   */
+  async fetchAuthed(method: string, pathname: string, opts: { json?: unknown; headers?: Record<string, string> } = {}): Promise<Response> {
+    return this.withToken((bearer) => this.send(method, pathname, { ...opts, bearer, notModified: true }))
+  }
+
   /** Jeton d'accès valide pour une requête faite ailleurs (téléchargements), renouvelé s'il expire bientôt ; null sans connexion. */
   async accessToken(): Promise<string | null> {
     if (!this.session && !this.legacy) return null
@@ -602,22 +615,32 @@ export class Account {
   }
 
   /** Requête connectée. Jeton d'accès refusé (401 « token-invalid ») : renouvelé une fois, puis la requête est rejouée. */
-  private async authed<T>(method: string, pathname: string, opts: Omit<RequestOptions, 'bearer'> = {}): Promise<T> {
+  private authed<T>(method: string, pathname: string, opts: Omit<RequestOptions, 'bearer'> = {}): Promise<T> {
+    return this.withToken((bearer) => this.request<T>(method, pathname, { ...opts, bearer }))
+  }
+
+  /** Envoie une requête avec le jeton d'accès ; refusé (401 « token-invalid ») : renouvelé une fois, puis renvoyée. */
+  private async withToken<T>(send: (bearer: string) => Promise<T>): Promise<T> {
     const session = await this.ready()
     try {
-      return await this.request<T>(method, pathname, { ...opts, bearer: session.accessToken })
+      return await send(session.accessToken)
     } catch (err) {
       if (!(err instanceof ApiError && err.status === 401 && err.code === 'token-invalid')) throw err
     }
     // Déjà renouvelé par une autre requête entre-temps : la nouvelle session suffit.
     if (this.session?.accessToken === session.accessToken) await this.renew()
     const next = await this.ready()
-    return this.request<T>(method, pathname, { ...opts, bearer: next.accessToken })
+    return send(next.accessToken)
   }
 
-  /** Le corps est reconstruit à chaque appel : une requête peut être rejouée. */
   private async request<T>(method: string, pathname: string, opts: RequestOptions = {}): Promise<T> {
-    const headers: Record<string, string> = { Accept: 'application/json' }
+    const response = await this.send(method, pathname, opts)
+    return (response.status === 204 ? undefined : await response.json()) as T
+  }
+
+  /** Le corps est reconstruit à chaque appel : une requête peut être rejouée. Réponse en échec : ApiError. */
+  private async send(method: string, pathname: string, opts: RequestOptions = {}): Promise<Response> {
+    const headers: Record<string, string> = { Accept: 'application/json', ...opts.headers }
     let body: RequestInit['body']
     if (opts.json !== undefined) {
       headers['Content-Type'] = 'application/json'
@@ -636,7 +659,7 @@ export class Account {
       if (err instanceof MaintenanceError) throw err
       throw new Error(t('errors.network'))
     }
-    if (response.ok) return (response.status === 204 ? undefined : await response.json()) as T
+    if (response.ok || (opts.notModified && response.status === 304)) return response
 
     // fetch donné sans serverFetch (tests) : la maintenance est reconnue ici aussi.
     const maintenance = await maintenanceError(response)

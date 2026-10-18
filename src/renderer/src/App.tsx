@@ -10,7 +10,7 @@ import { SettingsView } from './components/SettingsView'
 import { InstancesView } from './components/InstancesView'
 import { Graphics } from './components/Graphics'
 import { Marketplace, type MarketView } from './components/Marketplace'
-import { Builder, BuilderIcon, type BuilderRequest } from './components/Builder'
+import { Builder, BuilderNavIcon, type BuilderRequest } from './components/Builder'
 import { AccountView } from './components/AccountView'
 import { Avatar } from './components/common'
 import { UpdatePanel } from './components/UpdatePanel'
@@ -26,13 +26,14 @@ import icon from './assets/icon.png'
 /** instances : page des instances FiveM, ouverte depuis les réglages. */
 type Page = 'library' | 'market' | 'builder' | 'graphics' | 'cleanup' | 'discord' | 'account' | 'settings' | 'instances'
 
-/** Bibliothèque et Marketplace s'ouvrent sur les packs ; Packs et Mods s'affichent en dessous quand l'une est ouverte. */
+/** Bibliothèque et Marketplace s'ouvrent sur les packs ; Packs et Mods sont toujours affichés en dessous. */
 const SUB_NAV: { kind: MarketKind; label: 'packs' | 'mods' }[] = [
   { kind: 'pack', label: 'packs' },
   { kind: 'mod', label: 'mods' }
 ]
 
-const NAV: Exclude<Page, 'instances'>[] = ['library', 'market', 'builder', 'graphics', 'cleanup', 'settings']
+/** « Créer ton pack » en dernier (seulement pour les comptes qui ont le droit). */
+const NAV: Exclude<Page, 'instances'>[] = ['library', 'market', 'graphics', 'cleanup', 'settings', 'builder']
 
 export function App() {
   const { t } = useTranslation()
@@ -145,7 +146,6 @@ export function App() {
   const games = overview?.games
   // Plusieurs instances FiveM : celle qui est active, rappelée dans la barre latérale.
   const currentInstance = (overview?.instances.length ?? 0) > 1 ? overview?.instances.find((i) => i.current) : undefined
-  const updates = overview?.market.updates.length ?? 0
   // Mises à jour en ligne, par genre (sous la Bibliothèque).
   const updatesOf = (kind: MarketKind): number =>
     (kind === 'mod' ? (overview?.mods ?? []) : (overview?.library ?? [])).filter((p) => overview?.market.updates.includes(p.id)).length
@@ -221,31 +221,27 @@ export function App() {
         </div>
         <nav>
           {NAV.filter((id) => id !== 'builder' || builderAllowed).map((id) => {
-            const open = page === id && (id === 'library' || id === 'market')
+            const catalogs = id === 'library' || id === 'market'
+            const open = page === id && catalogs
             const selected = page === id || (id === 'settings' && page === 'instances')
             return (
-              <div key={id} className="nav-group">
-                <button className={`nav ${open ? 'is-open' : selected ? 'is-selected' : ''}`} aria-expanded={open || undefined} onClick={() => go(id)}>
+              <div key={id} className={`nav-group ${id === 'builder' ? 'nav-builder' : ''}`}>
+                <button className={`nav ${open ? 'is-open' : selected ? 'is-selected' : ''}`} onClick={() => go(id)}>
                   {id === 'builder' ? (
                     <span className="nav-icon">
-                      <BuilderIcon />
+                      <BuilderNavIcon />
                       {t('app.nav.builder')}
                     </span>
                   ) : (
                     t(`app.nav.${id}`)
                   )}
-                  {/* Packs et mods de la bibliothèque dont une nouvelle version est en ligne. */}
-                  {id === 'library' && !open && updates > 0 && (
-                    <span className="nav-badge" title={t('app.updatesAvailable', { count: updates })}>
-                      {updates}
-                    </span>
-                  )}
                 </button>
-                {open &&
+                {/* Packs et Mods, toujours affichés ; sous la Bibliothèque, ceux dont une nouvelle version est en ligne. */}
+                {catalogs &&
                   SUB_NAV.map((s) => {
                     const count = id === 'library' ? updatesOf(s.kind) : 0
                     return (
-                      <button key={s.kind} className={`nav nav-sub ${catalog === s.kind ? 'is-selected' : ''}`} onClick={() => go(id, s.kind)}>
+                      <button key={s.kind} className={`nav nav-sub ${open && catalog === s.kind ? 'is-selected' : ''}`} onClick={() => go(id, s.kind)}>
                         {t(`app.nav.${s.label}`)}
                         {count > 0 && (
                           <span className="nav-badge" title={t('app.updatesAvailable', { count })}>

@@ -3171,14 +3171,27 @@ button.google {
 
 /* ------------------------------------------------------------ Créer ton pack */
 
-/* Entrée de la barre latérale, avec son icône. */
+/* Entrée de la barre latérale, en dernier, un peu détachée des autres : icône sur une pastille de la couleur d'accent,
+   qui se remarque sans crier. */
+.nav-group.nav-builder {
+  margin-top: 6px;
+}
+.nav-builder .nav {
+  padding-left: 10px;
+}
 .nav-icon {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.nav-icon svg {
+.nav-icon-tile {
+  display: grid;
   flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent-text);
 }
 

@@ -86,6 +86,18 @@ function toolsGroup(catalog: BuilderCatalog): string | null {
   return catalog.categories.find((c) => c.tool === tool.key || c.key === tool.category)?.group ?? catalog.groups[0]?.key ?? null
 }
 
+/** Icône de l'entrée de la barre latérale : deux étincelles (créer) sur une pastille de la couleur d'accent. */
+export function BuilderNavIcon() {
+  return (
+    <span className="nav-icon-tile" aria-hidden>
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M7 1.5c.3 2.6 1.9 4.2 4.5 4.5-2.6.3-4.2 1.9-4.5 4.5-.3-2.6-1.9-4.2-4.5-4.5C5.1 5.7 6.7 4.1 7 1.5z" />
+        <path d="M12.5 9.5c.15 1.2.8 1.85 2 2-1.2.15-1.85.8-2 2-.15-1.2-.8-1.85-2-2 1.2-.15 1.85-.8 2-2z" />
+      </svg>
+    </span>
+  )
+}
+
 /** Icône de la page : des calques et un « + ». */
 export function BuilderIcon({ size = 16 }: { size?: number }) {
   return (

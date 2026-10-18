@@ -47,6 +47,8 @@ const GOOGLE_TIMEOUT = 5 * 60_000
 const RENEW_MARGIN = 60_000
 /** Renouvellement régulier quand l'appli reste ouverte longtemps. */
 const KEEP_ALIVE = 12 * 3_600_000
+/** Compte relu au retour sur la fenêtre au plus une fois par minute. */
+const REFRESH_ON_FOCUS_MIN = 60_000
 export const AVATAR_MAX = 8 * 1024 * 1024
 
 const AVATAR_TYPES: Record<string, string> = {
@@ -145,6 +147,8 @@ interface RemoteMe {
   admin: boolean
   canPublish: boolean
   canPublishMods?: boolean
+  /** Absent d'une API plus ancienne : pas de droit. */
+  canBuildPacks?: boolean
   mustChangePassword?: boolean
   hasPassword: boolean
   googleLinked: boolean
@@ -178,6 +182,7 @@ function toMe(r: RemoteMe): AccountMe {
     admin: !!r.admin,
     canPublish: !!r.canPublish,
     canPublishMods: !!r.canPublishMods,
+    canBuildPacks: !!r.canBuildPacks,
     mustChangePassword: !!r.mustChangePassword,
     hasPassword: !!r.hasPassword,
     googleLinked: !!r.googleLinked,
@@ -334,6 +339,9 @@ export class Account {
   private renewing: Promise<void> | null = null
   private keepAlive: NodeJS.Timeout | null = null
   private google: AbortController | null = null
+  /** Lecture du compte en cours (partagée), et heure de la dernière (voir refreshIfStale). */
+  private refreshing: Promise<AccountMe | null> | null = null
+  private lastRefresh = 0
 
   constructor(private deps: AccountDeps) {}
 
@@ -363,9 +371,30 @@ export class Account {
     return !!this.current()?.admin
   }
 
-  /** Relit le compte (GET /auth/me), en renouvelant la connexion si besoin. Hors ligne : l'état enregistré est gardé. */
-  async refresh(): Promise<AccountMe | null> {
-    if (!this.session && !this.legacy) return null
+  /**
+   * Relit le compte (GET /auth/me), en renouvelant la connexion si besoin : nom, photo, droits donnés ou retirés par
+   * l'admin. Hors ligne : l'état enregistré est gardé. Une lecture déjà en cours sert à tous les appels.
+   */
+  refresh(): Promise<AccountMe | null> {
+    if (!this.session && !this.legacy) return Promise.resolve(null)
+    this.lastRefresh = Date.now()
+    this.refreshing ??= this.readMe().finally(() => {
+      this.refreshing = null
+    })
+    return this.refreshing
+  }
+
+  /**
+   * Relit le compte s'il ne l'a pas été depuis `minAge` ms (fenêtre qui reprend le focus : un droit donné sur le site
+   * apparaît sans redémarrer, au plus une lecture par minute). Une lecture en cours sert aussi.
+   */
+  refreshIfStale(minAge = REFRESH_ON_FOCUS_MIN): Promise<AccountMe | null> {
+    if (this.refreshing) return this.refreshing
+    if (Date.now() - this.lastRefresh < minAge) return Promise.resolve(this.current())
+    return this.refresh()
+  }
+
+  private async readMe(): Promise<AccountMe | null> {
     const me = await this.authed<RemoteMe>('GET', '/auth/me')
     if (!me.authenticated) {
       await this.forget()

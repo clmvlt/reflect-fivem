@@ -183,8 +183,12 @@ function startApp(): void {
       sendPendingPack()
     })
     service.startBackground()
-    // Liens modifiables depuis le site : relus quand la fenêtre reprend le focus (au plus une fois par minute).
-    win.on('focus', () => void service.links.refresh())
+    // Liens modifiables depuis le site, et compte (droits donnés ou retirés par l'admin, comme « Peut créer un pack ») :
+    // relus quand la fenêtre reprend le focus, au plus une fois par minute.
+    win.on('focus', () => {
+      void service.links.refresh()
+      service.account.refreshIfStale().catch((err: unknown) => log.info(`Compte non vérifié : ${(err as Error).message}`))
+    })
     nativeTheme.on('updated', () => win?.setBackgroundColor(service.windowBackground()))
   })
 }

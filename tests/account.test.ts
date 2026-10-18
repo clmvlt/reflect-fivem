@@ -1,5 +1,5 @@
 // Compte : PKCE de la connexion Google, retour sur le serveur local, jetons chiffrés, renouvellement et conversion des
-// connexions des versions précédentes.
+// connexions des versions précédentes, droits relus (« Peut créer un pack »).
 import { createHash } from 'node:crypto'
 import { existsSync, promises as fs } from 'node:fs'
 import os from 'node:os'
@@ -298,6 +298,29 @@ describe('compte', () => {
     expect(calls[0].route).toBe('/auth/app/register')
     expect(body(calls[0].init)).toMatchObject({ email: 'joueur@example.com', displayName: 'Joueur', deviceName: expect.any(String) })
     expect(account.current()?.id).toBe(12)
+  })
+
+  it('droit « Peut créer un pack » : absent de l’API (version plus ancienne) → false, relu avec le compte', async () => {
+    let canBuildPacks: boolean | undefined
+    const { account, changes } = await setup('can-build', (r) =>
+      r === '/auth/app/login' ? json(200, tokens(1)) : json(200, { ...remoteMe, ...(canBuildPacks === undefined ? {} : { canBuildPacks }) })
+    )
+    expect((await account.login('joueur@example.com', 'motdepasse')).canBuildPacks).toBe(false)
+    canBuildPacks = true
+    expect((await account.refresh())?.canBuildPacks).toBe(true)
+    expect(changes.map((me) => me?.canBuildPacks)).toEqual([false, true])
+  })
+
+  it('compte relu au retour sur la fenêtre : au plus une fois par minute, une seule lecture à la fois', async () => {
+    const { account, calls } = await setup('focus', (r) => json(200, r === '/auth/app/login' ? tokens(1) : remoteMe))
+    await account.login('joueur@example.com', 'motdepasse')
+    const reads = (): number => calls.filter((c) => c.route === '/auth/me').length
+    await Promise.all([account.refreshIfStale(), account.refreshIfStale()])
+    expect(reads()).toBe(1)
+    await account.refreshIfStale()
+    expect(reads()).toBe(1)
+    await account.refreshIfStale(0)
+    expect(reads()).toBe(2)
   })
 
   it('renouvelle le jeton d’accès avant son expiration, après avoir enregistré le nouveau jeton de renouvellement', async () => {

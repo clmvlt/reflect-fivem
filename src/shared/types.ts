@@ -693,6 +693,8 @@ export interface AccountMe {
   canPublish: boolean
   /** Peut publier des mods (depuis le site). */
   canPublishMods: boolean
+  /** Droit « Peut créer un pack » donné par l'admin (« Créer ton pack » ; voir canUseBuilder). */
+  canBuildPacks: boolean
   /** Mot de passe imposé : à changer avant toute autre action. */
   mustChangePassword: boolean
   /** Faux pour un compte créé par Google qui n'a pas encore de mot de passe. */

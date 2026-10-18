@@ -242,16 +242,6 @@
         "text": "Choisis un style pour chaque outil et ajuste-le avec quelques curseurs."
       }
     },
-    "signIn": {
-      "title": "Compose ton propre pack graphique",
-      "text": "Choisis chaque élément (routes, végétation, sang, preset ReShade, base QuantV, NVE, ENB…) parmi ceux de tous les packs de la Marketplace. Connecte-toi pour commencer : tes créations sont gardées sur ton compte.",
-      "expired": "Ta connexion a expiré. Reconnecte-toi pour retrouver tes créations.",
-      "choose": "Un élément par catégorie, ou plusieurs quand c’est possible, avec leur poids sur ton PC.",
-      "tune": "Ton ambiance en un clic : un style tout prêt, puis quelques curseurs si tu veux.",
-      "install": "Installé comme n’importe quel pack de ta bibliothèque, et mis à jour quand un élément change.",
-      "action": "Se connecter",
-      "appOnly": "« Créer ton pack » n’existe que dans l’application."
-    },
     "home": {
       "intro": "Compose ton pack élément par élément, règle ton ReShade, puis installe-le comme n’importe quel pack de ta bibliothèque.",
       "count": "{{n}} sur {{max}}",
@@ -424,6 +414,7 @@
     },
     "errors": {
       "signedOut": "Connecte-toi pour utiliser « Créer ton pack ».",
+      "notAllowed": "Votre compte ne peut plus créer de pack.",
       "badResponse": "Le serveur ne répond pas correctement.",
       "unsafePath": "La création contient un chemin refusé ({{path}}) : rien n’a été installé.",
       "badBundle": "Un fichier de la création est endommagé : rien n’a été installé.",

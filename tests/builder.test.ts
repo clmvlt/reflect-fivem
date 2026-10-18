@@ -1,15 +1,16 @@
 // « Créer ton pack » : catalogue gardé sur le disque (ETag, 304), contrôle des chemins du manifeste et des entrées des
 // zips, téléchargement des fichiers (SHA-256 vérifié, reprise d'un fichier partiel), construction du pack dans la
 // bibliothèque (zips, puis fichiers, puis fichiers écrits, dont ceux de chaque outil d'ambiance sous leur racine), et
-// nouvelle révision proposée comme une mise à jour. Outils d'ambiance : conversion des créations d'avant les outils,
-// règles QuantV / ReShade, choix rapide (Basique, Recommandé) et aperçu d'un style.
+// nouvelle révision proposée comme une mise à jour. Droit « Peut créer un pack » : sans lui, aucune requête. Outils
+// d'ambiance : conversion des créations d'avant les outils, règles QuantV / ReShade, choix rapide (Basique, Recommandé)
+// et aperçu d'un style.
 import { createHash } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { crc32 } from 'node:zlib'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { SIGNED_OUT } from '@shared/api'
+import { BUILDER_NOT_ALLOWED, canUseBuilder, SIGNED_OUT } from '@shared/api'
 import type { AccountMe } from '@shared/types'
 import type { BuilderAccount } from '../src/main/core/builder'
 import type { InstallHooks } from '../src/main/core/marketplace'
@@ -182,10 +183,11 @@ function setup() {
   const blobs = new Map<string, Served>()
   const routes = new Map<string, unknown>()
   const requests: { url: string; headers: Record<string, string> }[] = []
-  const me = { id: 7 } as AccountMe
+  const me = { id: 7, admin: false, canBuildPacks: true } as AccountMe
   const account = {
     signedIn: true,
     current: () => (account.signedIn ? me : null),
+    refresh: vi.fn(async () => (account.signedIn ? me : null)),
     call: vi.fn(async (method: string, pathname: string) => {
       const body = routes.get(`${method} ${pathname}`)
       if (body === undefined) throw new ApiError('Introuvable.', 404)
@@ -225,7 +227,7 @@ function setup() {
     blobs.set(sha(buffer), { data: buffer })
     return { sha256: sha(buffer), size: buffer.length }
   }
-  return { account, fetch, requests, routes, blobs, serve, library, builder }
+  return { account, me, fetch, requests, routes, blobs, serve, library, builder }
 }
 
 type Setup = ReturnType<typeof setup>
@@ -283,6 +285,18 @@ const hooks = (over: Partial<InstallHooks> = {}): InstallHooks & { apply: Return
 }) as InstallHooks & { apply: ReturnType<typeof vi.fn> }
 
 const content = (s: Setup, packId: string, ...parts: string[]): Promise<string> => fs.readFile(path.join(s.library.contentDir(packId), ...parts), 'utf8')
+
+describe('droit « Peut créer un pack »', () => {
+  it('« Créer ton pack » seulement pour un compte connecté qui a le droit, ou l’admin', () => {
+    expect(canUseBuilder(null)).toBe(false)
+    expect(canUseBuilder(undefined)).toBe(false)
+    expect(canUseBuilder({ admin: false, canBuildPacks: false })).toBe(false)
+    expect(canUseBuilder({ admin: false, canBuildPacks: true })).toBe(true)
+    expect(canUseBuilder({ admin: true, canBuildPacks: false })).toBe(true)
+    // Compte enregistré par une version qui ne connaissait pas le droit.
+    expect(canUseBuilder({ id: 3, admin: false } as AccountMe)).toBe(false)
+  })
+})
 
 describe('catalogue', () => {
   const body = (version: string) => ({
@@ -470,6 +484,40 @@ describe('mises à jour', () => {
     s.routes.delete(`GET /builder/builds/${BUILD}/manifest`)
     await s.builder.refreshStatus()
     expect(await s.builder.status()).toEqual({ updates: [], gone: [first.packId] })
+  })
+
+  it('sans le droit « Peut créer un pack » : rien n’est demandé à l’API, rien à signaler, le pack construit reste', async () => {
+    const s = setup()
+    publish(s, { revision: 'rev-1', preset: PRESET_V1 })
+    const first = await s.builder.install(BUILD, vi.fn(), new AbortController().signal, hooks())
+    publish(s, { revision: 'rev-2', preset: PRESET_V2 })
+    await s.builder.refreshStatus()
+    expect(await s.builder.status()).toEqual({ updates: [first.packId], gone: [] })
+
+    s.me.canBuildPacks = false
+    s.account.call.mockClear()
+    s.fetch.mockClear()
+    await s.builder.refreshStatus()
+    // Révision déjà connue : plus signalée non plus.
+    expect(await s.builder.status()).toEqual({ updates: [], gone: [] })
+    await expect(s.builder.catalog(true)).rejects.toMatchObject({ status: 403, code: BUILDER_NOT_ALLOWED })
+    await expect(s.builder.builds()).rejects.toMatchObject({ code: BUILDER_NOT_ALLOWED })
+    expect(s.account.call).not.toHaveBeenCalled()
+    expect(s.account.fetchAuthed).not.toHaveBeenCalled()
+    expect(s.fetch).not.toHaveBeenCalled()
+    expect(s.account.refresh).not.toHaveBeenCalled()
+    expect((await s.library.list()).map((p) => p.id)).toEqual([first.packId])
+  })
+
+  it('droit retiré sur le serveur (403 « builder-not-allowed ») : le compte est relu', async () => {
+    const s = setup()
+    s.account.call.mockRejectedValueOnce(new ApiError('Ce compte ne peut pas créer de pack.', 403, BUILDER_NOT_ALLOWED))
+    await expect(s.builder.builds()).rejects.toMatchObject({ status: 403, code: BUILDER_NOT_ALLOWED })
+    expect(s.account.refresh).toHaveBeenCalledTimes(1)
+    // Autre refus : le compte n'est pas relu pour rien.
+    s.account.call.mockRejectedValueOnce(new ApiError('Interdit.', 403, 'app-only'))
+    await expect(s.builder.builds()).rejects.toMatchObject({ code: 'app-only' })
+    expect(s.account.refresh).toHaveBeenCalledTimes(1)
   })
 
   it('garde les fichiers des packs construits et retire les autres du cache', async () => {

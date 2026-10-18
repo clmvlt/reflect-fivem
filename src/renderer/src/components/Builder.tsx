@@ -1,7 +1,8 @@
-// « Créer ton pack » : le joueur connecté compose son propre pack en choisissant chaque élément (route, végétation,
-// sang...) parmi ceux de tous les packs de la Marketplace, règle son ambiance (outils ReShade, QuantV, NVE, ENB : un
-// choix rapide, ou chaque outil réglé lui-même avec un style, voir BuilderAmbiance.tsx), enregistre ses créations sur son
-// compte et les installe comme n'importe quel pack de la bibliothèque. Assistant par étapes (les groupes du catalogue,
+// « Créer ton pack » (compte connecté avec le droit « Peut créer un pack » : sinon la page n'est pas proposée, voir
+// canUseBuilder) : le joueur compose son propre pack en choisissant chaque élément (route, végétation, sang...) parmi
+// ceux de tous les packs de la Marketplace, règle son ambiance (outils ReShade, QuantV, NVE, ENB : un choix rapide, ou
+// chaque outil réglé lui-même avec un style, voir BuilderAmbiance.tsx), enregistre ses créations sur son compte et les
+// installe comme n'importe quel pack de la bibliothèque. Assistant par étapes (les groupes du catalogue,
 // puis le récapitulatif), avec un panneau qui résume la composition, son poids sur ce PC et ses problèmes, revérifiés
 // par l'API 400 ms après chaque changement.
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
@@ -21,7 +22,7 @@ import type {
   ToolKey,
   ToolMode
 } from '@shared/types'
-import { SIGNED_OUT } from '@shared/api'
+import { canUseBuilder } from '@shared/api'
 import { estimate, VERDICT_LABEL, type PackPerformance } from '@shared/performance'
 import {
   ambianceChoice,
@@ -97,39 +98,11 @@ export function BuilderIcon({ size = 16 }: { size?: number }) {
   )
 }
 
-export function Builder({ request, onSignIn, onOpenLocal }: { request: BuilderRequest | null; onSignIn: () => void; onOpenLocal: (packId: string) => void }) {
+/** Sans compte ou sans le droit, rien : l'application ne propose pas la page et la quitte si le droit est retiré. */
+export function Builder({ request, onOpenLocal }: { request: BuilderRequest | null; onOpenLocal: (packId: string) => void }) {
   const { account } = useStore()
-  if (account === undefined) return null
-  if (!account) return <SignInPanel onSignIn={onSignIn} />
-  return <BuilderPage key={account.id} account={account.id} request={request} onSignIn={onSignIn} onOpenLocal={onOpenLocal} />
-}
-
-/** Sans compte : ce que fait la page, et la connexion (retour ici ensuite). */
-function SignInPanel({ onSignIn, expired = false }: { onSignIn: () => void; expired?: boolean }) {
-  const { t } = useTranslation()
-  return (
-    <div className="page">
-      <header className="page-head">
-        <h1>{t('builder.title')}</h1>
-      </header>
-      <section className="builder-welcome">
-        <div className="builder-welcome-icon">
-          <BuilderIcon size={30} />
-        </div>
-        <h2>{t('builder.signIn.title')}</h2>
-        <p>{expired ? t('builder.signIn.expired') : t('builder.signIn.text')}</p>
-        <ul className="builder-welcome-points">
-          <li>{t('builder.signIn.choose')}</li>
-          <li>{t('builder.signIn.tune')}</li>
-          <li>{t('builder.signIn.install')}</li>
-        </ul>
-        <button className="primary" onClick={onSignIn}>
-          {t('builder.signIn.action')}
-        </button>
-        <p className="hint">{t('builder.signIn.appOnly')}</p>
-      </section>
-    </div>
-  )
+  if (!account || !canUseBuilder(account)) return null
+  return <BuilderPage key={account.id} account={account.id} request={request} onOpenLocal={onOpenLocal} />
 }
 
 /** Catalogue : copie déjà lue (ou celle du disque) tout de suite, puis revérifié auprès de l'API (304 : rien ne change). */
@@ -167,15 +140,13 @@ function useCatalog(): { catalog: BuilderCatalog | null; error: { message: strin
 
 type View = { kind: 'home' } | { kind: 'new' } | { kind: 'open'; id: string } | { kind: 'kept' }
 
-function BuilderPage({ account, request, onSignIn, onOpenLocal }: { account: number; request: BuilderRequest | null; onSignIn: () => void; onOpenLocal: (packId: string) => void }) {
+function BuilderPage({ account, request, onOpenLocal }: { account: number; request: BuilderRequest | null; onOpenLocal: (packId: string) => void }) {
   const { t } = useTranslation()
   const { catalog, error, reload } = useCatalog()
   const resume = kept?.account === account ? kept : null
   const [view, setView] = useState<View>(() =>
     request ? (resume?.draft.id === request.buildId ? { kind: 'kept' } : { kind: 'open', id: request.buildId }) : resume ? { kind: 'kept' } : { kind: 'home' }
   )
-  // Connexion expirée ou session refusée : invitation à se reconnecter.
-  if (error?.code === SIGNED_OUT) return <SignInPanel onSignIn={onSignIn} expired />
   if (!catalog)
     return (
       <div className="page">

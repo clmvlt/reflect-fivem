@@ -218,7 +218,8 @@ export interface PackManagerApi {
   /** Packs et mods (ou seulement l'un des deux) téléchargés par le compte connecté, avec sa note. */
   myDownloads(page: number, kind?: MarketKind): Promise<MyDownloadsPage>
 
-  // « Créer ton pack » : compte connecté depuis l'application (sans compte, erreur SIGNED_OUT).
+  // « Créer ton pack » : compte connecté depuis l'application, avec le droit « Peut créer un pack » (sans compte, erreur
+  // SIGNED_OUT ; sans le droit, BUILDER_NOT_ALLOWED).
 
   /**
    * Catalogue (étapes, catégories, composants, réglages ReShade). Sans `refresh` : la copie du disque s'il y en a une ;
@@ -250,7 +251,7 @@ export interface PackManagerApi {
    * enregistrer d'abord (id null : nouvelle création). Renvoie l'identifiant de la création.
    */
   builderInstall(id: string | null, input?: BuilderSaveInput): Promise<string>
-  /** Revérifie les révisions des créations installées (mises à jour, créations supprimées). */
+  /** Revérifie les révisions des créations installées (mises à jour, créations supprimées) ; sans le droit, rien à signaler. */
   builderStatus(): Promise<BuilderStatus>
   /** Fichiers des composants gardés sur ce PC (pour reconstruire un pack sans tout retélécharger). */
   builderCacheInfo(): Promise<{ size: number }>
@@ -423,6 +424,18 @@ export const MAINTENANCE = 'maintenance'
 
 /** Code d'une requête qui demande un compte connecté sans qu'il y en ait (401) : l'interface invite à se connecter. */
 export const SIGNED_OUT = 'signed-out'
+
+/** Code d'une requête de « Créer ton pack » refusée (403) : le compte n'a pas (ou plus) le droit « Peut créer un pack ». */
+export const BUILDER_NOT_ALLOWED = 'builder-not-allowed'
+
+/**
+ * « Créer ton pack » est proposé : compte connecté qui a le droit « Peut créer un pack » (l'admin l'a toujours). Sans
+ * compte ou sans ce droit (compte enregistré par une version qui ne le connaissait pas compris), la page est cachée et
+ * aucune requête /builder n'est faite.
+ */
+export function canUseBuilder(me: Pick<AccountMe, 'admin' | 'canBuildPacks'> | null | undefined): boolean {
+  return !!me && (me.canBuildPacks === true || me.admin === true)
+}
 
 /**
  * Une erreur ne passe d'un processus à l'autre qu'avec son message : le statut HTTP et le `code` d'une erreur de l'API

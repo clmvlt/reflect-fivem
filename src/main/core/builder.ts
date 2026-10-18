@@ -1,8 +1,10 @@
 // « Créer ton pack » : le joueur connecté compose son propre pack à partir des composants publiés (routes, végétation,
 // sang...), règle son ambiance (outils ReShade, QuantV, NVE, ENB : aucun, réglé par lui avec un style, ou importé d'un
 // pack ; voir @shared/ambiance), enregistre sa création sur son compte (privée) et l'installe comme un pack de la
-// bibliothèque. Tout passe par /builder, réservé à une session de l'application (voir account.ts) : sans compte, erreur
-// SIGNED_OUT (l'interface invite à se connecter).
+// bibliothèque. Tout passe par /builder, réservé à une session de l'application (voir account.ts) dont le compte a le
+// droit « Peut créer un pack » (canUseBuilder) : sans compte, erreur SIGNED_OUT ; sans le droit, BUILDER_NOT_ALLOWED,
+// sans requête (l'interface cache la page). Un refus 403 « builder-not-allowed » de l'API (droit retiré depuis la
+// dernière lecture du compte) fait relire le compte.
 //
 // Sur le disque (<données>/builder) :
 //   catalog-<langue>.json   dernier catalogue reçu et son ETag : consultable hors ligne, revérifié par If-None-Match
@@ -31,7 +33,7 @@ import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import yauzl from 'yauzl'
 import { t } from 'i18next'
-import { SIGNED_OUT } from '@shared/api'
+import { BUILDER_NOT_ALLOWED, canUseBuilder, SIGNED_OUT } from '@shared/api'
 import { currentLocale } from '@shared/i18n'
 import { formatBytes as displayBytes } from '@shared/intl'
 import { parsePackPerformance } from '@shared/performance'
@@ -145,6 +147,8 @@ export interface BuildManifest {
 
 const unsafePath = (root: unknown, p: unknown): Error => new Error(t('builder.errors.unsafePath', { path: `${String(root)}/${String(p)}` }))
 const badResponse = (): Error => new Error(t('builder.errors.badResponse'))
+/** Compte sans le droit « Peut créer un pack » (ou qui vient de le perdre). */
+const notAllowed = (): ApiError => new ApiError(t('builder.errors.notAllowed'), 403, BUILDER_NOT_ALLOWED)
 
 /**
  * Manifeste reçu de l'API, contrôlé entrée par entrée avant d'écrire quoi que ce soit : un seul chemin refusé (hors des
@@ -602,9 +606,10 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 
 // ------------------------------------------------------------------ « Créer ton pack »
 
-/** Compte connecté (voir Account) : requêtes connectées, ETag du catalogue, jeton pour les fichiers. */
+/** Compte connecté (voir Account) : requêtes connectées, ETag du catalogue, jeton pour les fichiers, relecture du compte. */
 export interface BuilderAccount extends DownloadAuth {
   current(): AccountMe | null
+  refresh(): Promise<AccountMe | null>
   call<T>(method: string, pathname: string, opts?: { json?: unknown; auth?: 'optional' | 'required' }): Promise<T>
   fetchAuthed(method: string, pathname: string, opts?: { headers?: Record<string, string> }): Promise<Response>
 }
@@ -668,13 +673,33 @@ export class Builder {
     return path.join(this.deps.dir, `catalog-${locale}.json`)
   }
 
+  /** Compte connecté avec le droit « Peut créer un pack », sinon erreur sans requête. */
   private requireAccount(): void {
-    if (!this.deps.account.current()) throw new ApiError(t('builder.errors.signedOut'), 401, SIGNED_OUT)
+    const me = this.deps.account.current()
+    if (!me) throw new ApiError(t('builder.errors.signedOut'), 401, SIGNED_OUT)
+    if (!canUseBuilder(me)) throw notAllowed()
   }
 
   private call<T>(method: string, pathname: string, json?: unknown): Promise<T> {
     this.requireAccount()
-    return this.deps.account.call<T>(method, pathname, { json, auth: 'required' })
+    return this.guard(this.deps.account.call<T>(method, pathname, { json, auth: 'required' }))
+  }
+
+  /** Refus 403 « builder-not-allowed » : droit retiré depuis la dernière lecture du compte, qui est relu. */
+  private async guard<T>(request: Promise<T>): Promise<T> {
+    try {
+      return await request
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403 && err.code === BUILDER_NOT_ALLOWED) throw this.rightLost()
+      throw err
+    }
+  }
+
+  /** Droit retiré : le compte est relu (l'interface ferme alors la page), erreur à afficher. */
+  private rightLost(): ApiError {
+    log.info('Créer ton pack : droit retiré au compte')
+    this.deps.account.refresh().catch((err: unknown) => log.info(`Compte non relu : ${(err as Error).message}`))
+    return notAllowed()
   }
 
   // ---------------------------------------------------------------- catalogue
@@ -697,7 +722,7 @@ export class Builder {
     }
     let response: Response
     try {
-      response = await this.deps.account.fetchAuthed('GET', '/builder/catalog', cached?.etag ? { headers: { 'If-None-Match': cached.etag } } : {})
+      response = await this.guard(this.deps.account.fetchAuthed('GET', '/builder/catalog', cached?.etag ? { headers: { 'If-None-Match': cached.etag } } : {}))
     } catch (err) {
       // Connexion refusée (compte déconnecté, session du site) : rien à consulter.
       if (!cached || (err instanceof ApiError && (err.status === 401 || err.status === 403))) throw err
@@ -756,7 +781,7 @@ export class Builder {
     if ((component !== null && !UUID.test(component)) || !/^[^\\/:*?"<>|\x00-\x1f]{1,200}\.fx$/i.test(file)) return null
     const params = new URLSearchParams({ file })
     if (component) params.set('component', component)
-    const response = await this.deps.account.fetchAuthed('GET', `/builder/tools/reshade/effects?${params}`)
+    const response = await this.guard(this.deps.account.fetchAuthed('GET', `/builder/tools/reshade/effects?${params}`))
     const text = await response.text()
     try {
       return text.trim() ? toEffect(JSON.parse(text)) : null
@@ -826,10 +851,10 @@ export class Builder {
 
   /**
    * Revérifie la révision des créations installées (toutes, ou `ids`) : au démarrage, à l'ouverture de la page, après
-   * un enregistrement. Hors ligne, l'état connu est gardé.
+   * un enregistrement. Hors ligne, l'état connu est gardé. Sans compte ou sans le droit : rien n'est demandé.
    */
   async refreshStatus(ids?: string[]): Promise<void> {
-    if (!this.deps.account.current()) return
+    if (!canUseBuilder(this.deps.account.current())) return
     for (const id of ids ?? [...(await this.builtIndex()).keys()]) {
       try {
         const revision = str(obj(await this.call<unknown>('GET', `/builder/builds/${id}/manifest`)).revision)
@@ -847,10 +872,14 @@ export class Builder {
     this.revisions.clear()
   }
 
-  /** Packs construits dont une autre révision est en ligne, et ceux dont la création a été supprimée. */
+  /**
+   * Packs construits dont une autre révision est en ligne, et ceux dont la création a été supprimée. Sans le droit
+   * « Peut créer un pack » : rien à signaler (les packs construits restent utilisables, sans mise à jour).
+   */
   async status(): Promise<BuilderStatus> {
     const updates: string[] = []
     const gone: string[] = []
+    if (!canUseBuilder(this.deps.account.current())) return { updates, gone }
     for (const [buildId, m] of await this.builtIndex()) {
       const revision = this.revisions.get(buildId)
       if (revision === null) gone.push(m.id)
@@ -1000,6 +1029,11 @@ export class Builder {
     const token = await this.deps.account.accessToken()
     if (!token) throw signedOut()
     const response = await send(token)
+    if (response.status === 403) {
+      const problem = await problemOf(response)
+      if (problem.code === BUILDER_NOT_ALLOWED) throw Object.assign(this.rightLost(), { fatal: true })
+      throw Object.assign(new Error(problem.detail ?? t('builder.errors.downloadFailed', { status: 403 })), { fatal: true })
+    }
     if (response.status !== 401 || (await problemOf(response)).code !== 'token-invalid') return response
     const next = await this.deps.account.renewRejected(token)
     if (!next) throw signedOut()

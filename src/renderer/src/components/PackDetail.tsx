@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { t as tr } from 'i18next'
 import type { Destination, Insight, MarketPackDetail, PackComponent, PackManifest } from '@shared/types'
-import type { ComponentFile } from '@shared/api'
+import { canUseBuilder, type ComponentFile } from '@shared/api'
 import { useStore } from '../store'
 import { bytes, longDate, mediaUrl, num, packImages } from '../lib/format'
 import { asiBuildText, LEVEL_LABEL, levelOf, type Level } from '@shared/insights'
@@ -86,8 +86,10 @@ export function PackDetail({
   const video = pack.youtubeId !== undefined ? pack.youtubeId : (online?.youtubeId ?? null)
   // Pack de la Marketplace : son analyse, pour le comparer à la machine avec le preset et les options choisis.
   const downloading = useDownload(marketId)
-  // Pack de « Créer ton pack » : sa création en cours de reconstruction (mise à jour).
+  // Pack de « Créer ton pack » : sa création en cours de reconstruction (mise à jour). Sans le droit « Peut créer un
+  // pack », le pack reste installable et marqué « Créé par toi », sans « Mettre à jour » ni « Modifier la création ».
   const built = pack.built
+  const canBuild = canUseBuilder(account)
   const rebuilding = useDownload(built?.buildId)
   const buildGone = !!built && !!overview?.builder.gone.includes(pack.id)
   // Mise à jour téléchargée : fiche et notes relues (le téléchargement est compté pour le compte, qui peut noter).
@@ -206,7 +208,7 @@ export function PackDetail({
             </div>
           )}
 
-          {built && (updateAvailable || rebuilding) && (
+          {built && canBuild && (updateAvailable || rebuilding) && (
             <div className="side-update">
               {rebuilding ? (
                 <DownloadInline d={rebuilding} />
@@ -308,7 +310,7 @@ export function PackDetail({
 
           <div className="side-links">
             {market && !gone && <button onClick={() => onOpenMarket(market.id)}>{t('packDetail.marketPage')}</button>}
-            {built && !buildGone && <button onClick={() => onEditBuild(built.buildId)}>{t('builder.packDetail.edit')}</button>}
+            {built && canBuild && !buildGone && <button onClick={() => onEditBuild(built.buildId)}>{t('builder.packDetail.edit')}</button>}
             {!pack.protected && <button onClick={() => void run(() => window.api.openPackFolder(pack.id))}>{t('packDetail.openFolder')}</button>}
             <button
               className="more"

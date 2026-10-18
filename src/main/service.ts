@@ -6,7 +6,7 @@ import { app, BrowserWindow, dialog, nativeImage, nativeTheme, net, Notification
 import type { AppState, FiveMInstance, GamesInfo, InstanceSummary, MarketKind, Overview, PackPatch, RootId, Settings, TaskProgress } from '@shared/types'
 import type { AccountMe, BuilderBuild, BuilderSaveInput, BuilderTools, ProfileInput, ToolKey } from '@shared/types'
 import type { AuthorQuery, CommentQuery, ComponentFile, ForeignSelection, MarketQuery, PackManagerApi } from '@shared/api'
-import { IPC, PENDING } from '@shared/api'
+import { canUseBuilder, IPC, PENDING } from '@shared/api'
 import i18next, { t } from 'i18next'
 import { currentLocale, initI18n, msg, supportedLocale } from '@shared/i18n'
 import { formatDateTime, formatMegabytes, formatNumber, quote } from '@shared/intl'
@@ -123,7 +123,7 @@ export class Service {
   private relaunchHint = false
   /** Compte connecté au dernier changement (une connexion se reconnaît à un compte différent). */
   private accountId: number | null = null
-  /** Compte dont les créations de « Créer ton pack » ont été vérifiées. */
+  /** Compte dont les créations de « Créer ton pack » ont été vérifiées (null : pas de compte, ou sans le droit). */
   private builderAccount: number | null = null
   /** État des instances autres que l'instance active, lu à la demande (il ne change pas tant qu'on ne les reprend pas). */
   private others = new Map<string, AppState>()
@@ -142,11 +142,12 @@ export class Service {
       onChange: (me) => {
         this.emit(IPC.account, me)
         this.accountLanguage(me)
-        // Créations d'un autre compte (ou plus de compte) : mises à jour revérifiées.
-        if (me?.id !== this.builderAccount) {
-          this.builderAccount = me?.id ?? null
+        // Créations d'un autre compte, plus de compte, droit « Peut créer un pack » donné ou retiré : mises à jour revérifiées.
+        const builderAccount = me && canUseBuilder(me) ? me.id : null
+        if (builderAccount !== this.builderAccount) {
+          this.builderAccount = builderAccount
           this.builder?.forgetStatus()
-          if (me)
+          if (builderAccount !== null)
             void this.builder
               ?.refreshStatus()
               .then(() => this.changed())
@@ -467,7 +468,8 @@ export class Service {
     this.marketplace = new Marketplace(this.apiUrl, path.join(this.dataDir, 'Marketplace', 'images'), () => this.library, this.account, () => this.modLibrary)
     this.community = new Community(this.account, (items) => this.marketplace.toPacks(items))
     this.builder = new Builder({ apiUrl: this.apiUrl, dir: path.join(this.dataDir, 'builder'), account: this.account, library: () => this.library, fetch: apiFetch })
-    this.builderAccount = this.account.current()?.id ?? null
+    const me = this.account.current()
+    this.builderAccount = me && canUseBuilder(me) ? me.id : null
   }
 
   /** Langue changée : processus principal (menus, textes produits ici), toutes les fenêtres, caches des textes de l'API. */

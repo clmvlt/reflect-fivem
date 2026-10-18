@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DownloadKind, MarketKind } from '@shared/types'
+import { canUseBuilder } from '@shared/api'
 import { useStore } from './store'
 import { Library } from './components/Library'
 import { PackDetail } from './components/PackDetail'
@@ -128,6 +129,17 @@ export function App() {
     if (page === 'account') setPage(signInFrom)
   }, [account, signInFrom, page])
 
+  // « Créer ton pack » : seulement avec un compte qui a le droit « Peut créer un pack ». Déconnexion ou droit retiré
+  // (compte relu après un refus de l'API) pendant que la page est ouverte : retour à la Marketplace. Le brouillon en
+  // cours reste gardé pour la prochaine ouverture.
+  const builderAllowed = canUseBuilder(account)
+  useEffect(() => {
+    if (page !== 'builder' || account === undefined || builderAllowed) return
+    setPage('market')
+    setBuilderRequest(null)
+    if (account) setMessage({ kind: 'info', text: t('builder.errors.notAllowed') })
+  }, [page, account, builderAllowed, setMessage, t])
+
   // Barre latérale affichée dès le premier rendu ; les pages attendent l'état de l'application.
   const detail = openPack ? overview?.library.find((p) => p.id === openPack) : null
   const games = overview?.games
@@ -168,14 +180,23 @@ export function App() {
     setCatalog(kind)
     setMarketStack([{ kind: 'pack', id, catalog: kind }])
   }
-  /** Création de « Créer ton pack » ouverte dans l'assistant. */
+  /** Création de « Créer ton pack » ouverte dans l'assistant (sans le droit : rien). */
   const openBuild = (buildId: string): void => {
+    if (!builderAllowed) return
     setPage('builder')
     setOpenPack(null)
     setBuilderRequest({ buildId, at: Date.now() })
   }
-  /** Fiche d'un téléchargement de la file : pack ou mod de la Marketplace, ou création. */
-  const openDownload = (id: string, kind: DownloadKind): void => (kind === 'build' ? openBuild(id) : openMarketPack(id, kind))
+  /**
+   * Fiche d'un téléchargement de la file : pack ou mod de la Marketplace, ou création (dans l'assistant ; sans le droit,
+   * le pack construit de la bibliothèque s'il existe).
+   */
+  const openDownload = (id: string, kind: DownloadKind): void => {
+    if (kind !== 'build') return openMarketPack(id, kind)
+    if (builderAllowed) return openBuild(id)
+    const built = overview?.library.find((p) => p.built?.buildId === id)
+    if (built) openLocal(built.id)
+  }
   /** Connexion depuis une fiche de la Marketplace ou de la bibliothèque (la fiche reste ouverte pour le retour). */
   const signIn = (): void => {
     setSignInFrom(page)
@@ -199,7 +220,7 @@ export function App() {
           </span>
         </div>
         <nav>
-          {NAV.map((id) => {
+          {NAV.filter((id) => id !== 'builder' || builderAllowed).map((id) => {
             const open = page === id && (id === 'library' || id === 'market')
             const selected = page === id || (id === 'settings' && page === 'instances')
             return (
@@ -312,7 +333,7 @@ export function App() {
                 onSignIn={signIn}
               />
             )}
-            {page === 'builder' && <Builder key={builderRequest?.at ?? 'page'} request={builderRequest} onSignIn={signIn} onOpenLocal={openLocal} />}
+            {page === 'builder' && <Builder key={builderRequest?.at ?? 'page'} request={builderRequest} onOpenLocal={openLocal} />}
             {page === 'graphics' && <Graphics />}
             {page === 'cleanup' && <Cleanup />}
             {page === 'discord' && <DiscordView />}

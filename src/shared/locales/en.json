@@ -242,16 +242,6 @@
         "text": "Pick a style for each tool and adjust it with a few sliders."
       }
     },
-    "signIn": {
-      "title": "Build your own graphics pack",
-      "text": "Pick every element (roads, vegetation, blood, ReShade preset, QuantV base, NVE, ENB…) from all the packs on the Marketplace. Sign in to start: your creations are kept in your account.",
-      "expired": "Your session has expired. Sign in again to get your creations back.",
-      "choose": "One element per category, or several when possible, with their weight on your PC.",
-      "tune": "Your ambiance in one click: a ready-made style, then a few sliders if you like.",
-      "install": "Installed like any pack in your library, and updated when an element changes.",
-      "action": "Sign in",
-      "appOnly": "“Create your pack” is only available in the app."
-    },
     "home": {
       "intro": "Build your pack element by element, tune your ReShade, then install it like any pack in your library.",
       "count": "{{n}} of {{max}}",
@@ -424,6 +414,7 @@
     },
     "errors": {
       "signedOut": "Sign in to use “Create your pack”.",
+      "notAllowed": "Your account can no longer create packs.",
       "badResponse": "The server isn’t responding correctly.",
       "unsafePath": "The creation contains a refused path ({{path}}): nothing was installed.",
       "badBundle": "A file of the creation is damaged: nothing was installed.",

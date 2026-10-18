@@ -3217,64 +3217,6 @@ button.google {
   color: var(--ok-text);
 }
 
-/* Sans compte : ce que fait la page, et la connexion. */
-.builder-welcome {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  max-width: 560px;
-  margin: 24px auto 0;
-  padding: 40px 32px 32px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
-  text-align: center;
-}
-.builder-welcome h2 {
-  font-size: 20px;
-  line-height: 28px;
-}
-.builder-welcome p {
-  margin: 0;
-}
-.builder-welcome .hint {
-  margin-top: 4px;
-}
-.builder-welcome-icon {
-  display: grid;
-  place-items: center;
-  width: 64px;
-  height: 64px;
-  margin-bottom: 4px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: var(--accent-text);
-}
-.builder-welcome-points {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 6px 0 10px;
-  padding: 0;
-  list-style: none;
-  color: var(--text-2);
-  text-align: left;
-}
-.builder-welcome-points li {
-  position: relative;
-  padding-left: 18px;
-}
-.builder-welcome-points li::before {
-  content: '';
-  position: absolute;
-  left: 4px;
-  top: 8px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent-text);
-}
 .builder-lead {
   max-width: 720px;
   margin: -8px 0 0;

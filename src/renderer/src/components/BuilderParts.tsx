@@ -1,7 +1,9 @@
-// Pièces communes de « Créer ton pack » : tuile d'un élément (photo, résumé, crédits, poids, conflits, base manquante),
+// Pièces communes de « Créer ton pack » : tuile d'un élément (photo, résumé, crédits, poids, base manquante ; désactivée
+// quand il remplace la même chose qu'un élément déjà choisi),
 // coche de sélection, badge de poids et fenêtre de détails d'un élément.
 import { useEffect, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import type { BuilderComponentCard, BuilderComponentDetail, BuilderPerformance } from '@shared/types'
 import { EMBEDDED_PERFORMANCE_MODEL, tierLabel } from '@shared/performance'
 import { cleanError, useStore } from '../store'
@@ -43,13 +45,22 @@ export function WeightBadge({ perf }: { perf: BuilderPerformance | null }) {
 }
 
 /**
- * Élément à choisir : un clic le choisit ou le retire. `conflicts` : éléments choisis qui remplacent les mêmes fichiers ;
- * `missing` : bases (QuantV, NVE, ReShade) qu'il demande et que rien ne fournit, avec de quoi les activer.
+ * Raison pour laquelle un élément ne peut pas être choisi : il remplace la même chose qu'un élément déjà choisi (qu'il
+ * faut retirer d'abord). `blockers` : ceux-là, sans l'élément qu'un choix unique remplacerait.
+ */
+export function blockedText(t: TFunction, blockers: BuilderComponentCard[]): string | null {
+  return blockers.length ? t('builder.card.blocked', { count: blockers.length, names: blockers.map((c) => q(c.name)).join(', ') }) : null
+}
+
+/**
+ * Élément à choisir : un clic le choisit ou le retire. `blockers` : éléments choisis qui remplacent les mêmes fichiers
+ * (l'élément ne peut pas être choisi avec eux : clic désactivé, raison au survol) ; `missing` : bases (QuantV, NVE,
+ * ReShade) qu'il demande et que rien ne fournit, avec de quoi les activer.
  */
 export function ComponentTile({
   card,
   selected,
-  conflicts,
+  blockers,
   missing,
   baseLabel,
   onChoose,
@@ -58,7 +69,7 @@ export function ComponentTile({
 }: {
   card: BuilderComponentCard
   selected: boolean
-  conflicts: BuilderComponentCard[]
+  blockers: BuilderComponentCard[]
   missing: string[]
   baseLabel: (base: string) => string
   onChoose: () => void
@@ -71,14 +82,20 @@ export function ComponentTile({
     e.stopPropagation()
     fn()
   }
+  // Un élément déjà choisi reste cliquable (pour le retirer), même s'il en gêne un autre.
+  const blocked = selected ? null : blockedText(t, blockers)
+  const choose = (): void => {
+    if (!blocked) onChoose()
+  }
   return (
     <article
-      className={`card clickable builder-card ${selected ? 'is-selected' : ''}`}
+      className={`card clickable builder-card ${selected ? 'is-selected' : ''} ${blocked ? 'is-blocked' : ''}`}
       role="button"
       tabIndex={0}
       aria-pressed={selected}
-      onClick={onChoose}
-      onKeyDown={(e) => activate(e, onChoose)}
+      title={blocked ?? undefined}
+      onClick={choose}
+      onKeyDown={(e) => activate(e, choose)}
     >
       <div className="cover">
         {card.cover && !failed ? (
@@ -107,21 +124,40 @@ export function ComponentTile({
             </button>
           </div>
         ))}
-        {conflicts.length > 0 && <div className="builder-note warn-text">{t('builder.card.conflict', { names: conflicts.map((c) => q(c.name)).join(', ') })}</div>}
         {card.unreadable && <div className="meta">{t('builder.card.unreadable')}</div>}
         <div className="card-foot">
           <WeightBadge perf={card.performance} />
           <span className="meta">{bytes(card.size)}</span>
           <div className="spacer" />
-          <button onClick={stop(onDetails)}>{t('builder.card.details')}</button>
+          {/* Toujours possible : sans la raison du blocage au survol. */}
+          <button title="" onClick={stop(onDetails)}>
+            {t('builder.card.details')}
+          </button>
         </div>
       </div>
     </article>
   )
 }
 
-/** Détails d'un élément : galerie, description, crédits, page d'origine, packs où il a été trouvé. */
-export function ComponentModal({ id, card, selected, onToggle, onClose }: { id: string; card: BuilderComponentCard | null; selected: boolean; onToggle: () => void; onClose: () => void }) {
+/**
+ * Détails d'un élément : galerie, description, crédits, page d'origine, packs où il a été trouvé. `blocked` : raison
+ * pour laquelle il ne peut pas être choisi (bouton « Choisir » désactivé, raison au survol).
+ */
+export function ComponentModal({
+  id,
+  card,
+  selected,
+  blocked,
+  onToggle,
+  onClose
+}: {
+  id: string
+  card: BuilderComponentCard | null
+  selected: boolean
+  blocked: string | null
+  onToggle: () => void
+  onClose: () => void
+}) {
   const { t, i18n } = useTranslation()
   const { run } = useStore()
   const [detail, setDetail] = useState<BuilderComponentDetail | null>(null)
@@ -148,6 +184,8 @@ export function ComponentModal({ id, card, selected, onToggle, onClose }: { id: 
             <button
               className={selected ? '' : 'primary'}
               data-autofocus
+              disabled={!selected && !!blocked}
+              title={!selected && blocked ? blocked : undefined}
               onClick={() => {
                 onToggle()
                 onClose()

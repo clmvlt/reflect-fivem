@@ -3368,6 +3368,20 @@ button.google {
 .card.builder-card:focus-visible {
   outline-color: var(--text);
 }
+/* Élément impossible avec un choix déjà fait : grisé, non cliquable (la raison s'affiche au survol). */
+.card.builder-card.is-blocked {
+  cursor: not-allowed;
+}
+.card.builder-card.is-blocked:hover {
+  background: var(--surface);
+}
+.builder-card.is-blocked .cover,
+.builder-card.is-blocked .card-body > :not(.card-foot) {
+  opacity: 0.45;
+}
+.builder-card.is-blocked .cover {
+  filter: grayscale(0.7);
+}
 .builder-card .card-body {
   flex: 1;
 }

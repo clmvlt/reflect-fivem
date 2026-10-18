@@ -111,6 +111,14 @@ export function conflictsOf(card: BuilderComponentCard, chosen: BuilderComponent
   return chosen.filter((c) => c.id !== card.id && (card.conflictsWith.includes(c.id) || c.conflictsWith.includes(card.id)))
 }
 
+/**
+ * Éléments choisis qui empêchent de choisir `card` (ils remplacent les mêmes fichiers). Dans une catégorie à choix
+ * unique (`single`), l'élément déjà choisi n'en fait pas partie : choisir `card` le remplace.
+ */
+export function blockersOf(card: BuilderComponentCard, single: boolean, chosen: BuilderComponentCard[]): BuilderComponentCard[] {
+  return conflictsOf(card, chosen).filter((c) => !(single && c.category === card.category))
+}
+
 /** Bases que `card` demande (QuantV, NVE, ReShade) et qu'aucun composant choisi ni outil actif ne fournit. */
 export function missingBases(card: BuilderComponentCard, chosen: BuilderComponentCard[], tools: BuilderTools): string[] {
   const bases = toolBases(tools)

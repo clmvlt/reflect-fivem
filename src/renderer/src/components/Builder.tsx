@@ -39,14 +39,14 @@ import {
 } from '@shared/ambiance'
 import { apiError, cleanError, useStore } from '../store'
 import { bytes, longDate, num, q } from '../lib/format'
-import { cardIndex, conflictsOf, draftOf, missingBases, NAME_MAX, newDraft, snapshot, SUMMARY, toggle, upgradeDraft, type CardRef, type Draft } from '../lib/builder'
+import { blockersOf, cardIndex, conflictsOf, draftOf, missingBases, NAME_MAX, newDraft, snapshot, SUMMARY, toggle, upgradeDraft, type CardRef, type Draft } from '../lib/builder'
 import { Cover, EmptyState } from './common'
 import { confirmDialog } from './Confirm'
 import { DownloadInline, useDownload } from './Downloads'
 import { useInstallTarget } from './InstallTarget'
 import { popupMenu } from './Menu'
 import { memText, usePerfConfirm, usePerformance, verdictReasons } from './Performance'
-import { activate, Check, ComponentModal, ComponentTile } from './BuilderParts'
+import { activate, blockedText, Check, ComponentModal, ComponentTile } from './BuilderParts'
 import { AmbianceSection, toolName, toolSummary } from './BuilderAmbiance'
 
 /** Création à ouvrir depuis une autre page (fiche d'un pack, file des téléchargements). */
@@ -555,6 +555,8 @@ function Wizard({
   // Fenêtre de détails : un élément d'outil se choisit comme « Importé d'un pack ».
   const detailsTool = details ? (index.get(details)?.category.tool ?? null) : null
   const detailsSelected = !!details && (detailsTool ? draft.tools[detailsTool].mode === 'pack' && draft.tools[detailsTool].component === details : draft.components.includes(details))
+  const detailsRef = details ? index.get(details) : undefined
+  const detailsBlocked = detailsRef ? blockedText(t, detailsTool ? conflictsOf(detailsRef.card, chosen) : blockersOf(detailsRef.card, detailsRef.category.single, chosen)) : null
   const toggleDetails = (): void => {
     if (!details) return
     if (detailsTool) {
@@ -694,7 +696,9 @@ function Wizard({
         <RecapPanel catalog={catalog} index={index} draft={draft} preview={preview} ambianceGroup={ambianceGroup} onEnable={enable} onOpenTool={openTool} />
       </div>
 
-      {details && <ComponentModal id={details} card={index.get(details)?.card ?? null} selected={detailsSelected} onToggle={toggleDetails} onClose={() => setDetails(null)} />}
+      {details && (
+        <ComponentModal id={details} card={detailsRef?.card ?? null} selected={detailsSelected} blocked={detailsBlocked} onToggle={toggleDetails} onClose={() => setDetails(null)} />
+      )}
     </div>
   )
 }
@@ -780,7 +784,7 @@ function GroupStep({
                 key={card.id}
                 card={card}
                 selected={picked(card.id)}
-                conflicts={conflictsOf(card, chosen)}
+                blockers={blockersOf(card, category.single, chosen)}
                 missing={picked(card.id) ? missingBases(card, chosen, draft.tools) : []}
                 baseLabel={baseLabel}
                 onChoose={() => onChoose(category, card.id)}

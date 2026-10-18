@@ -254,7 +254,7 @@ function ToolPanel({
                 key={card.id}
                 card={card}
                 selected={selected}
-                conflicts={conflictsOf(card, chosen)}
+                blockers={conflictsOf(card, chosen)}
                 missing={selected ? missingBases(card, chosen, tools) : []}
                 baseLabel={baseLabel}
                 onChoose={() => !selected && change({ component: card.id })}

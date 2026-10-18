@@ -203,6 +203,33 @@
       "zipMethod": "ZIP compression method {{method}} is not supported natively"
     }
   },
+  "builder": {
+    "untitled": "Untitled pack",
+    "tasks": {
+      "install": "Building {{name}}",
+      "update": "Updating {{name}}"
+    },
+    "phase": {
+      "manifest": "Preparing",
+      "downloading": "Downloading files",
+      "building": "Building the pack"
+    },
+    "notes": {
+      "updateNotInstalled": "The new version of {{name}} is in the library. Install it to replace the old one: {{error}}"
+    },
+    "errors": {
+      "signedOut": "Sign in to use “Create your pack”.",
+      "badResponse": "The server isn’t responding correctly.",
+      "unsafePath": "The creation contains a refused path ({{path}}): nothing was installed.",
+      "badBundle": "A file of the creation is damaged: nothing was installed.",
+      "componentGone": "This element is no longer available.",
+      "notFound": "Creation not found.",
+      "incomplete": "Incomplete download.",
+      "downloadFailed": "Download failed (error {{status}}).",
+      "corrupted": "A downloaded file is damaged. Start the installation again.",
+      "empty": "This creation has nothing to install."
+    }
+  },
   "cleanup": {
     "cache": {
       "clear": "Clear",
@@ -601,6 +628,8 @@
     }
   },
   "history": {
+    "built": "Built with “Create your pack”",
+    "builtUpdated": "Rebuilt with “Create your pack”",
     "cacheFreed": "{{size}} freed",
     "captured_one": "{{n}} file stored",
     "captured_other": "{{n}} files stored",
@@ -1621,6 +1650,12 @@
     "use": "Use"
   },
   "store": {
+    "build": {
+      "added": "{{name}} is in the library.",
+      "updated": "{{name}} is up to date.",
+      "unavailable_one": "Removed from the catalog, not installed: {{names}}.",
+      "unavailable_other": "Removed from the catalog, not installed: {{names}}."
+    },
     "captured": "Your previous mods were stashed in {{name}}. Install it to get them back.",
     "clean": {
       "modsDisabled_one": "Your mod is disabled (still in your mods).",

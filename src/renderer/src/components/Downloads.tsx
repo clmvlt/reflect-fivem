@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import type { DownloadItem, MarketKind } from '@shared/types'
+import type { DownloadItem, DownloadKind } from '@shared/types'
 import { useStore } from '../store'
-import { bytes, marketImageUrl, num } from '../lib/format'
+import { builderImageUrl, bytes, marketImageUrl, num } from '../lib/format'
 
-/** Téléchargement en cours ou en file d'attente de cette fiche de la Marketplace (null s'il n'y en a pas). */
+/** Téléchargement en cours ou en file d'attente de cette fiche de la Marketplace (ou de cette création), null sinon. */
 export function useDownload(id: string | null | undefined): DownloadItem | null {
   const { downloads } = useStore()
   return (id && downloads.find((d) => d.id === id)) || null
@@ -50,12 +50,20 @@ function Track({ d }: { d: DownloadItem }) {
   )
 }
 
+/** Vignette : image de la fiche, ou celle d'un composant pour une création de « Créer ton pack ». */
+function thumbUrl(d: DownloadItem): string | null {
+  if (!d.coverId) return null
+  if (d.kind !== 'build') return marketImageUrl(d.id, d.coverId, true, d.kind)
+  return d.coverComponent ? builderImageUrl(d.coverComponent, d.coverId, true) : null
+}
+
 function Thumb({ d, size }: { d: DownloadItem; size: number }) {
   const [failed, setFailed] = useState(false)
+  const src = thumbUrl(d)
   return (
     <span className="dl-thumb" style={{ width: size, height: size }} aria-hidden>
-      {d.coverId && !failed ? (
-        <img src={marketImageUrl(d.id, d.coverId, true, d.kind)} alt="" draggable={false} onError={() => setFailed(true)} />
+      {src && !failed ? (
+        <img src={src} alt="" draggable={false} onError={() => setFailed(true)} />
       ) : (
         <svg width={size / 2} height={size / 2} viewBox="0 0 16 16" fill="currentColor">
           <path d="M7.25 1.5h1.5v7.19l2.47-2.47 1.06 1.06L8 11.56 3.72 7.28l1.06-1.06 2.47 2.47z" />
@@ -111,9 +119,9 @@ export function DownloadInline({ d }: { d: DownloadItem }) {
 
 /**
  * Bande en bas de la fenêtre pendant les téléchargements : celui en cours (progression, taille, débit, temps restant)
- * et la file d'attente. Un clic ouvre la fiche du pack.
+ * et la file d'attente. Un clic ouvre la fiche du pack (ou la création).
  */
-export function DownloadBar({ onOpen }: { onOpen: (id: string, kind: MarketKind) => void }) {
+export function DownloadBar({ onOpen }: { onOpen: (id: string, kind: DownloadKind) => void }) {
   const { t } = useTranslation()
   const { downloads } = useStore()
   const [queueOpen, setQueueOpen] = useState(false)

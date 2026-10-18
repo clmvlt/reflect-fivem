@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { app, BrowserWindow, dialog, nativeImage, nativeTheme, net, Notification, safeStorage, screen, shell, systemPreferences } from 'electron'
 import type { AppState, FiveMInstance, GamesInfo, InstanceSummary, MarketKind, Overview, PackPatch, RootId, Settings, TaskProgress } from '@shared/types'
-import type { AccountMe, ProfileInput } from '@shared/types'
+import type { AccountMe, BuilderBuild, BuilderReshade, BuilderSaveInput, ProfileInput } from '@shared/types'
 import type { AuthorQuery, CommentQuery, ComponentFile, ForeignSelection, MarketQuery, PackManagerApi } from '@shared/api'
 import { IPC, PENDING } from '@shared/api'
 import i18next, { t } from 'i18next'
@@ -29,6 +29,7 @@ import { WhatsNewWatch } from './core/changelog'
 import { httpsUrl } from '@shared/links'
 import { isThemeChoice, resolveTheme, themeBackground, type ThemeChoice } from '@shared/themes'
 import { Marketplace } from './core/marketplace'
+import { Builder } from './core/builder'
 import { DownloadQueue, type DownloadContext, type DownloadJob } from './core/downloads'
 import { AppUpdater } from './core/updater'
 import { killProcesses, launchDetached, readVideoAdapters, runningGameProcesses } from './util/win'
@@ -75,6 +76,8 @@ export class Service {
   installer!: Installer
   graphics: GraphicsManager
   marketplace!: Marketplace
+  /** « Créer ton pack » : catalogue, créations du compte, packs construits. */
+  builder!: Builder
   updater: AppUpdater
   private gamesCache: GamesInfo | null = null
   /** Détection des jeux lancée au démarrage (null en cas d'échec). */
@@ -120,6 +123,8 @@ export class Service {
   private relaunchHint = false
   /** Compte connecté au dernier changement (une connexion se reconnaît à un compte différent). */
   private accountId: number | null = null
+  /** Compte dont les créations de « Créer ton pack » ont été vérifiées. */
+  private builderAccount: number | null = null
   /** État des instances autres que l'instance active, lu à la demande (il ne change pas tant qu'on ne les reprend pas). */
   private others = new Map<string, AppState>()
 
@@ -137,6 +142,17 @@ export class Service {
       onChange: (me) => {
         this.emit(IPC.account, me)
         this.accountLanguage(me)
+        // Créations d'un autre compte (ou plus de compte) : mises à jour revérifiées.
+        if (me?.id !== this.builderAccount) {
+          this.builderAccount = me?.id ?? null
+          this.builder?.forgetStatus()
+          if (me)
+            void this.builder
+              ?.refreshStatus()
+              .then(() => this.changed())
+              .catch((err: unknown) => log.info(`Créations non vérifiées : ${(err as Error).message}`))
+          else this.changed()
+        }
       }
     })
     this.settings = new JsonStore(path.join(dataDir, 'settings.json'), defaultSettings(dataDir))
@@ -450,6 +466,8 @@ export class Service {
     // Téléchargements faits avec le jeton du compte connecté : comptés pour lui (et nécessaires pour noter).
     this.marketplace = new Marketplace(this.apiUrl, path.join(this.dataDir, 'Marketplace', 'images'), () => this.library, this.account, () => this.modLibrary)
     this.community = new Community(this.account, (items) => this.marketplace.toPacks(items))
+    this.builder = new Builder({ apiUrl: this.apiUrl, dir: path.join(this.dataDir, 'builder'), account: this.account, library: () => this.library, fetch: apiFetch })
+    this.builderAccount = this.account.current()?.id ?? null
   }
 
   /** Langue changée : processus principal (menus, textes produits ici), toutes les fenêtres, caches des textes de l'API. */
@@ -500,6 +518,13 @@ export class Service {
       void refreshMarket()
       void this.marketplace.pruneImageCache()
       void this.marketplace.pruneDownloads()
+      // Créations installées : nouvelle révision en ligne ? Puis ménage des caches de « Créer ton pack ».
+      void this.builder
+        .refreshStatus()
+        .then(() => this.changed())
+        .catch((err: unknown) => log.info(`Créations non vérifiées : ${(err as Error).message}`))
+      void this.builder.pruneImages()
+      void this.builder.pruneBlobs().catch((err: unknown) => log.info(`Cache de « Créer ton pack » non nettoyé : ${(err as Error).message}`))
       // Carte graphique (détectée une fois, puis en cache) et modèle de comparaison, prêts pour la Marketplace.
       void this.machineProfile().catch(() => undefined)
     }, 5000)
@@ -712,11 +737,14 @@ export class Service {
     let ok = false
     log.info(`Téléchargement démarré : ${job.title}`)
     try {
-      const result = job.claim ? await this.claimDownload(job, ctx) : await this.installDownload(job, ctx, lock)
+      const result =
+        kind === 'build' ? await this.installBuild(job, ctx, lock) : job.claim ? await this.claimDownload(job, kind, ctx) : await this.installDownload(job, kind, ctx, lock)
       ok = true
       log.info(`Téléchargement terminé : ${job.title}`)
       return result
     } catch (err) {
+      // Création : les fichiers déjà reçus restent en cache (reprise), le ménage les retire s'ils ne servent plus.
+      if (kind === 'build') throw err
       if (ctx.signal.aborted) {
         await this.marketplace.discardDownload(id)
         throw err
@@ -734,8 +762,8 @@ export class Service {
     }
   }
 
-  private async installDownload(job: DownloadJob, ctx: DownloadContext, lock: () => Promise<void>): Promise<unknown> {
-    const { id, kind } = job
+  private async installDownload(job: DownloadJob, kind: MarketKind, ctx: DownloadContext, lock: () => Promise<void>): Promise<unknown> {
+    const { id } = job
     const hooks = {
       activeId: () => this.state.get().active?.packId ?? null,
       apply: (packId: string, r: Report) => this.installer.apply(packId, r),
@@ -756,10 +784,46 @@ export class Service {
     return result
   }
 
-  private async claimDownload(job: DownloadJob, ctx: DownloadContext): Promise<unknown> {
-    const result = await this.marketplace.claim(job.id, ctx.report, ctx.signal, job.kind)
+  /** Création de « Créer ton pack » : construite dans la bibliothèque, ou mise à jour (réinstallée si elle était installée). */
+  private async installBuild(job: DownloadJob, ctx: DownloadContext, lock: () => Promise<void>): Promise<unknown> {
+    const hooks = {
+      activeId: () => this.state.get().active?.packId ?? null,
+      apply: (packId: string, r: Report) => this.installer.apply(packId, r),
+      lock
+    }
+    const result = await this.builder.install(job.id, ctx.report, ctx.signal, hooks)
+    // Nouvelle version installée dans une autre instance : rattachée à la nouvelle (comme un pack de la Marketplace).
+    const oldId = job.localId
+    if (result.status === 'updated' && oldId && result.packId !== oldId) await this.updateOthers((s) => relink(s, 'pack', oldId, result.packId))
+    if (result.status !== 'up-to-date') {
+      const summary = msg(result.status === 'updated' ? 'history.builtUpdated' : 'history.built')
+      await this.state.set(pushHistory(this.state.get(), { action: 'download', packName: result.name, ok: true, msg: summary }))
+      void this.builder.pruneBlobs().catch(() => undefined)
+    }
+    return result
+  }
+
+  /** Met une création dans la file des téléchargements (vignette : l'image de son preset ou de son premier composant). */
+  private async queueBuild(build: BuilderBuild): Promise<string> {
+    const cover = await this.builder.coverOf(build).catch(() => null)
+    const title = t(build.localId ? 'builder.tasks.update' : 'builder.tasks.install', { name: build.name })
+    this.downloads.add({
+      id: build.id,
+      kind: 'build',
+      name: build.name,
+      coverId: cover?.imageId ?? null,
+      coverComponent: cover?.componentId ?? null,
+      claim: false,
+      title,
+      localId: build.localId
+    })
+    return build.id
+  }
+
+  private async claimDownload(job: DownloadJob, kind: MarketKind, ctx: DownloadContext): Promise<unknown> {
+    const result = await this.marketplace.claim(job.id, ctx.report, ctx.signal, kind)
     await this.paused.forget(job.id)
-    return { ...result, kind: job.kind, status: 'claimed' }
+    return { ...result, kind, status: 'claimed' }
   }
 
   // -------------------------------------------------------------------------
@@ -772,6 +836,7 @@ export class Service {
       const library = await this.library.list()
       const mods = await this.modLibrary.list()
       const market = await this.marketplace.status().catch(() => ({ updates: [], gone: [] }))
+      const builds = await this.builder.status().catch(() => ({ updates: [], gone: [] }))
       const foreign = await pendingForeign
       return {
         settings: this.settings.get(),
@@ -785,7 +850,9 @@ export class Service {
         version: app.getVersion(),
         dataDir: this.dataDir,
         apiUrl: this.apiUrl,
-        market,
+        // Packs de « Créer ton pack » avec une nouvelle révision : signalés comme une nouvelle version.
+        market: { updates: [...market.updates, ...builds.updates], gone: market.gone },
+        builder: { gone: builds.gone },
         pausedDownloads: this.paused.list().map(({ id, kind, name }) => ({ id, kind, name })),
         update: this.updater.state,
         game: { pending: this.pending && { title: this.pending.title, packId: this.pending.packId }, relaunch: this.relaunchHint }
@@ -1333,6 +1400,49 @@ export class Service {
     adminCommentDelete: (commentId: string) => this.community.purge(commentId),
 
     myDownloads: (page: number, kind?: MarketKind) => this.community.myDownloads(page, kind),
+
+    builderCatalog: (refresh?: boolean) => this.builder.catalog(refresh === true),
+
+    builderComponent: (id: string) => this.builder.component(id),
+
+    builderPreset: (componentId: string) => this.builder.preset(componentId),
+
+    builderPreview: (components: string[], reshade?: BuilderReshade) => this.builder.preview(components, reshade),
+
+    builderBuilds: () => this.builder.builds(),
+
+    builderBuildGet: (id: string) => this.builder.build(id),
+
+    builderBuildSave: async (id: string | null, input: BuilderSaveInput) => {
+      const build = await this.builder.save(id, input)
+      // Création installée modifiée : la mise à jour est signalée dans la bibliothèque.
+      if (build.localId) this.changed()
+      return build
+    },
+
+    builderBuildDelete: async (id: string) => {
+      await this.builder.remove(id)
+      this.changed()
+    },
+
+    builderInstall: async (id: string | null, input?: BuilderSaveInput) => {
+      const build = input ? await this.builder.save(id, input) : id ? await this.builder.build(id) : null
+      if (!build) throw this.toError(t('builder.errors.notFound'))
+      return this.queueBuild(build)
+    },
+
+    builderStatus: async () => {
+      await this.builder.refreshStatus()
+      this.changed()
+      return this.builder.status()
+    },
+
+    builderCacheInfo: () => this.builder.cacheInfo(),
+
+    builderCacheClear: async () => {
+      await this.builder.clearCache()
+      log.info('Cache de « Créer ton pack » vidé')
+    },
 
     accountGet: async () => this.account.current(),
 

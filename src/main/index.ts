@@ -100,6 +100,7 @@ function startApp(): void {
     // Images des packs : pm-media://pack/<id>/<chemin>, limité au dossier de la bibliothèque.
     // Images de la Marketplace : pm-media://market/<pack>/<image>[?size=thumb][&kind=mod], mises en cache sur le disque.
     // Photos des comptes : pm-media://avatar/<compte>/<version>, même cache.
+    // Images des composants de « Créer ton pack » : pm-media://builder/<composant>/<image>[?size=thumb], en cache aussi.
     protocol.handle('pm-media', (req) => {
       const url = new URL(req.url)
       const parts = url.pathname.split('/').filter(Boolean).map((p) => decodeURIComponent(p))
@@ -107,6 +108,10 @@ function startApp(): void {
         if (parts.length !== 2) return new Response('Interdit', { status: 403 })
         const kind = url.searchParams.get('kind') === 'mod' ? 'mod' : 'pack'
         return service.marketplace.image(parts[0], parts[1], url.searchParams.get('size') === 'thumb', kind)
+      }
+      if (url.host === 'builder') {
+        if (parts.length !== 2) return new Response('Interdit', { status: 403 })
+        return service.builder.image(parts[0], parts[1], url.searchParams.get('size') === 'thumb')
       }
       if (url.host === 'avatar') {
         if (parts.length !== 2) return new Response('Interdit', { status: 403 })

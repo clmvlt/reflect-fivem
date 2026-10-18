@@ -1,15 +1,17 @@
-// File des téléchargements de la Marketplace : un seul à la fois, dans l'ordre demandé. Chaque téléchargement peut être
-// annulé tant qu'il n'a pas commencé à modifier la bibliothèque. L'interface reçoit la file à chaque changement, avec la
-// progression et le débit du téléchargement en cours.
+// File des téléchargements de la Marketplace (et des créations de « Créer ton pack ») : un seul à la fois, dans l'ordre
+// demandé. Chaque téléchargement peut être annulé tant qu'il n'a pas commencé à modifier la bibliothèque. L'interface
+// reçoit la file à chaque changement, avec la progression et le débit du téléchargement en cours.
 
-import type { DownloadDone, DownloadItem, MarketKind } from '@shared/types'
+import type { DownloadDone, DownloadItem, DownloadKind } from '@shared/types'
 import type { Report } from './installer'
 
 export interface DownloadJob {
   id: string
-  kind: MarketKind
+  kind: DownloadKind
   name: string
   coverId: string | null
+  /** Création : composant à qui appartient l'image {@link coverId}. */
+  coverComponent?: string | null
   claim: boolean
   /** Titre de la tâche, pendant l'ajout à la bibliothèque (« Téléchargement de... », « Mise à jour de... »). */
   title: string
@@ -78,6 +80,7 @@ export class DownloadQueue {
       kind: job.kind,
       name: job.name,
       coverId: job.coverId,
+      ...(job.coverComponent ? { coverComponent: job.coverComponent } : {}),
       claim: job.claim,
       status: 'queued',
       phase: '',

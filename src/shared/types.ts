@@ -1,6 +1,6 @@
 // Types partagés entre le processus principal (Electron) et l'interface (React).
 
-import type { HardwareOverride, PackPerformance } from './performance'
+import type { HardwareOverride, PackPerformance, PerfTier } from './performance'
 import type { Msg } from './i18n'
 import type { ReleaseNotes } from './changelog'
 import type { ThemeChoice } from './themes'
@@ -359,18 +359,23 @@ export interface TaskProgress {
   result?: unknown
 }
 
+/** Téléchargement de la file : pack ou mod de la Marketplace, ou création de « Créer ton pack » (build). */
+export type DownloadKind = MarketKind | 'build'
+
 /**
- * Téléchargement de la Marketplace, en cours ou en file d'attente (un seul à la fois, dans l'ordre demandé). Le
- * téléchargement de l'archive ne bloque pas le reste de l'application ; seul son ajout à la bibliothèque attend que
- * les autres tâches soient finies.
+ * Téléchargement de la Marketplace (ou d'une création de « Créer ton pack »), en cours ou en file d'attente (un seul à
+ * la fois, dans l'ordre demandé). Le téléchargement des fichiers ne bloque pas le reste de l'application ; seul leur
+ * ajout à la bibliothèque attend que les autres tâches soient finies.
  */
 export interface DownloadItem {
-  /** Fiche de la Marketplace. */
+  /** Fiche de la Marketplace, ou création (kind build). */
   id: string
-  kind: MarketKind
+  kind: DownloadKind
   name: string
   /** Image de couverture de la fiche (null sans image). */
   coverId: string | null
+  /** Création : composant à qui appartient l'image {@link coverId}. */
+  coverComponent?: string | null
   /** Pack déjà dans la bibliothèque, téléchargé de nouveau au nom du compte (rien n'est ajouté). */
   claim: boolean
   /**
@@ -390,7 +395,7 @@ export interface DownloadItem {
 /** Fin d'un téléchargement de la Marketplace (terminé, en échec, annulé ou mis en pause par une maintenance). */
 export interface DownloadDone {
   id: string
-  kind: MarketKind
+  kind: DownloadKind
   name: string
   ok: boolean
   cancelled?: boolean
@@ -415,8 +420,13 @@ export interface Overview {
   dataDir: string
   /** Adresse de l'API de la Marketplace. */
   apiUrl: string
-  /** Packs et mods de la bibliothèque dont une nouvelle version est en ligne, et ceux retirés de la Marketplace. */
+  /**
+   * Packs et mods de la bibliothèque dont une nouvelle version est en ligne (packs de « Créer ton pack » compris), et
+   * ceux retirés de la Marketplace.
+   */
   market: { updates: string[]; gone: string[] }
+  /** Packs de « Créer ton pack » dont la création a été supprimée du compte. */
+  builder: { gone: string[] }
   /** Téléchargements arrêtés par une maintenance, repris automatiquement à sa fin. */
   pausedDownloads: PausedDownloadInfo[]
   game: GameState
@@ -705,6 +715,246 @@ export interface ProfileInput {
   displayName: string
   bio: string
   links: ProfileLink[]
+}
+
+// ---------------------------------------------------------------------------
+// Créer ton pack (GET /builder/..., compte de l'application connecté)
+
+/** Ce qu'un composant fournit ou demande : une base QuantV, NVE ou ReShade. */
+export type BuilderBase = 'quantv' | 'nve' | 'reshade'
+
+/** Poids d'un composant sur les performances (mémoire vidéo en Mo, ms par image sur la carte de référence en 1080p). */
+export interface BuilderPerformance {
+  tier: PerfTier
+  vramMb: number | null
+  effectsMs: number | null
+  worldMs: number | null
+}
+
+/** Composant dans le catalogue : un élément d'un pack (route, végétation, sang, preset ReShade...). */
+export interface BuilderComponentCard {
+  id: string
+  slug: string
+  /** Clé de sa catégorie (roads, reshade...). */
+  category: string
+  name: string
+  summary: string
+  credits: string
+  cover: MarketImage | null
+  imageCount: number
+  size: number
+  fileCount: number
+  /** null : pas encore analysé. */
+  performance: BuilderPerformance | null
+  /** Archive chiffrée par FiveM : les fichiers du jeu qu'elle remplace sont inconnus. */
+  unreadable: boolean
+  provides: BuilderBase[]
+  requires: BuilderBase[]
+  /** Composants qui remplacent les mêmes fichiers du jeu : un seul des deux s'appliquerait. */
+  conflictsWith: string[]
+  tags: string[]
+  /** Noms des packs où il a été trouvé. */
+  sources: string[]
+  updatedAt: string
+}
+
+/** Pack où un composant a été trouvé ; `packSlug` null si le pack n'est plus visible. */
+export interface BuilderSource {
+  packId: string
+  packSlug: string | null
+  packName: string
+  packAuthor: string
+  path: string
+}
+
+export interface BuilderComponentDetail extends BuilderComponentCard {
+  /** Markdown. */
+  description: string
+  /** Page d'origine (http ou https), null sans page. */
+  sourceUrl: string | null
+  images: MarketImage[]
+  foundIn: BuilderSource[]
+  /** Fichiers du jeu remplacés. */
+  targets: string[]
+  files: { root: RootId; path: string; kind: 'file' | 'bundle'; size: number }[]
+}
+
+/** Étape de l'assistant (ambiance, world, combat, other), avec ses catégories dans l'ordre. */
+export interface BuilderGroup {
+  key: string
+  label: string
+  categories: string[]
+}
+
+export interface BuilderCategory {
+  key: string
+  label: string
+  group: string
+  /** Un seul composant de cette catégorie par pack. */
+  single: boolean
+  components: BuilderComponentCard[]
+}
+
+export type BuilderControlValue = number | boolean | string
+
+/**
+ * Réglage simple de ReShade, dans la langue affichée. Curseur : de `min` à `max`, 0 = le preset tel quel. `value` : sa
+ * valeur pour le preset choisi (null dans le catalogue).
+ */
+export interface BuilderControl {
+  key: string
+  label: string
+  description: string
+  /** image, effects, quantv. */
+  group: string
+  groupLabel: string
+  type: 'slider' | 'toggle' | 'select' | 'color'
+  min: number | null
+  max: number | null
+  step: number | null
+  options: { value: string; label: string }[]
+  value: BuilderControlValue | null
+}
+
+export interface BuilderCatalog {
+  version: string
+  groups: BuilderGroup[]
+  categories: BuilderCategory[]
+  controls: BuilderControl[]
+  /** Copie gardée sur le disque, l'API n'ayant pas pu être jointe. */
+  offline: boolean
+  /** Vérifié auprès de l'API pendant cet appel (sinon : copie du disque, à revérifier). */
+  checked: boolean
+}
+
+/** Effet d'un preset ReShade : `name` (« Nom@fichier.fx ») activé ou non, coût estimé. */
+export interface BuilderTechnique {
+  name: string
+  effect: string | null
+  enabled: boolean
+  costMs: number
+  costLabel: string
+}
+
+/**
+ * Paramètre d'un effet (lu dans son fichier .fx). `type` : bool, int, float, float3... ; `ui` : slider, drag, color,
+ * combo, radio, list, input ; `value` : valeur du preset (null : celle par défaut de l'effet), au format des presets
+ * (nombres séparés par des virgules, 0/1 pour un booléen).
+ */
+export interface BuilderParam {
+  name: string
+  type: string | null
+  ui: string | null
+  label: string | null
+  tooltip: string | null
+  category: string | null
+  min: number | null
+  max: number | null
+  step: number | null
+  items: string[]
+  value: string | null
+  defaultValue: string | null
+}
+
+export interface BuilderEffect {
+  file: string
+  params: BuilderParam[]
+}
+
+/** Preset ReShade d'un composant : effets, paramètres, réglages simples qui s'y appliquent. */
+export interface BuilderPreset {
+  componentId: string
+  path: string
+  techniques: BuilderTechnique[]
+  effects: BuilderEffect[]
+  controls: BuilderControl[]
+}
+
+/**
+ * Réglages ReShade du joueur, seulement ce qu'il a changé : réglages simples, effets activés ou coupés et paramètres du
+ * mode avancé (fichier d'effet → paramètre → valeur), qui l'emportent.
+ */
+export interface BuilderReshade {
+  controls: Record<string, BuilderControlValue>
+  techniques: Record<string, boolean>
+  values: Record<string, Record<string, string>>
+}
+
+/**
+ * Point à signaler dans une composition. `type` : single (deux choix d'une catégorie unique), conflict (mêmes fichiers
+ * du jeu remplacés), path (même fichier installé avec deux contenus), missing (il manque la base `requires`),
+ * unknown-targets (archive protégée), unavailable (composant retiré). Seules les erreurs empêchent d'installer.
+ */
+export interface BuilderProblem {
+  type: string
+  severity: 'error' | 'warning'
+  components: string[]
+  message: string
+  targets: string[]
+  requires: BuilderBase | null
+}
+
+export interface BuilderEstimate {
+  size: number
+  fileCount: number
+  performance: PackPerformance | null
+}
+
+export interface BuilderPreview {
+  components: string[]
+  valid: boolean
+  problems: BuilderProblem[]
+  estimate: BuilderEstimate
+}
+
+/** État d'une création dans la bibliothèque de ce PC. */
+export interface BuilderLocal {
+  /** Pack construit à partir de cette création (null : pas encore installée). */
+  localId: string | null
+  /** Une nouvelle révision est en ligne (fichiers d'un composant, ou création modifiée depuis). */
+  updateAvailable: boolean
+}
+
+export interface BuilderBuildSummary extends BuilderLocal {
+  id: string
+  name: string
+  componentCount: number
+  /** Composants retirés depuis l'enregistrement. */
+  unavailableCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+/** Composant d'une création ; `available` faux s'il a été retiré (`id` null s'il a été supprimé). */
+export interface BuilderBuildComponent {
+  id: string | null
+  name: string
+  category: string
+  available: boolean
+}
+
+export interface BuilderBuild extends BuilderLocal {
+  id: string
+  name: string
+  components: BuilderBuildComponent[]
+  reshade: BuilderReshade
+  problems: BuilderProblem[]
+  estimate: BuilderEstimate | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** Création à enregistrer (nom de 80 caractères au plus). */
+export interface BuilderSaveInput {
+  name: string
+  components: string[]
+  reshade: BuilderReshade
+}
+
+/** Packs de la bibliothèque construits par « Créer ton pack » : nouvelle révision en ligne, ou création supprimée. */
+export interface BuilderStatus {
+  updates: string[]
+  gone: string[]
 }
 
 // ---------------------------------------------------------------------------

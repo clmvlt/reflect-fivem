@@ -3,6 +3,15 @@ import type {
   AccountProfile,
   AuthorPage,
   AuthorProfile,
+  BuilderBuild,
+  BuilderBuildSummary,
+  BuilderCatalog,
+  BuilderComponentDetail,
+  BuilderPreset,
+  BuilderPreview,
+  BuilderReshade,
+  BuilderSaveInput,
+  BuilderStatus,
   CommentPage,
   DownloadDone,
   DownloadItem,
@@ -206,6 +215,37 @@ export interface PackManagerApi {
   adminCommentDelete(commentId: string): Promise<void>
   /** Packs et mods (ou seulement l'un des deux) téléchargés par le compte connecté, avec sa note. */
   myDownloads(page: number, kind?: MarketKind): Promise<MyDownloadsPage>
+
+  // « Créer ton pack » : compte connecté depuis l'application (sans compte, erreur SIGNED_OUT).
+
+  /**
+   * Catalogue (étapes, catégories, composants, réglages ReShade). Sans `refresh` : la copie du disque s'il y en a une ;
+   * avec : revérifié auprès de l'API (la copie du disque hors ligne, `offline`).
+   */
+  builderCatalog(refresh?: boolean): Promise<BuilderCatalog>
+  builderComponent(id: string): Promise<BuilderComponentDetail>
+  /** Preset ReShade d'un composant de la catégorie reshade : effets, paramètres, réglages simples. */
+  builderPreset(componentId: string): Promise<BuilderPreset>
+  /** Vérifie une composition (problèmes) et l'estime (taille, poids sur les performances), sans l'enregistrer. */
+  builderPreview(components: string[], reshade?: BuilderReshade): Promise<BuilderPreview>
+  /** Créations du compte, avec leur état dans la bibliothèque. */
+  builderBuilds(): Promise<BuilderBuildSummary[]>
+  builderBuildGet(id: string): Promise<BuilderBuild>
+  /** Enregistre une création (id null : nouvelle création, 50 au plus). */
+  builderBuildSave(id: string | null, input: BuilderSaveInput): Promise<BuilderBuild>
+  /** Supprime une création du compte ; le pack déjà construit reste dans la bibliothèque. */
+  builderBuildDelete(id: string): Promise<void>
+  /**
+   * Installe une création dans la bibliothèque (file des téléchargements), ou la met à jour. `input` : composition à
+   * enregistrer d'abord (id null : nouvelle création). Renvoie l'identifiant de la création.
+   */
+  builderInstall(id: string | null, input?: BuilderSaveInput): Promise<string>
+  /** Revérifie les révisions des créations installées (mises à jour, créations supprimées). */
+  builderStatus(): Promise<BuilderStatus>
+  /** Fichiers des composants gardés sur ce PC (pour reconstruire un pack sans tout retélécharger). */
+  builderCacheInfo(): Promise<{ size: number }>
+  /** Vide ces fichiers (ceux du téléchargement en cours sont gardés). */
+  builderCacheClear(): Promise<void>
 
   /** Compte connecté sur cet appareil (gardé localement, vérifié en arrière-plan), null sans compte. */
   accountGet(): Promise<AccountMe | null>

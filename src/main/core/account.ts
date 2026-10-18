@@ -13,6 +13,8 @@
 //
 // Les notes et commentaires des packs passent aussi par ici (call) : au nom du compte s'il y en a un, anonymes sinon.
 // Les téléchargements de la Marketplace demandent un jeton d'accès valide (accessToken) pour être comptés au compte.
+// « Créer ton pack » (builder.ts) n'existe qu'avec un compte : requêtes connectées obligatoires (call, fetchAuthed pour
+// lire l'ETag du catalogue), jeton d'accès pour télécharger les fichiers des composants.
 // Maintenance (503 « maintenance », voir http.ts) : l'erreur remonte telle quelle, la connexion est gardée.
 //
 // Connexion des versions 1.7.0 à 1.8.2 ({token: "pm_…"}) : convertie par /auth/app/migrate à la première requête

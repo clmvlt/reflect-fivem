@@ -222,6 +222,15 @@ function downloadMessage(d: DownloadDone): Message | null {
   return resultMessage({ taskId: d.id, kind: 'download', title: d.name, phase: '', current: 1, total: 1, done: true, ok: true, result: d.result })
 }
 
+/** Création de « Créer ton pack » ajoutée à la bibliothèque, mise à jour ou déjà à jour ; composants retirés signalés. */
+function buildMessage(d: { name?: string; status?: string; unavailable?: string[] }): Message {
+  const name = q(d.name ?? t('store.thePack'))
+  const text = d.status === 'updated' ? t('store.build.updated', { name }) : d.status === 'up-to-date' ? t('store.download.upToDate', { name }) : t('store.build.added', { name })
+  const removed = d.unavailable?.length ? t('store.build.unavailable', { count: d.unavailable.length, names: d.unavailable.map(q).join(', ') }) : null
+  return { kind: 'info', text: removed ? `${text}
+${removed}` : text }
+}
+
 function resultMessage(p: TaskProgress): Message | null {
   if (p.kind === 'mod') {
     const r = (p.result ?? {}) as { name?: string; enabled?: boolean; deleted?: boolean; disabled?: number; imported?: string[]; errors?: string[] }
@@ -245,8 +254,9 @@ function resultMessage(p: TaskProgress): Message | null {
     return r.note ? { kind: 'error', text: `${text}\n${r.note}` } : { kind: 'info', text }
   }
   if (p.kind === 'download') {
-    const d = (p.result ?? {}) as { name?: string; status?: string; note?: string; kind?: string; enabled?: boolean }
+    const d = (p.result ?? {}) as { name?: string; status?: string; note?: string; kind?: string; enabled?: boolean; unavailable?: string[] }
     if (d.note) return { kind: 'info', text: d.note }
+    if (d.kind === 'build') return buildMessage(d)
     if (d.status === 'paused') return { kind: 'info', text: t('maintenance.downloadPaused', { name: q(d.name ?? (d.kind === 'mod' ? t('store.theMod') : t('store.thePack'))) }) }
     if (d.kind === 'mod' && (d.status === 'added' || d.status === 'updated')) {
       const name = q(d.name ?? t('store.theMod'))

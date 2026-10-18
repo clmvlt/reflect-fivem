@@ -203,6 +203,33 @@
       "zipMethod": "Méthode de compression ZIP {{method}} non gérée nativement"
     }
   },
+  "builder": {
+    "untitled": "Pack sans nom",
+    "tasks": {
+      "install": "Construction de {{name}}",
+      "update": "Mise à jour de {{name}}"
+    },
+    "phase": {
+      "manifest": "Préparation",
+      "downloading": "Téléchargement des fichiers",
+      "building": "Construction du pack"
+    },
+    "notes": {
+      "updateNotInstalled": "La nouvelle version de {{name}} est dans la bibliothèque. Installez-la pour remplacer l’ancienne : {{error}}"
+    },
+    "errors": {
+      "signedOut": "Connecte-toi pour utiliser « Créer ton pack ».",
+      "badResponse": "Le serveur ne répond pas correctement.",
+      "unsafePath": "La création contient un chemin refusé ({{path}}) : rien n’a été installé.",
+      "badBundle": "Un fichier de la création est endommagé : rien n’a été installé.",
+      "componentGone": "Cet élément n’est plus disponible.",
+      "notFound": "Création introuvable.",
+      "incomplete": "Téléchargement incomplet.",
+      "downloadFailed": "Téléchargement impossible (erreur {{status}}).",
+      "corrupted": "Un fichier téléchargé est endommagé. Relance l’installation.",
+      "empty": "Cette création n’a rien à installer."
+    }
+  },
   "cleanup": {
     "cache": {
       "clear": "Vider",
@@ -601,6 +628,8 @@
     }
   },
   "history": {
+    "built": "Construit avec « Créer ton pack »",
+    "builtUpdated": "Reconstruit avec « Créer ton pack »",
     "cacheFreed": "{{size}} libérés",
     "captured_one": "{{n}} fichier rangé",
     "captured_other": "{{n}} fichiers rangés",
@@ -1621,6 +1650,12 @@
     "use": "Utiliser"
   },
   "store": {
+    "build": {
+      "added": "{{name}} est dans la bibliothèque.",
+      "updated": "{{name}} est à jour.",
+      "unavailable_one": "Retiré du catalogue, non installé : {{names}}.",
+      "unavailable_other": "Retirés du catalogue, non installés : {{names}}."
+    },
     "captured": "Vos anciens mods sont rangés dans {{name}}. Installez-le pour les retrouver.",
     "clean": {
       "modsDisabled_one": "Votre mod est désactivé (toujours dans vos mods).",

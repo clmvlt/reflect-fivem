@@ -311,7 +311,11 @@ export function App() {
           </div>
         )}
         {/* Téléchargements : bande en bas de la page, qui ne recouvre rien (la page se raccourcit d'autant). */}
-        <DownloadBar onOpen={(id, kind) => openMarketPack(id, kind)} />
+        <DownloadBar
+          onOpen={(id, kind) => {
+            if (kind !== 'build') openMarketPack(id, kind)
+          }}
+        />
       </main>
       <ConfirmHost />
       <MenuHost />

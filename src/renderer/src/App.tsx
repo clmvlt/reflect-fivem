@@ -288,7 +288,14 @@ export function App() {
           <>
             {page === 'library' &&
               (detail ? (
-                <PackDetail key={detail.id} pack={detail} onBack={() => setOpenPack(null)} onOpenMarket={(id) => openMarketPack(id)} onSignIn={signIn} />
+                <PackDetail
+                  key={detail.id}
+                  pack={detail}
+                  onBack={() => setOpenPack(null)}
+                  onOpenMarket={(id) => openMarketPack(id)}
+                  onEditBuild={openBuild}
+                  onSignIn={signIn}
+                />
               ) : (
                 <Library kind={catalog} onOpen={setOpenPack} onOpenMarket={openMarketPack} onBrowse={(k) => go('market', k)} />
               ))}

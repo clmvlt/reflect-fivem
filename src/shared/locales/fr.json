@@ -206,6 +206,7 @@
   },
   "builder": {
     "title": "Créer ton pack",
+    "badge": "Créé par toi",
     "back": "‹ Mes créations",
     "newName": "Mon pack",
     "untitled": "Pack sans nom",
@@ -354,6 +355,13 @@
       "update": "nouvelle version à installer",
       "open": "Voir dans la bibliothèque",
       "installInGame": "Installer dans le jeu"
+    },
+    "packDetail": {
+      "updateAvailable": "Nouvelle version de la création.",
+      "source": "Créer ton pack",
+      "gone": "Cette création a été supprimée du compte. Le pack reste utilisable.",
+      "edit": "Modifier la création",
+      "components": "Éléments de la création"
     },
     "tasks": {
       "install": "Construction de {{name}}",

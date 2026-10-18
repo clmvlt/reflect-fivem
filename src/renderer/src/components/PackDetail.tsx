@@ -38,11 +38,14 @@ export function PackDetail({
   pack,
   onBack,
   onOpenMarket,
+  onEditBuild,
   onSignIn
 }: {
   pack: PackManifest
   onBack: () => void
   onOpenMarket: (marketId: string) => void
+  /** Pack de « Créer ton pack » : rouvre sa création dans l'assistant. */
+  onEditBuild: (buildId: string) => void
   /** Connexion demandée pour noter ou commenter (retour à la fiche une fois connecté). */
   onSignIn: () => void
 }) {
@@ -83,6 +86,10 @@ export function PackDetail({
   const video = pack.youtubeId !== undefined ? pack.youtubeId : (online?.youtubeId ?? null)
   // Pack de la Marketplace : son analyse, pour le comparer à la machine avec le preset et les options choisis.
   const downloading = useDownload(marketId)
+  // Pack de « Créer ton pack » : sa création en cours de reconstruction (mise à jour).
+  const built = pack.built
+  const rebuilding = useDownload(built?.buildId)
+  const buildGone = !!built && !!overview?.builder.gone.includes(pack.id)
   // Mise à jour téléchargée : fiche et notes relues (le téléchargement est compté pour le compte, qui peut noter).
   const [installs, setInstalls] = useState(0)
   const wasDownloading = useRef(false)
@@ -172,6 +179,7 @@ export function PackDetail({
         />
 
         <aside className="side">
+          {built && <span className="built-badge">{t('builder.badge')}</span>}
           {renaming ? <RenameInput pack={pack} onDone={() => setRenaming(false)} className="rename big" /> : <h1 className="pack-title">{pack.name}</h1>}
           {pack.author && <div className="tags">{t('packDetail.byAuthor', { author: pack.author })}</div>}
           {online && (
@@ -193,6 +201,19 @@ export function PackDetail({
                   <button onClick={() => void run(() => window.api.marketInstall(market.id))}>
                     {t('packDetail.update')}
                   </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {built && (updateAvailable || rebuilding) && (
+            <div className="side-update">
+              {rebuilding ? (
+                <DownloadInline d={rebuilding} />
+              ) : (
+                <>
+                  <span>{t('builder.packDetail.updateAvailable')}</span>
+                  <button onClick={() => void run(() => window.api.builderInstall(built.buildId))}>{t('packDetail.update')}</button>
                 </>
               )}
             </div>
@@ -238,7 +259,15 @@ export function PackDetail({
             <dd>{imported}</dd>
             <dt>{t('packDetail.facts.source')}</dt>
             <dd className="ellipsis" title={pack.sourceArchive}>
-              {pack.captured ? t('packDetail.facts.captured') : market ? (market.version ? t('packDetail.facts.marketVersion', { version: market.version }) : t('packDetail.facts.market')) : pack.sourceArchive}
+              {pack.captured
+                ? t('packDetail.facts.captured')
+                : built
+                  ? t('builder.packDetail.source')
+                  : market
+                    ? market.version
+                      ? t('packDetail.facts.marketVersion', { version: market.version })
+                      : t('packDetail.facts.market')
+                    : pack.sourceArchive}
             </dd>
             {(pack.reshadePresets?.length ?? 0) > 0 && (
               <>
@@ -272,12 +301,14 @@ export function PackDetail({
           </dl>
 
           {gone && <p className="hint">{t('packDetail.gone')}</p>}
+          {buildGone && <p className="hint">{t('builder.packDetail.gone')}</p>}
           {pack.protected && <p className="hint">{t(pack.kind === 'mod' ? 'common.protectedMod' : 'common.protectedPack')}</p>}
 
           {online && <RateNudge pack={online} state={ratings} onChanged={() => void loadOnline()} />}
 
           <div className="side-links">
             {market && !gone && <button onClick={() => onOpenMarket(market.id)}>{t('packDetail.marketPage')}</button>}
+            {built && !buildGone && <button onClick={() => onEditBuild(built.buildId)}>{t('builder.packDetail.edit')}</button>}
             {!pack.protected && <button onClick={() => void run(() => window.api.openPackFolder(pack.id))}>{t('packDetail.openFolder')}</button>}
             <button
               className="more"
@@ -299,6 +330,15 @@ export function PackDetail({
             <h2>{t('packDetail.description')}</h2>
           </div>
           <Markdown text={pack.description} />
+        </>
+      )}
+
+      {built && built.components.length > 0 && (
+        <>
+          <div className="section-head">
+            <h2>{t('builder.packDetail.components')}</h2>
+          </div>
+          <p className="built-components">{built.components.map((c) => c.name).join(' · ')}</p>
         </>
       )}
 

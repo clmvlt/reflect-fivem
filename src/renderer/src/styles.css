@@ -3182,6 +3182,37 @@ button.google {
   color: var(--accent-text);
 }
 
+/* « Créé par toi » : pack construit par « Créer ton pack » (bibliothèque, fiche). */
+.built-badge {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  color: var(--accent-text);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 22px;
+  white-space: nowrap;
+}
+.built-badge.on-cover {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.side .built-badge {
+  margin-bottom: -4px;
+}
+.built-components {
+  margin: 0;
+  color: var(--text-2);
+  user-select: text;
+}
 .ok-text {
   color: var(--ok-text);
 }

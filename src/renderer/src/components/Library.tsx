@@ -202,6 +202,7 @@ function ActiveHero({
     <section className="hero" onContextMenu={(e) => void menu(e)}>
       <div className="cover hero-cover" onClick={onOpen}>
         <Cover pack={pack} />
+        {pack.built && <span className="built-badge on-cover">{t('builder.badge')}</span>}
       </div>
       <div className="hero-body">
         <span className="state">{partial ? t('libraryView.card.partial') : t('libraryView.hero.installed')}</span>
@@ -309,6 +310,7 @@ function PackCard({
     <article className={`card clickable ${active ? 'is-active' : ''}`} onClick={onOpen} onContextMenu={(e) => void menu(e)}>
       <div className="cover">
         <Cover pack={pack} />
+        {pack.built && <span className="built-badge on-cover">{t('builder.badge')}</span>}
       </div>
       <div className="card-body">
         {renaming ? <RenameInput pack={pack} onDone={() => setRenaming(false)} /> : <div className="name" title={pack.name}>{pack.name}</div>}

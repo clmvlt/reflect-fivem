@@ -206,6 +206,7 @@
   },
   "builder": {
     "title": "Create your pack",
+    "badge": "Made by you",
     "back": "‹ My creations",
     "newName": "My pack",
     "untitled": "Untitled pack",
@@ -354,6 +355,13 @@
       "update": "new version to install",
       "open": "Show in library",
       "installInGame": "Install in the game"
+    },
+    "packDetail": {
+      "updateAvailable": "New version of the creation.",
+      "source": "Create your pack",
+      "gone": "This creation was deleted from the account. The pack stays usable.",
+      "edit": "Edit the creation",
+      "components": "Elements of the creation"
     },
     "tasks": {
       "install": "Building {{name}}",

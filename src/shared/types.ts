@@ -120,6 +120,18 @@ export interface PackManifest {
   kind?: MarketKind
   /** Catégorie d'un mod de la Marketplace (clé de GET /mods/categories), null sinon. */
   category?: string | null
+  /** Pack construit par « Créer ton pack » à partir d'une création du compte. */
+  built?: BuiltLink
+}
+
+/** Lien entre un pack de la bibliothèque et la création de « Créer ton pack » dont il est construit. */
+export interface BuiltLink {
+  buildId: string
+  /** Révision du manifeste installée : une autre révision en ligne signale une mise à jour. */
+  revision: string
+  builtAt: string
+  /** Composants installés (nom d'affichage). */
+  components: { id: string; name: string }[]
 }
 
 /** Lien entre un pack de la bibliothèque et sa fiche sur la Marketplace. */

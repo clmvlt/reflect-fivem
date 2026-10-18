@@ -853,6 +853,7 @@
     "title": "Langue"
   },
   "library": {
+    "builtInPlace": "Fichiers de la création, installés à leur place",
     "errors": {
       "duplicate": "{{name}} est déjà dans la liste.",
       "empty": "L'archive est vide.",

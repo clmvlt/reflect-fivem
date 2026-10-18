@@ -6,6 +6,7 @@
 //   <bibliothèque>/<id>/user/       réglages modifiés en jeu, conservés entre deux applications
 //   <bibliothèque>/<id>/generated/  fichiers écrits à l'installation (ReShade.ini pointé sur le preset choisi...)
 //   <bibliothèque>/<id>/cover-*.jpg image choisie pour le pack
+//   <bibliothèque>/<id>/market-*.jpg, builder-*.jpg  images de la Marketplace, d'un composant de « Créer ton pack »
 //
 // La bibliothèque des mods est une autre instance (dossier <bibliothèque>/.mods), au même format : chaque mod y est un
 // « pack » marqué kind: 'mod', dont les destinations sont limitées à FiveM.app (voir restrictToFiveM).
@@ -17,9 +18,9 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { t } from 'i18next'
-import { tm } from '@shared/i18n'
+import { tm, type Msg } from '@shared/i18n'
 import { formatBytes as sizeText, quote } from '@shared/intl'
-import type { Destination, MarketKind, PackComponent, PackFileEntry, PackManifest, PackPatch, RootId } from '@shared/types'
+import type { BuiltLink, Destination, MarketKind, PackComponent, PackFileEntry, PackManifest, PackPatch, RootId } from '@shared/types'
 import { analyzePack, galleryOf, resolveInstallMap, restrictToFiveM, tmNested, type AnalysisResult, type AnalyzedComponent } from './analyzer'
 import { folderContent, packageContent, readSource, type ContentSource, type PackContent } from './content'
 import { fixReshadeIni, fixReshadeIniText, insight, inspectPack, INSIGHTS_VERSION } from './inspect'
@@ -41,6 +42,15 @@ export interface StoredManifest extends Omit<PackManifest, 'components'> {
   quantvPresetFrom?: string | null
   /** Pack protégé : contenu gardé chiffré (content.fpk), jamais extrait. */
   protection?: PackProtection
+  /** Pack de « Créer ton pack » : fichiers des composants (SHA-256) gardés en cache pour le reconstruire. */
+  builtBlobs?: string[]
+}
+
+/** Fichier déjà écrit dans le contenu d'un pack construit, sous sa racine (voir finalizeBuilt). */
+export interface BuiltItem {
+  root: RootId
+  rel: string
+  size: number
 }
 
 export interface PackProtection {
@@ -248,9 +258,9 @@ export class Library {
       if (!m || m.id !== e.name) continue
       if (m.insightsVersion !== INSIGHTS_VERSION || !Array.isArray(m.gallery)) {
         await this.refreshInsights(m).catch(() => undefined)
-        // Les images de la Marketplace (market-*.jpg) ne viennent pas du contenu : conservées. Celles d'un pack protégé
-        // restent dans son paquet chiffré.
-        const market = (Array.isArray(m.gallery) ? m.gallery : []).filter((g) => /^market-/.test(g))
+        // Les images de la Marketplace (market-*.jpg) et de « Créer ton pack » (builder-*.jpg) ne viennent pas du
+        // contenu : conservées. Celles d'un pack protégé restent dans son paquet chiffré.
+        const market = (Array.isArray(m.gallery) ? m.gallery : []).filter((g) => /^(market|builder)-/.test(g))
         m.gallery = [...market, ...(m.protection ? [] : galleryOf(m.files, m.components).map((r) => `content/${r}`))]
         await this.save(m).catch(() => undefined)
       }
@@ -370,6 +380,26 @@ export class Library {
     m.cover = rel
     await this.save(m)
     return m
+  }
+
+  /**
+   * Oublie les réglages gardés pour ces destinations (casse ignorée) : fichiers remplacés par une nouvelle version du
+   * pack, que l'ancienne copie modifiée en jeu masquerait.
+   */
+  async forgetUserFiles(id: string, dests: Destination[]): Promise<void> {
+    const dir = this.userDir(id)
+    if (!dests.length || !(await isDir(dir))) return
+    const wanted = new Set(dests.map((d) => `${d.root}/${d.path}`.toLowerCase()))
+    let removed = 0
+    for (const f of await walkFiles(dir)) {
+      if (!wanted.has(f.rel.toLowerCase())) continue
+      await fs.rm(path.join(dir, ...f.rel.split('/')), { force: true })
+      removed++
+    }
+    if (!removed) return
+    const m = await this.get(id)
+    m.userConfigCount = await this.countUserConfigs(id)
+    await this.save(m)
   }
 
   async countUserConfigs(id: string): Promise<number> {
@@ -681,31 +711,9 @@ export class Library {
     for (let i = 2; ; i++) if (!names.has(`${base} ${i}`.toLowerCase())) return `${base} ${i}`
   }
 
-  async finalizeCaptured(id: string, name: string, items: { root: RootId; rel: string; size: number }[]): Promise<StoredManifest> {
+  async finalizeCaptured(id: string, name: string, items: BuiltItem[]): Promise<StoredManifest> {
     const files: PackFileEntry[] = items.map((it) => ({ rel: `${CAPTURE_TOP[it.root]}/${it.rel}`, size: it.size }))
-    const components: AnalyzedComponent[] = (['fivem', 'gta'] as RootId[])
-      .map((root) => {
-        const list = files.filter((f) => f.rel.startsWith(`${CAPTURE_TOP[root]}/`))
-        const c: AnalyzedComponent = {
-          id: `captured-${root}`,
-          source: CAPTURE_TOP[root],
-          isFile: false,
-          label: root === 'fivem' ? 'FiveM' : 'GTA V',
-          kind: root === 'fivem' ? 'fivem-root' : 'gta-root',
-          destination: { root, path: '' },
-          suggested: { root, path: '' },
-          enabled: true,
-          optional: false,
-          fileCount: list.length,
-          size: list.reduce((s, f) => s + f.size, 0),
-          reason: tm(REINSTALLED),
-          reasonMsg: REINSTALLED,
-          stripPrefix: `${CAPTURE_TOP[root]}/`,
-          files: list.map((f) => f.rel)
-        }
-        return c
-      })
-      .filter((c) => c.files.length)
+    const components = rootComponents(files, 'captured', REINSTALLED)
     const now = new Date().toISOString()
     const manifest: StoredManifest = {
       schema: 1,
@@ -733,11 +741,92 @@ export class Library {
     await this.save(manifest)
     return manifest
   }
+
+  // -------------------------------------------------------------------------
+  // Packs de « Créer ton pack » (voir builder.ts) : fichiers déjà écrits dans content/FiveM Application Data/... et
+  // content/GTA V/... (builtFile), installés tels quels à leur place, comme un pack capturé. Le manifeste est écrit en
+  // dernier, une fois tous les fichiers en place.
+
+  builtFile(id: string, root: RootId, rel: string): string {
+    return this.capturedFile(id, root, rel)
+  }
+
+  /**
+   * Termine un pack construit. `preset` : preset ReShade du pack (désigné dans ReShade.ini, et recopié dans
+   * QuantV.preset.ini, à chaque installation) ; `cover` : image déjà enregistrée dans le dossier du pack.
+   */
+  async finalizeBuilt(
+    id: string,
+    name: string,
+    items: BuiltItem[],
+    opts: { built: BuiltLink; blobs: string[]; preset: { root: RootId; rel: string } | null; cover: string | null }
+  ): Promise<StoredManifest> {
+    const files: PackFileEntry[] = items.map((it) => ({ rel: `${CAPTURE_TOP[it.root]}/${it.rel}`, size: it.size }))
+    const now = new Date().toISOString()
+    const manifest: StoredManifest = {
+      schema: 1,
+      id,
+      name,
+      sourceArchive: '',
+      sourceSize: 0,
+      importedAt: now,
+      updatedAt: now,
+      contentSize: files.reduce((s, f) => s + f.size, 0),
+      fileCount: files.length,
+      components: rootComponents(files, 'built', BUILT),
+      features: detectFeatures(items.map((it) => it.rel)),
+      warnings: [],
+      cover: opts.cover,
+      gallery: opts.cover ? [opts.cover] : [],
+      notes: '',
+      captured: false,
+      userConfigCount: 0,
+      insights: [],
+      reshadeVersion: null,
+      // Gardé par refreshInsights tant qu'il fait partie des presets détectés.
+      reshadePreset: opts.preset ? `${CAPTURE_TOP[opts.preset.root]}/${opts.preset.rel}` : null,
+      built: opts.built,
+      builtBlobs: opts.blobs,
+      files
+    }
+    await this.refreshInsights(manifest)
+    await this.save(manifest)
+    log.info(`Pack construit : ${name} (${files.length} fichiers, ${formatBytes(manifest.contentSize)})`)
+    return manifest
+  }
 }
 
 const CAPTURE_TOP: Record<RootId, string> = { fivem: 'FiveM Application Data', gta: 'GTA V' }
 const RESHADE_FIXED = textMsg('library.reshadeFixed')
 const REINSTALLED = textMsg('library.reinstalledInPlace')
+const BUILT = textMsg('library.builtInPlace')
+
+/** Un composant par racine (FiveM.app, GTA V) : ses fichiers vont chacun exactement à leur place. */
+function rootComponents(files: PackFileEntry[], prefix: string, reason: Msg): AnalyzedComponent[] {
+  return (['fivem', 'gta'] as RootId[])
+    .map((root) => {
+      const list = files.filter((f) => f.rel.startsWith(`${CAPTURE_TOP[root]}/`))
+      const c: AnalyzedComponent = {
+        id: `${prefix}-${root}`,
+        source: CAPTURE_TOP[root],
+        isFile: false,
+        label: root === 'fivem' ? 'FiveM' : 'GTA V',
+        kind: root === 'fivem' ? 'fivem-root' : 'gta-root',
+        destination: { root, path: '' },
+        suggested: { root, path: '' },
+        enabled: true,
+        optional: false,
+        fileCount: list.length,
+        size: list.reduce((s, f) => s + f.size, 0),
+        reason: tm(reason),
+        reasonMsg: reason,
+        stripPrefix: `${CAPTURE_TOP[root]}/`,
+        files: list.map((f) => f.rel)
+      }
+      return c
+    })
+    .filter((c) => c.files.length)
+}
 
 /** Analyse d'un pack, ou d'un mod (limité à FiveM.app : refusé s'il n'y reste rien à installer). */
 function analyzeFor(entries: PackFileEntry[], presets: Set<string>, kind: MarketKind | undefined): AnalysisResult {
@@ -777,9 +866,10 @@ export function cleanName(fileName: string): string {
  * précédente, sans clé, restent tels quels.
  */
 export function toPublic(m: StoredManifest): PackManifest {
-  const { files: _files, sourceSize: _s, protection, components, ...rest } = m
+  const { files: _files, sourceSize: _s, protection, components, builtBlobs: _b, ...rest } = m
   void _files
   void _s
+  void _b
   const warnings = m.warningMsgs?.length === m.warnings.length ? m.warningMsgs.map(tmNested) : m.warnings
   return {
     ...rest,

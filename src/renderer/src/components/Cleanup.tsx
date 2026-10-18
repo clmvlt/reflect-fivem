@@ -20,6 +20,8 @@ export function Cleanup() {
   const [items, setItems] = useState<ForeignItem[] | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [cache, setCache] = useState<{ size: number } | null | undefined>(undefined)
+  // Fichiers des composants de « Créer ton pack » gardés pour reconstruire un pack sans tout retélécharger.
+  const [builderCache, setBuilderCache] = useState<{ size: number } | null | undefined>(undefined)
   // Nettoyer le jeu : retirer aussi les mods de la bibliothèque des mods (sinon ils restent activés).
   const [withMods, setWithMods] = useState(false)
 
@@ -28,7 +30,9 @@ export function Cleanup() {
     setItems(list)
     setSelected(new Set(list.filter((i) => i.recommended).map(key)))
     setCache(undefined)
+    setBuilderCache(undefined)
     setCache((await run(() => window.api.cacheInfo())) ?? null)
+    setBuilderCache(await window.api.builderCacheInfo().catch(() => null))
   }, [run])
 
   // Analyse à l'ouverture et après chaque opération.
@@ -58,6 +62,12 @@ export function Cleanup() {
   const clearCache = async (): Promise<void> => {
     const ok = await confirmDialog(t('cleanup.cache.confirm'), t('cleanup.cache.confirmDetail'), t('cleanup.cache.clear'))
     if (ok) await run(() => window.api.clearCache())
+  }
+  const clearBuilderCache = async (): Promise<void> => {
+    const ok = await confirmDialog(t('cleanup.builder.confirm'), t('cleanup.builder.confirmDetail'), t('cleanup.cache.clear'))
+    if (!ok) return
+    await run(() => window.api.builderCacheClear())
+    setBuilderCache(await window.api.builderCacheInfo().catch(() => null))
   }
   const shotsSize = shots.reduce((s, i) => s + i.size, 0)
   const trashShots = async (): Promise<void> => {
@@ -238,6 +248,25 @@ export function Cleanup() {
                   </button>
                 </div>
               )}
+            </li>
+          </ul>
+        </>
+      )}
+
+      {!!builderCache?.size && (
+        <>
+          <div className="section-head">
+            <h2>{t('cleanup.builder.title')}</h2>
+          </div>
+          <ul className="list">
+            <li className="row">
+              <div className="row-main">
+                <div className="name">{bytes(builderCache.size)}</div>
+                <div className="meta">{t('cleanup.builder.help')}</div>
+              </div>
+              <div className="actions">
+                <button onClick={() => void clearBuilderCache()}>{t('cleanup.cache.clear')}</button>
+              </div>
             </li>
           </ul>
         </>

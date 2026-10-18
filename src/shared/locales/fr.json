@@ -389,6 +389,12 @@
     }
   },
   "cleanup": {
+    "builder": {
+      "title": "Fichiers de « Créer ton pack »",
+      "help": "Fichiers des éléments téléchargés, gardés pour reconstruire vos créations sans tout retélécharger.",
+      "confirm": "Vider les fichiers de « Créer ton pack » ?",
+      "confirmDetail": "Vos packs déjà construits ne changent pas. Les fichiers seront retéléchargés si une mise à jour en a besoin."
+    },
     "cache": {
       "clear": "Vider",
       "computing": "Calcul…",

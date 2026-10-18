@@ -389,6 +389,12 @@
     }
   },
   "cleanup": {
+    "builder": {
+      "title": "“Create your pack” files",
+      "help": "Downloaded element files, kept to rebuild your creations without downloading everything again.",
+      "confirm": "Clear the “Create your pack” files?",
+      "confirmDetail": "Packs already built don’t change. Files will be downloaded again if an update needs them."
+    },
     "cache": {
       "clear": "Clear",
       "computing": "Calculating…",

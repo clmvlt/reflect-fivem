@@ -66,10 +66,23 @@ interface WizardState {
   tabs: Record<string, string>
   /** Choix rapide de l'ambiance (Personnalisé : un panneau par outil). */
   ambiance: AmbianceChoice
+  /** Image en jeu des aperçus des styles (null : celle par défaut), choisie à l'étape de l'ambiance. */
+  reference: string | null
 }
 
 /** Assistant en cours quand on passe à une autre page de l'application : retrouvé au retour. */
 let kept: (WizardState & { account: number }) | null = null
+
+const REFERENCE_KEY = 'builder.reference'
+
+/** Image en jeu choisie pour les aperçus, retenue sur ce poste (repli sur celle par défaut si elle n'existe plus). */
+function savedReference(): string | null {
+  try {
+    return localStorage.getItem(REFERENCE_KEY)
+  } catch {
+    return null
+  }
+}
 /** Catalogues déjà lus, par langue : la page s'affiche tout de suite à son retour (puis le catalogue est revérifié). */
 const catalogs = new Map<string, BuilderCatalog>()
 
@@ -186,7 +199,7 @@ function BuilderPage({ account, request, onOpenLocal }: { account: number; reque
   if (view.kind === 'new') {
     // Une nouvelle création démarre sur « Recommandé ».
     const draft = newDraft(t('builder.newName'), catalog)
-    return <Wizard {...common} start={{ draft, saved: snapshot(draft), step: null, tabs: {}, ambiance: 'recommended' }} />
+    return <Wizard {...common} start={{ draft, saved: snapshot(draft), step: null, tabs: {}, ambiance: 'recommended', reference: savedReference() }} />
   }
   if (view.kind === 'kept' && resume) {
     const index = cardIndex(catalog)
@@ -412,7 +425,9 @@ function BuildLoader({ id, ...rest }: { id: string; catalog: BuilderCatalog; acc
       </div>
     )
   const draft = draftOf(build)
-  return <Wizard {...rest} start={{ draft, saved: snapshot(draft), step: SUMMARY, tabs: {}, ambiance: ambianceChoice(draft.tools, rest.catalog) }} />
+  return (
+    <Wizard {...rest} start={{ draft, saved: snapshot(draft), step: SUMMARY, tabs: {}, ambiance: ambianceChoice(draft.tools, rest.catalog), reference: savedReference() }} />
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -468,6 +483,7 @@ function Wizard({
   const [saved, setSaved] = useState(start.saved)
   const [tabs, setTabs] = useState(start.tabs)
   const [ambiance, setAmbiance] = useState(start.ambiance)
+  const [reference, setReference] = useState(start.reference)
   const [note, setNote] = useState<{ tool: ToolKey; note: ToolNote } | null>(null)
   const [focus, setFocus] = useState<{ tool: ToolKey; at: number } | null>(null)
   const [details, setDetails] = useState<string | null>(null)
@@ -502,8 +518,8 @@ function Wizard({
   const activeTools = catalog.tools.filter((tool) => draft.tools[tool.key].mode !== 'none').length
 
   useEffect(() => {
-    kept = { account, draft, saved, step, tabs, ambiance }
-  }, [account, draft, saved, step, tabs, ambiance])
+    kept = { account, draft, saved, step, tabs, ambiance, reference }
+  }, [account, draft, saved, step, tabs, ambiance, reference])
 
   const choose = (category: BuilderCategory, id: string | null): void => setDraft({ ...draft, components: toggle(draft.components, index, category, id) })
   const remove = (id: string): void => {
@@ -536,6 +552,15 @@ function Wizard({
   /** Base demandée par un élément ou un problème (QuantV, ReShade, NVE) : l'outil est activé. */
   const enable = (base: string): void => {
     if (isToolKey(base) && catalog.tools.some((x) => x.key === base)) applyTools(enableTool(draft.tools, base, catalog), base)
+  }
+  /** Image en jeu des aperçus : gardée pour l'assistant et retenue sur ce poste. */
+  const chooseReference = (id: string): void => {
+    setReference(id)
+    try {
+      localStorage.setItem(REFERENCE_KEY, id)
+    } catch {
+      /* stockage indisponible : choix gardé pour cet assistant */
+    }
   }
   const baseLabel = (base: string): string => {
     const tool = catalog.tools.find((x) => x.key === base)
@@ -641,6 +666,8 @@ function Wizard({
                     onBase={enable}
                     onDetails={setDetails}
                     baseLabel={baseLabel}
+                    reference={reference}
+                    onReference={chooseReference}
                   />
                 ) : null
               }

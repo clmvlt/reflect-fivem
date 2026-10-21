@@ -1,17 +1,30 @@
 // Ambiance de « Créer ton pack », pensée pour un joueur qui ne connaît rien à ReShade : un choix rapide en trois cartes
 // (Basique, Recommandé, Personnalisé) puis, en Personnalisé, un panneau par outil (ReShade, QuantV, NVE, ENB) avec
 // trois modes : Aucun, Réglé par moi (un style tout prêt, puis quelques curseurs avec un aperçu en direct) et Importé
-// d'un pack. Le détail effet par effet reste caché dans « Avancé », pour les connaisseurs.
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+// d'un pack. Le détail effet par effet reste caché dans « Avancé », pour les connaisseurs. Les aperçus des styles se
+// dessinent sur une image en jeu (« Voiture », « Centre-ville »...) que le joueur choisit pour toute l'étape.
+import { createContext, useContext, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { adjustmentCount, cleanTools, noAdjustments, previewLook, styleOf, type AmbianceChoice, type LookAdjust, type ToolNote } from '@shared/ambiance'
+import {
+  adjustmentCount,
+  cleanTools,
+  lookImages,
+  noAdjustments,
+  pickReference,
+  previewLook,
+  styleOf,
+  type AmbianceChoice,
+  type LookAdjust,
+  type ToolNote
+} from '@shared/ambiance'
 import { costOnMachine } from '@shared/performance'
 import type {
   BuilderAdjustments,
   BuilderCatalog,
   BuilderComponentCard,
   BuilderControlValue,
+  BuilderReference,
   BuilderStyle,
   BuilderTool,
   BuilderToolSettings,
@@ -21,7 +34,7 @@ import type {
   ToolMode
 } from '@shared/types'
 import { cleanError } from '../store'
-import { builderImageUrl, builderStyleImageUrl, num } from '../lib/format'
+import { builderImageRefUrl, builderReferenceImageUrl, num } from '../lib/format'
 import { conflictsOf, missingBases, type CardRef } from '../lib/builder'
 import { AdvancedSettings, SimpleControls, useStarts } from './BuilderReshade'
 import { Check, ComponentTile, WeightBadge } from './BuilderParts'
@@ -58,28 +71,95 @@ function lookAdjust(tool: ToolKey, controls: Record<string, BuilderControlValue>
   return { brightness: pick('brightness'), contrast: pick('contrast'), saturation: pick('saturation'), temperature: pick('temperature') }
 }
 
+/** Images de référence en jeu et celle choisie par le joueur : les mêmes pour tous les aperçus de l'étape. */
+const LookContext = createContext<{ references: BuilderReference[]; chosen: string | null }>({ references: [], chosen: null })
+
 /**
- * Aperçu d'un style : son image (qui le montre déjà : seuls les curseurs s'y ajoutent), sinon l'image de référence de
- * l'outil avec les filtres du style ; calques de couleur, de température, de vignettage et de grain par-dessus.
+ * Aperçu d'un style : son image (qui le montre déjà : seuls les curseurs s'y ajoutent), sinon l'image en jeu choisie
+ * (puis celle par défaut, puis l'image de référence de l'outil) avec les filtres du style ; calques de couleur, de
+ * température, de vignettage et de grain par-dessus. Une image qui ne se charge pas laisse place à la suivante.
+ * `credits` : crédits de l'image en jeu montrée, en petit sous l'aperçu.
  */
-export function StyleLook({ tool, style, adjust = {}, thumb = false }: { tool: BuilderTool; style: BuilderStyle | null; adjust?: LookAdjust; thumb?: boolean }) {
+export function StyleLook({
+  tool,
+  style,
+  adjust = {},
+  thumb = false,
+  credits = false
+}: {
+  tool: BuilderTool
+  style: BuilderStyle | null
+  adjust?: LookAdjust
+  thumb?: boolean
+  credits?: boolean
+}) {
+  const { t } = useTranslation()
+  const { references, chosen } = useContext(LookContext)
   const [failed, setFailed] = useState<string[]>([])
-  const own = style?.imageVersion ? builderStyleImageUrl(style.id, style.imageVersion, thumb) : null
-  const reference = tool.referenceComponent && tool.reference ? builderImageUrl(tool.referenceComponent, tool.reference.id, thumb) : null
-  const src = [own, reference].find((u): u is string => !!u && !failed.includes(u)) ?? null
-  const look = previewLook(src && src === own ? null : style?.preview, adjust)
+  const shown = lookImages(tool, style, references, chosen)
+    .map((ref) => ({ ref, url: builderImageRefUrl(ref, thumb) }))
+    .find((image) => !failed.includes(image.url))
+  const src = shown?.url ?? null
+  const ref = shown?.ref
+  const look = previewLook(ref?.kind === 'style' ? null : style?.preview, adjust)
+  const reference = ref?.kind === 'reference' ? references.find((r) => r.id === ref.referenceId) : undefined
   return (
-    <span className="style-look" aria-hidden>
-      {src ? (
-        <img src={src} alt="" draggable={false} style={{ filter: look.filter }} onError={() => setFailed((f) => [...f, src])} />
-      ) : (
-        <span className="style-look-blank" style={{ filter: look.filter }} />
-      )}
-      {look.tint && <span className="look-layer look-tint" style={{ background: look.tint.color, opacity: look.tint.opacity }} />}
-      {look.warmth && <span className="look-layer look-tint" style={{ background: look.warmth.color, opacity: look.warmth.opacity }} />}
-      {look.vignette > 0 && <span className="look-layer look-vignette" style={{ opacity: look.vignette }} />}
-      {look.grain > 0 && <span className="look-layer look-grain" style={{ opacity: look.grain * 0.6 }} />}
-    </span>
+    <>
+      <span className="style-look" aria-hidden>
+        {src ? (
+          <img src={src} alt="" draggable={false} style={{ filter: look.filter }} onError={() => setFailed((f) => [...f, src])} />
+        ) : (
+          <span className="style-look-blank" style={{ filter: look.filter }} />
+        )}
+        {look.tint && <span className="look-layer look-tint" style={{ background: look.tint.color, opacity: look.tint.opacity }} />}
+        {look.warmth && <span className="look-layer look-tint" style={{ background: look.warmth.color, opacity: look.warmth.opacity }} />}
+        {look.vignette > 0 && <span className="look-layer look-vignette" style={{ opacity: look.vignette }} />}
+        {look.grain > 0 && <span className="look-layer look-grain" style={{ opacity: look.grain * 0.6 }} />}
+      </span>
+      {credits && reference?.credits && <span className="look-credits">{t('builder.reference.credits', { credits: reference.credits })}</span>}
+    </>
+  )
+}
+
+/**
+ * Image en jeu des aperçus : une pastille par image (miniature et nom), celle choisie change tous les aperçus de l'étape
+ * (cartes des styles et grand aperçu des réglages). Flèches gauche et droite pour passer de l'une à l'autre.
+ */
+function ReferencePicker({ references, chosen, onChoose }: { references: BuilderReference[]; chosen: string | null; onChoose: (id: string) => void }) {
+  const { t } = useTranslation()
+  const label = useId()
+  const row = useRef<HTMLDivElement>(null)
+  const current = pickReference(references, chosen)
+  const move = (e: KeyboardEvent<HTMLDivElement>): void => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+    e.preventDefault()
+    const at = references.findIndex((r) => r.id === current?.id)
+    const next = (at + (e.key === 'ArrowRight' ? 1 : -1) + references.length) % references.length
+    onChoose(references[next].id)
+    row.current?.querySelectorAll<HTMLButtonElement>('.reference-pill')[next]?.focus()
+  }
+  return (
+    <div ref={row} className="reference-picker" role="group" aria-labelledby={label} onKeyDown={move}>
+      <span id={label} className="reference-picker-label">
+        {t('builder.reference.title')}
+      </span>
+      {references.map((r) => {
+        const selected = r.id === current?.id
+        return (
+          <button
+            key={r.id}
+            className={`reference-pill ${selected ? 'is-selected' : ''}`}
+            aria-pressed={selected}
+            tabIndex={selected ? 0 : -1}
+            title={r.label}
+            onClick={() => onChoose(r.id)}
+          >
+            <img src={builderReferenceImageUrl(r.id, r.version, true)} alt="" draggable={false} />
+            <span className="ellipsis">{r.label}</span>
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -105,7 +185,9 @@ export function AmbianceSection({
   onMode,
   onBase,
   onDetails,
-  baseLabel
+  baseLabel,
+  reference,
+  onReference
 }: {
   catalog: BuilderCatalog
   index: Map<string, CardRef>
@@ -122,8 +204,13 @@ export function AmbianceSection({
   onBase: (base: string) => void
   onDetails: (id: string) => void
   baseLabel: (base: string) => string
+  /** Image en jeu choisie pour les aperçus des styles (null : celle par défaut). */
+  reference: string | null
+  onReference: (id: string) => void
 }) {
   const { t } = useTranslation()
+  // Pastilles des images en jeu : s'il y a le choix, au-dessus des aperçus (outils réglés par moi) quand il y en a.
+  const picker = choice === 'custom' && catalog.references.length > 1 && catalog.tools.some((tool) => tools[tool.key].mode === 'custom')
   return (
     <section className="ambiance">
       <div className="section-head first">
@@ -144,24 +231,27 @@ export function AmbianceSection({
           </button>
         ))}
       </div>
+      {picker && <ReferencePicker references={catalog.references} chosen={reference} onChoose={onReference} />}
       {choice === 'custom' ? (
-        catalog.tools.map((tool) => (
-          <ToolPanel
-            key={tool.key}
-            catalog={catalog}
-            tool={tool}
-            tools={tools}
-            index={index}
-            chosen={chosen}
-            note={note?.tool === tool.key ? note.note : null}
-            focus={focus?.tool === tool.key ? focus.at : null}
-            onTool={onTool}
-            onMode={onMode}
-            onBase={onBase}
-            onDetails={onDetails}
-            baseLabel={baseLabel}
-          />
-        ))
+        <LookContext.Provider value={{ references: catalog.references, chosen: reference }}>
+          {catalog.tools.map((tool) => (
+            <ToolPanel
+              key={tool.key}
+              catalog={catalog}
+              tool={tool}
+              tools={tools}
+              index={index}
+              chosen={chosen}
+              note={note?.tool === tool.key ? note.note : null}
+              focus={focus?.tool === tool.key ? focus.at : null}
+              onTool={onTool}
+              onMode={onMode}
+              onBase={onBase}
+              onDetails={onDetails}
+              baseLabel={baseLabel}
+            />
+          ))}
+        </LookContext.Provider>
       ) : (
         <ul className="ambiance-lines">
           {catalog.tools.map((tool) => (
@@ -351,7 +441,7 @@ function ToolAdjust({ tool, settings, tools, onChange }: { tool: BuilderTool; se
           <div className={`tool-adjust-body ${custom ? 'with-look' : ''}`}>
             {custom && (
               <figure className="tool-look">
-                <StyleLook tool={tool} style={style} adjust={lookAdjust(tool.key, settings.controls)} />
+                <StyleLook tool={tool} style={style} adjust={lookAdjust(tool.key, settings.controls)} credits />
                 <figcaption className="muted small">{t('builder.tool.lookHint')}</figcaption>
               </figure>
             )}

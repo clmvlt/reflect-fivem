@@ -1,13 +1,16 @@
 // Outils d'ambiance de « Créer ton pack » : ReShade (filtres de l'image), QuantV (lumière et météo, a besoin de
 // ReShade), NVE et ENB. Pour chacun, le joueur n'en prend aucun, le règle lui-même avec un style, ou l'importe d'un
 // pack. Ici : choix rapide (Basique, Recommandé, Personnalisé), règles entre outils, conversion des créations
-// enregistrées avant les outils, et aperçu d'un style dessiné sur l'image de référence de son outil.
+// enregistrées avant les outils, et aperçu d'un style dessiné sur une image de référence en jeu (celle choisie par le
+// joueur, sinon celle par défaut) ou, faute d'image en jeu, sur l'image de référence de son outil.
 // Fonctions pures, partagées entre le processus principal et l'interface.
 
 import type {
   BuilderAdjustments,
   BuilderCatalog,
   BuilderControlValue,
+  BuilderImageRef,
+  BuilderReference,
   BuilderStyle,
   BuilderStylePreview,
   BuilderTool,
@@ -216,6 +219,29 @@ export function toolBases(tools: BuilderTools): string[] {
 
 // ---------------------------------------------------------------------------
 // Aperçu d'un style
+
+/**
+ * Image de référence en jeu à montrer : celle choisie par le joueur (`chosen`) si le catalogue l'a encore, sinon celle
+ * par défaut, sinon la première ; null sans image en jeu.
+ */
+export function pickReference(references: BuilderReference[], chosen: string | null = null): BuilderReference | null {
+  return references.find((r) => r.id === chosen) ?? references.find((r) => r.byDefault) ?? references[0] ?? null
+}
+
+/**
+ * Images sur lesquelles dessiner l'aperçu d'un style, dans l'ordre (la suivante sert quand une image ne se charge pas) :
+ * celle du style (qui le montre déjà), l'image de référence en jeu choisie, celle par défaut, puis l'image du composant
+ * de base de l'outil (catalogue sans image en jeu).
+ */
+export function lookImages(tool: BuilderTool, style: BuilderStyle | null, references: BuilderReference[], chosen: string | null): BuilderImageRef[] {
+  const out: BuilderImageRef[] = []
+  if (style?.imageVersion) out.push({ kind: 'style', styleId: style.id, version: style.imageVersion })
+  const picked = pickReference(references, chosen)
+  const fallback = pickReference(references)
+  for (const r of picked === fallback ? [picked] : [picked, fallback]) if (r) out.push({ kind: 'reference', referenceId: r.id, version: r.version })
+  if (tool.referenceComponent && tool.reference) out.push({ kind: 'component', componentId: tool.referenceComponent, imageId: tool.reference.id })
+  return out
+}
 
 /** Réglages simples pris en compte par l'aperçu (curseurs de −100 à 100). */
 export interface LookAdjust {

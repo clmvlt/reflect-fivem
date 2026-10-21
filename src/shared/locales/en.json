@@ -365,6 +365,10 @@
       "startValueTitle": "Value of the style or pack: {{value}}",
       "noAdvanced": "This file has nothing else to tune."
     },
+    "reference": {
+      "title": "Preview on",
+      "credits": "Image credits: {{credits}}"
+    },
     "summary": {
       "name": "Name",
       "nameHint": "{{n}} characters left",

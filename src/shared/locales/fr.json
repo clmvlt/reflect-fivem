@@ -365,6 +365,10 @@
       "startValueTitle": "Valeur du style ou du pack : {{value}}",
       "noAdvanced": "Ce fichier n’a rien d’autre à régler."
     },
+    "reference": {
+      "title": "Aperçu sur",
+      "credits": "Crédits de l’image : {{credits}}"
+    },
     "summary": {
       "name": "Nom",
       "nameHint": "{{n}} caractères restants",

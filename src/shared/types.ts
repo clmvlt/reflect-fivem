@@ -897,6 +897,12 @@ export interface BuilderReference {
   byDefault: boolean
 }
 
+/** Image de « Créer ton pack » servie par pm-media : image d'un composant, d'un style, ou image de référence en jeu. */
+export type BuilderImageRef =
+  | { kind: 'component'; componentId: string; imageId: string }
+  | { kind: 'style'; styleId: string; version: string }
+  | { kind: 'reference'; referenceId: string; version: string }
+
 export interface BuilderCatalog {
   version: string
   groups: BuilderGroup[]

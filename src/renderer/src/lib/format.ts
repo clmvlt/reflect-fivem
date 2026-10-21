@@ -1,6 +1,7 @@
 // Formats de l'interface : nombres, tailles et dates dans la langue affichée (voir @shared/intl).
 
 import { formatBytes, formatDate, formatDateTime, formatNumber, formatRelative, quote } from '@shared/intl'
+import type { BuilderImageRef } from '@shared/types'
 
 export function bytes(n: number): string {
   return formatBytes(n)
@@ -33,6 +34,18 @@ export function builderImageUrl(componentId: string, imageId: string, thumb = fa
 /** Image d'un style d'ambiance (l'adresse change avec l'image), mise en cache par le processus principal. */
 export function builderStyleImageUrl(styleId: string, version: string, thumb = false): string {
   return `pm-media://builder-style/${encodeURIComponent(styleId)}/${encodeURIComponent(version)}${thumb ? '?size=thumb' : ''}`
+}
+
+/** Image de référence en jeu de l'aperçu des styles (l'adresse change avec l'image), mise en cache par le processus principal. */
+export function builderReferenceImageUrl(referenceId: string, version: string, thumb = false): string {
+  return `pm-media://builder-reference/${encodeURIComponent(referenceId)}/${encodeURIComponent(version)}${thumb ? '?size=thumb' : ''}`
+}
+
+/** Adresse d'une image de « Créer ton pack » : composant, style ou image de référence en jeu. */
+export function builderImageRefUrl(ref: BuilderImageRef, thumb = false): string {
+  if (ref.kind === 'style') return builderStyleImageUrl(ref.styleId, ref.version, thumb)
+  if (ref.kind === 'reference') return builderReferenceImageUrl(ref.referenceId, ref.version, thumb)
+  return builderImageUrl(ref.componentId, ref.imageId, thumb)
 }
 
 export function packImages(p: { cover: string | null; gallery?: string[] }): string[] {

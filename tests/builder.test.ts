@@ -3,7 +3,8 @@
 // bibliothèque (zips, puis fichiers, puis fichiers écrits, dont ceux de chaque outil d'ambiance sous leur racine), et
 // nouvelle révision proposée comme une mise à jour. Droit « Peut créer un pack » : sans lui, aucune requête. Outils
 // d'ambiance : conversion des créations d'avant les outils, règles QuantV / ReShade, choix rapide (Basique, Recommandé)
-// et aperçu d'un style. Images de référence en jeu : lues dans le catalogue et gardées sur le disque.
+// et aperçu d'un style. Images de référence en jeu : lues dans le catalogue, gardées sur le disque, et image de
+// l'aperçu (celle du style, sinon l'image en jeu choisie, celle par défaut, puis la base de l'outil).
 import { createHash } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
@@ -25,8 +26,22 @@ vi.mock('../src/main/archive', async () => {
 })
 
 const { Builder, checkManifest, extractBundle, isSafeInstallPath, styleImageVersion, toCatalog } = await import('../src/main/core/builder')
-const { ambianceChoice, cleanTools, enableTool, fromLegacy, noTools, previewLook, recommendedTools, setTool, setToolMode, styleOf, toolOff, withKnownStyles } =
-  await import('@shared/ambiance')
+const {
+  ambianceChoice,
+  cleanTools,
+  enableTool,
+  fromLegacy,
+  lookImages,
+  noTools,
+  pickReference,
+  previewLook,
+  recommendedTools,
+  setTool,
+  setToolMode,
+  styleOf,
+  toolOff,
+  withKnownStyles
+} = await import('@shared/ambiance')
 const { ApiError } = await import('../src/main/core/http')
 const { Library } = await import('../src/main/core/library')
 
@@ -858,6 +873,37 @@ describe('aperçu d’un style', () => {
     // Couleur mal formée : pas de calque.
     const flat = { brightness: null, contrast: null, saturate: null, sepia: null, grayscale: null, hueRotate: null, vignette: null, grain: null }
     expect(previewLook({ ...flat, tint: 'red', tintOpacity: 0.5 }).tint).toBeNull()
+  })
+
+  const base = { kind: 'component', componentId: REFERENCE_ID, imageId: IMAGE_ID }
+  const car = { kind: 'reference', referenceId: REF_CAR, version: '4' }
+  const city = { kind: 'reference', referenceId: REF_CITY, version: '2' }
+
+  it('sur l’image du style, sinon l’image en jeu choisie, puis celle par défaut, puis l’image de base de l’outil', () => {
+    const catalog = parsed({ references: references() })
+    const [reshade, quantv] = catalog.tools
+    const [real, cinema] = reshade.styles
+    // Style avec une image : la sienne d'abord, les autres en repli si elle ne se charge pas.
+    expect(lookImages(reshade, real, catalog.references, REF_CAR)).toEqual([{ kind: 'style', styleId: STYLE_REAL, version: '3' }, car, city, base])
+    // Style dessiné : l'image en jeu choisie, celle par défaut (une seule fois), puis la base de l'outil.
+    expect(lookImages(reshade, cinema, catalog.references, REF_CAR)).toEqual([car, city, base])
+    expect(lookImages(reshade, cinema, catalog.references, REF_CITY)).toEqual([city, base])
+    expect(lookImages(reshade, cinema, catalog.references, null)).toEqual([city, base])
+    // Sans image en jeu (ancienne API) : la base de l'outil ; sans rien, aucune (paysage dessiné).
+    expect(lookImages(reshade, cinema, [], REF_CAR)).toEqual([base])
+    expect(lookImages(quantv, null, [], null)).toEqual([])
+  })
+
+  it('image en jeu retenue qui n’est plus au catalogue : celle par défaut, sinon la première', () => {
+    const catalog = parsed({ references: references() })
+    const retired = 'dddddddd-0000-4000-8000-000000000999'
+    expect(pickReference(catalog.references, REF_NIGHT)?.id).toBe(REF_NIGHT)
+    expect(pickReference(catalog.references, retired)?.id).toBe(REF_CITY)
+    expect(pickReference(catalog.references)?.id).toBe(REF_CITY)
+    expect(lookImages(catalog.tools[0], null, catalog.references, retired)).toEqual([city, base])
+    // Aucune par défaut : la première ; aucune image : rien.
+    expect(pickReference(catalog.references.map((r) => ({ ...r, byDefault: false })), retired)?.id).toBe(REF_CAR)
+    expect(pickReference([], REF_CAR)).toBeNull()
   })
 })
 

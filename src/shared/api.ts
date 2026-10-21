@@ -21,6 +21,8 @@ import type {
   FiveMInstance,
   ForeignItem,
   GamesInfo,
+  ItemAccess,
+  ItemCheckoutInput,
   MarketCategory,
   MarketKind,
   MarketPack,
@@ -30,6 +32,7 @@ import type {
   ModPreflight,
   MyDownloadsPage,
   Overview,
+  OwnedPack,
   PackComment,
   PackManifest,
   PackPatch,
@@ -40,6 +43,7 @@ import type {
   QuoteInput,
   ReplyPage,
   RootId,
+  SaleInfo,
   TaskProgress,
   ToolKey,
   UpdateState
@@ -270,18 +274,36 @@ export interface PackManagerApi {
   builderBilling(): Promise<AccountBilling>
   /** Prix d'un achat, avec un code promo (refusé : erreur 422 avec un code « promo-… »). */
   builderQuote(input: QuoteInput): Promise<Quote>
-  /** Commande : `pending` (page de paiement à ouvrir, voir builderOpenCheckout), ou `free` (offert par un code, crédit déjà donné). */
+  /** Commande : `pending` (page de paiement à ouvrir, voir openCheckout), ou `free` (offert par un code, crédit déjà donné). */
   builderCheckout(input: CheckoutInput): Promise<Purchase>
-  /** Ouvre la page de paiement dans le navigateur : https://checkout.stripe.com/… seulement (une autre adresse https en développement). */
-  builderOpenCheckout(url: string): Promise<void>
-  /** Un achat, relu chez Stripe s'il est en cours : à interroger jusqu'à la fin du paiement. */
-  builderPurchase(id: string): Promise<Purchase>
-  /** Abandonne un paiement en cours ; un paiement déjà fait reste acquis. */
-  builderCancelPurchase(id: string): Promise<Purchase>
-  /** Historique des achats, le plus récent d'abord. */
-  builderPurchases(): Promise<Purchase[]>
   /** Débloque un pack gratuit avec un crédit libre : ses modifications deviennent illimitées. */
   builderUnlockBuild(id: string): Promise<BuilderBuild>
+
+  // Packs et mods payants du catalogue (prix fixé par l'admin, gratuits par défaut) : tout compte connecté peut les
+  // acheter, même sans accès à « Créer ton pack ». Suivi de tous les achats (catalogue et « Créer ton pack ») par
+  // /me/purchases.
+
+  /** Vente en public : monnaie, paiement possible, mode test, CGV et support (sans compte aussi). */
+  saleInfo(): Promise<SaleInfo>
+  /** Prix d'un pack (ou d'un mod) et droit de le télécharger pour le compte connecté (ou sans compte), jamais en cache. */
+  itemAccess(kind: MarketKind, id: string): Promise<ItemAccess>
+  /** Packs et mods payants du compte (achetés ou offerts), derniers connus ; `refresh` : relus tout de suite. */
+  ownedPacks(refresh?: boolean): Promise<OwnedPack[]>
+  /** Prix d'un pack payant avec un code promo (refusé : erreur 422 avec un code « promo-… »). */
+  itemQuote(kind: MarketKind, id: string, promoCode: string | null): Promise<Quote>
+  /**
+   * Commande d'un pack payant : `pending` (page de paiement à ouvrir), ou `free` (offert par un code). 409 « pack-free »
+   * (gratuit) ou « already-owned » (déjà à lui).
+   */
+  itemCheckout(kind: MarketKind, id: string, input: ItemCheckoutInput): Promise<Purchase>
+  /** Ouvre la page de paiement dans le navigateur : https://checkout.stripe.com/… seulement (une autre adresse https en développement). */
+  openCheckout(url: string): Promise<void>
+  /** Un achat, relu chez Stripe s'il est en cours : à interroger jusqu'à la fin du paiement. */
+  purchaseGet(id: string): Promise<Purchase>
+  /** Abandonne un paiement en cours ; un paiement déjà fait reste acquis. */
+  purchaseCancel(id: string): Promise<Purchase>
+  /** Historique de tous les achats du compte, le plus récent d'abord. */
+  purchaseList(): Promise<Purchase[]>
 
   /** Compte connecté sur cet appareil (gardé localement, vérifié en arrière-plan), null sans compte. */
   accountGet(): Promise<AccountMe | null>
@@ -461,6 +483,12 @@ export const BUILDER_PAYMENT_REQUIRED = 'builder-payment-required'
 
 /** Code d'une modification refusée (402) : le pack gratuit a utilisé ses modifications, il faut le débloquer. */
 export const BUILDER_EDIT_LOCKED = 'builder-edit-locked'
+
+/** Code d'un pack (ou d'un mod) payant refusé sans compte (401) : se connecter pour l'acheter ou le télécharger. */
+export const PACK_LOGIN_REQUIRED = 'pack-login-required'
+
+/** Code d'un pack (ou d'un mod) payant refusé à un compte qui ne l'a pas (402) : l'acheter pour le télécharger. */
+export const PACK_PURCHASE_REQUIRED = 'pack-purchase-required'
 
 /**
  * « Créer ton pack » est proposé : compte connecté qui a le droit « Peut créer un pack » (l'admin l'a toujours). Sans

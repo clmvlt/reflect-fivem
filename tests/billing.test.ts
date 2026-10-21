@@ -1,5 +1,5 @@
 // Vente de « Créer ton pack » : lecture tolérante des formules et de l'état du compte (ancienne API : tout offert),
-// appels de l'API (prix, commande, suivi, abandon, déblocage), refus 402 transmis à l'interface, badge et bandeaux selon
+// appels de l'API (prix, commande, déblocage ; suivi et abandon par /me/purchases), refus 402 transmis à l'interface, badge et bandeaux selon
 // la formule, adresse de la page de paiement (checkout.stripe.com seulement hors développement), fin de l'attente d'un
 // paiement selon son statut, et bouton « Payer » inactif sans les deux cases.
 import { describe, expect, it, vi } from 'vitest'
@@ -7,9 +7,10 @@ import { BUILDER_EDIT_LOCKED, BUILDER_PAYMENT_REQUIRED, readApiError, tagApiErro
 import { canPay, deleteNote, failureOf, formatPrice, isCheckoutUrl, isTestMode, needsPack, planBadge, planBanner, purchaseOutcome, saleActive } from '@shared/billing'
 import type { AccountBilling, AccountMe, BuildPlan, PurchaseStatus } from '@shared/types'
 import i18next from 'i18next'
-import { Builder, toBilling, toPlan, toPurchase, type BuilderAccount } from '../src/main/core/builder'
+import { Builder, toBilling, toPlan, type BuilderAccount } from '../src/main/core/builder'
 import { ApiError } from '../src/main/core/http'
 import type { Library } from '../src/main/core/library'
+import { Purchases, toPurchase, type PurchasesAccount } from '../src/main/core/purchases'
 
 const BUILD = '11111111-2222-4333-8444-555555555555'
 const PURCHASE = '99999999-2222-4333-8444-555555555555'
@@ -31,7 +32,8 @@ function setup(routes: Record<string, unknown>) {
     library: () => ({ list: async () => [] }) as unknown as Library,
     fetch: vi.fn()
   })
-  return { builder, call }
+  const purchases = new Purchases({ account: account as unknown as PurchasesAccount, file: 'inutilisé/owned-packs.json', siteUrl: (p) => `https://site.test${p}`, supportUrl: () => null })
+  return { builder, purchases, call }
 }
 
 const billing = (over: Partial<AccountBilling> = {}): AccountBilling => ({
@@ -122,20 +124,21 @@ describe('appels de la vente', () => {
     })
   })
 
-  it('suivi, abandon, historique et déblocage avec un crédit', async () => {
+  it('suivi, abandon et historique de tous les achats par /me/purchases ; déblocage avec un crédit', async () => {
     const s = setup({
-      [`GET /builder/billing/purchases/${PURCHASE}`]: { id: PURCHASE, product: 'pack', status: 'paid' },
-      [`POST /builder/billing/purchases/${PURCHASE}/cancel`]: { id: PURCHASE, product: 'pack', status: 'canceled' },
-      'GET /builder/billing/purchases': [{ id: PURCHASE, status: 'free', promoCode: 'OFFERT' }, { id: 'illisible' }],
+      [`GET /me/purchases/${PURCHASE}`]: { id: PURCHASE, product: 'pack', status: 'paid' },
+      [`POST /me/purchases/${PURCHASE}/cancel`]: { id: PURCHASE, product: 'pack', status: 'canceled' },
+      'GET /me/purchases': [{ id: PURCHASE, status: 'free', promoCode: 'OFFERT' }, { id: 'illisible' }],
       [`POST /builder/builds/${BUILD}/unlock`]: { id: BUILD, name: 'Mon pack', components: [], tools: {}, plan: { type: 'credit', unlimited: true } }
     })
-    expect((await s.builder.purchase(PURCHASE)).status).toBe('paid')
-    expect((await s.builder.cancelPurchase(PURCHASE)).status).toBe('canceled')
-    expect((await s.builder.purchases()).map((p) => [p.status, p.promoCode])).toEqual([['free', 'OFFERT']])
+    expect((await s.purchases.purchase(PURCHASE)).status).toBe('paid')
+    expect((await s.purchases.cancel(PURCHASE)).status).toBe('canceled')
+    expect((await s.purchases.list()).map((p) => [p.status, p.promoCode])).toEqual([['free', 'OFFERT']])
+    expect(s.call).not.toHaveBeenCalledWith('GET', expect.stringMatching(/^\/builder\/billing\/purchases/), expect.anything())
     expect((await s.builder.unlockBuild(BUILD)).plan).toMatchObject({ type: 'credit', unlimited: true, locked: false })
     // Identifiant invalide : rien n'est demandé.
     s.call.mockClear()
-    await expect(s.builder.purchase('../admin')).rejects.toThrow()
+    await expect(s.purchases.purchase('../admin')).rejects.toThrow()
     expect(s.call).not.toHaveBeenCalled()
   })
 

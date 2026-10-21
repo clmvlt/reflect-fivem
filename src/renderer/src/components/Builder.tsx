@@ -54,7 +54,8 @@ import { popupMenu } from './Menu'
 import { memText, usePerfConfirm, usePerformance, verdictReasons } from './Performance'
 import { activate, blockedText, Check, ComponentModal, ComponentTile } from './BuilderParts'
 import { AmbianceSection, toolName, toolSummary } from './BuilderAmbiance'
-import { OfferPanel, onBillingChanged, PlanBadge, PlanBanner, useBilling, withPurchase, type PurchaseNeed } from './BuilderBilling'
+import { OfferPanel, PlanBadge, PlanBanner, useBilling, withPurchase, type PurchaseNeed } from './BuilderBilling'
+import { onBillingChanged } from './Purchase'
 
 /** Création à ouvrir depuis une autre page (fiche d'un pack, file des téléchargements). */
 export interface BuilderRequest {

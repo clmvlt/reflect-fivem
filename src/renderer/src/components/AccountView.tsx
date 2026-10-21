@@ -4,6 +4,7 @@ import type { AccountMe, AccountProfile, ProfileInput, ProfileLink } from '@shar
 import { cleanError, useStore } from '../store'
 import { num } from '../lib/format'
 import { Avatar } from './common'
+import { PurchaseList } from './Purchase'
 
 const BIO_MAX = 2000
 const LINKS_MAX = 8
@@ -445,6 +446,12 @@ function Profile({ me, onOpenAuthor }: { me: AccountMe; onOpenAuthor: (slug: str
         <h2>{t('accountView.fields.password')}</h2>
       </div>
       <PasswordForm me={me} />
+
+      {/* Tous les achats : packs et mods payants du catalogue, et « Créer ton pack ». */}
+      <div className="section-head">
+        <h2>{t('accountView.purchases.title')}</h2>
+      </div>
+      <PurchaseList />
 
       <div className="section-head">
         <h2>{t('accountView.session.title')}</h2>

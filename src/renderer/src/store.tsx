@@ -4,6 +4,7 @@ import { MAINTENANCE, PENDING, readApiError } from '@shared/api'
 import type { MaintenanceState } from '@shared/maintenance'
 import { emptyLinks, type AppLinks } from '@shared/links'
 import type { WhatsNew } from '@shared/changelog'
+import { paidProposal } from '@shared/billing'
 import i18next, { t } from 'i18next'
 import { num, q } from './lib/format'
 import { applyTheme } from './lib/theme'
@@ -129,6 +130,8 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
     const offDownloads = window.api.onDownloads(setDownloads)
     window.api.downloadsGet().then(setDownloads, () => undefined)
     const offDownloadDone = window.api.onDownloadDone((d) => {
+      // Pack payant refusé : pas d'erreur, la connexion ou l'achat sont proposés (voir usePurchases).
+      if (paidProposal(d)) return
       const info = downloadMessage(d)
       if (info) setMessage(info)
     })

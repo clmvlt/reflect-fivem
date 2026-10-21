@@ -11,7 +11,7 @@ import { InstancesView } from './components/InstancesView'
 import { Graphics } from './components/Graphics'
 import { Marketplace, type MarketView } from './components/Marketplace'
 import { Builder, BuilderNavIcon, type BuilderRequest } from './components/Builder'
-import { PurchaseHost, usePurchaseLinks } from './components/BuilderBilling'
+import { PurchaseHost, usePurchases } from './components/Purchase'
 import { AccountView } from './components/AccountView'
 import { Avatar } from './components/common'
 import { UpdatePanel } from './components/UpdatePanel'
@@ -188,11 +188,6 @@ export function App() {
     setOpenPack(null)
     setBuilderRequest({ buildId, at: Date.now() })
   }
-  // Lien de la page de fin de paiement du site, pour un achat qu'aucune fenêtre n'attendait : une fois payé, « Créer ton
-  // pack » s'ouvre (un assistant en cours y est retrouvé).
-  usePurchaseLinks(() => {
-    if (builderAllowed && page !== 'builder') go('builder')
-  })
   /**
    * Fiche d'un téléchargement de la file : pack ou mod de la Marketplace, ou création (dans l'assistant ; sans le droit,
    * le pack construit de la bibliothèque s'il existe).
@@ -208,6 +203,16 @@ export function App() {
     setSignInFrom(page)
     setPage('account')
   }
+  // Achats : fiche d'un pack payant et connexion pour l'acheter ; lien de la page de fin de paiement du site, pour un
+  // achat qu'aucune fenêtre n'attendait (achat de « Créer ton pack » payé : la page s'ouvre, un assistant en cours y est
+  // retrouvé) ; téléchargement d'un pack payant refusé : connexion ou achat proposés.
+  usePurchases({
+    openBuilder: () => {
+      if (builderAllowed && page !== 'builder') go('builder')
+    },
+    openItem: openMarketPack,
+    signIn
+  })
   // Maintenance (sauf pour l'admin) : écran de maintenance à la place des pages qui passent par le serveur. La connexion
   // reste possible (l'API la permet) : un admin peut se connecter pour ne plus être bloqué.
   const serverPage = page === 'market' || page === 'builder' || (page === 'account' && !!account)

@@ -8,6 +8,7 @@ import { Cover, EmptyState, packMenuAction, packMeta, Progress, RenameInput } fr
 import { ModLibrary, useModActions } from './Mods'
 import { useInstallTarget } from './InstallTarget'
 import { usePerformance } from './Performance'
+import { ItemBadge } from './Purchase'
 
 export function Library({
   kind,
@@ -203,6 +204,7 @@ function ActiveHero({
       <div className="cover hero-cover" onClick={onOpen}>
         <Cover pack={pack} />
         {pack.built && <span className="built-badge on-cover">{t('builder.badge')}</span>}
+        {pack.marketplace && <ItemBadge id={pack.marketplace.id} price={null} className="on-cover" />}
       </div>
       <div className="hero-body">
         <span className="state">{partial ? t('libraryView.card.partial') : t('libraryView.hero.installed')}</span>
@@ -311,6 +313,8 @@ function PackCard({
       <div className="cover">
         <Cover pack={pack} />
         {pack.built && <span className="built-badge on-cover">{t('builder.badge')}</span>}
+        {/* Pack payant à soi : « Acheté » ou « Offert ». */}
+        {pack.marketplace && <ItemBadge id={pack.marketplace.id} price={null} className="on-cover" />}
       </div>
       <div className="card-body">
         {renaming ? <RenameInput pack={pack} onDone={() => setRenaming(false)} /> : <div className="name" title={pack.name}>{pack.name}</div>}

@@ -1,10 +1,17 @@
-// Vente de « Créer ton pack » : règles de l'interface (fonctions pures, testées). Le serveur applique les règles
-// (packs gratuits, crédits, déblocage) ; ici, ce qu'il faut montrer : badge de chaque création, bandeau de l'assistant,
-// achat à proposer avant d'enregistrer, bouton « Payer », fin de l'attente d'un paiement, adresse de paiement acceptée.
-// Pour l'admin, ou quand la vente est coupée, tout est illimité : aucune offre n'apparaît.
+// Ventes : règles de l'interface (fonctions pures, testées). Le serveur applique les règles ; ici, ce qu'il faut montrer.
+//
+// « Créer ton pack » (packs gratuits, crédits, déblocage) : badge de chaque création, bandeau de l'assistant, achat à
+// proposer avant d'enregistrer. Pour l'admin, ou quand la vente est coupée, tout est illimité : aucune offre n'apparaît.
+// Packs et mods payants du catalogue : badge de prix (ou « Acheté », « Offert »), bouton d'installation (télécharger,
+// acheter, se connecter pour acheter), proposition après un refus du téléchargement (401, 402).
+// Pour tous les achats : bouton « Payer », fin de l'attente d'un paiement, adresse de paiement acceptée.
 
+import { PACK_LOGIN_REQUIRED, PACK_PURCHASE_REQUIRED } from './api'
 import { formatNumber } from './intl'
-import type { AccountBilling, BuildPlan, Purchase } from './types'
+import type { AccountBilling, BuildPlan, OwnedPack, Purchase, SaleInfo } from './types'
+
+/** Monnaie des prix du catalogue quand l'API ne la donne pas avec eux (listes de packs). */
+export const DEFAULT_CURRENCY = 'eur'
 
 /** Vente active pour ce compte : offres, badges et bandeaux à montrer (null : état inconnu, rien n'est montré). */
 export function saleActive(billing: AccountBilling | null | undefined): billing is AccountBilling {
@@ -15,13 +22,13 @@ export function saleActive(billing: AccountBilling | null | undefined): billing 
  * Paiements de test (API de dev, clés Stripe de test) : badge « Mode test » sur « Mon offre » et dans la fenêtre
  * d'achat, avec la carte de test à utiliser. Rien de tout cela pour des paiements réels.
  */
-export function isTestMode(billing: AccountBilling | null | undefined): boolean {
+export function isTestMode(billing: SaleInfo | null | undefined): boolean {
   return !!billing && billing.testMode === true
 }
 
 /** Prix en centimes dans la langue affichée (« 4,00 € », « €4.00 »). */
-export function formatPrice(cents: number, currency: string): string {
-  const code = (currency || 'eur').toUpperCase()
+export function formatPrice(cents: number, currency: string = DEFAULT_CURRENCY): string {
+  const code = (currency || DEFAULT_CURRENCY).toUpperCase()
   try {
     return formatNumber(cents / 100, { style: 'currency', currency: code })
   } catch {
@@ -102,4 +109,38 @@ export function isCheckoutUrl(url: unknown, dev: boolean): url is string {
   }
   if (u.protocol !== 'https:' || u.username || u.password || u.port) return false
   return u.hostname === 'checkout.stripe.com' || dev
+}
+
+// ---------------------------------------------------------------------------
+// Packs et mods payants du catalogue
+
+/** Badge d'un pack du catalogue : son prix, « Acheté » ou « Offert » quand le compte l'a ; null pour un pack gratuit. */
+export type ItemBadge = { kind: 'price'; price: number } | { kind: 'purchase' } | { kind: 'admin' }
+
+/** `owned` : l'entrée des packs à soi (GET /me/packs/owned) pour ce pack, s'il y en a une. */
+export function itemBadge(price: number | null, owned: Pick<OwnedPack, 'source'> | null | undefined): ItemBadge | null {
+  if (owned) return { kind: owned.source === 'admin' ? 'admin' : 'purchase' }
+  return price === null ? null : { kind: 'price', price }
+}
+
+/**
+ * Bouton d'installation d'un pack du catalogue : le télécharger (gratuit, ou le compte peut le télécharger), l'acheter,
+ * ou se connecter pour l'acheter. `canDownload` : celui de GET …/access sur la fiche ; sur une carte, le pack est
+ * parmi ceux à soi.
+ */
+export function installChoice(s: { price: number | null; canDownload: boolean; signedIn: boolean }): 'download' | 'buy' | 'signIn' {
+  if (s.price === null || s.canDownload) return 'download'
+  return s.signedIn ? 'buy' : 'signIn'
+}
+
+/**
+ * Téléchargement refusé d'un pack payant (archive, paquet chiffré ou clé) : au lieu d'une erreur, se connecter (401
+ * « pack-login-required »), ou l'acheter (402 « pack-purchase-required ») ; `update` : un pack déjà dans la bibliothèque
+ * devenu payant, qui reste utilisable (seule sa mise à jour demande l'achat). Null pour toute autre fin.
+ */
+export function paidProposal(done: { ok: boolean; code?: string | null; update?: boolean }): 'signIn' | 'buy' | 'buyUpdate' | null {
+  if (done.ok) return null
+  if (done.code === PACK_LOGIN_REQUIRED) return 'signIn'
+  if (done.code === PACK_PURCHASE_REQUIRED) return done.update ? 'buyUpdate' : 'buy'
+  return null
 }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import i18next, { t } from 'i18next'
-import type { InstalledMod, MarketCategory, MarketKind, PackManifest, TaskProgress } from '@shared/types'
+import type { InstalledMod, ItemAccess, MarketCategory, MarketImage, MarketKind, PackManifest, TaskProgress } from '@shared/types'
 import type { MenuItem } from '@shared/api'
 import { useStore } from '../store'
 import { bytes, num, q } from '../lib/format'
@@ -13,6 +13,7 @@ import { usePerfConfirm } from './Performance'
 import type { PackPerformance } from '@shared/performance'
 import { confirmDialog } from './Confirm'
 import { popupMenu } from './Menu'
+import { ItemBadge, usePaidAction } from './Purchase'
 
 // Catégories de l'API (libellés et nombre de mods), lues une fois par lancement et par langue (libellés traduits par
 // l'API).
@@ -272,6 +273,8 @@ function ModRow({
         </div>
         <div className="meta">
           {meta}
+          {/* Mod payant à soi : « Acheté » ou « Offert ». */}
+          {mod.marketplace && <ItemBadge id={mod.marketplace.id} price={null} className="inline" />}
           {update && <span className="accent-text small"> · {paused ? t('maintenance.pausedShort') : t('modsView.newVersion')}</span>}
           {gone && <span className="muted small"> · {t('modsView.gone')}</span>}
         </div>
@@ -331,15 +334,28 @@ function ModFiles({ mod }: { mod: PackManifest }) {
   )
 }
 
-/** Actions d'un mod de la Marketplace : Installer, Mettre à jour, Activer / Désactiver, Supprimer. */
-export function ModMarketAction({ item, wide = false }: { item: { id: string; sha256: string; name: string; performance?: PackPerformance | null }; wide?: boolean }) {
+/**
+ * Actions d'un mod de la Marketplace : Installer, Mettre à jour, Activer / Désactiver, Supprimer. Mod payant qu'on n'a
+ * pas : « Acheter - 4,00 € » ou « Se connecter pour acheter - 4,00 € » à la place d'Installer (ou de Mettre à jour : un mod
+ * devenu payant reste utilisable). `access` : droit relu à l'ouverture de la fiche.
+ */
+export function ModMarketAction({
+  item,
+  wide = false,
+  access
+}: {
+  item: { id: string; sha256: string; name: string; price: number | null; cover?: MarketImage | null; performance?: PackPerformance | null }
+  wide?: boolean
+  access?: ItemAccess | null
+}) {
   const { t } = useTranslation()
   const { overview, task, run } = useStore()
   const actions = useModActions()
   const confirmHeavy = usePerfConfirm()
-  if (!overview) return null
-  const local = localMod(item.id, overview.mods)
+  const local = overview ? localMod(item.id, overview.mods) : null
   const update = !!local && !!item.sha256 && local.marketplace!.sha256 !== item.sha256
+  const paid = usePaidAction({ ...item, kind: 'mod' }, { access, update })
+  if (!overview) return null
   const enabled = !!local && !!modState(local.id, overview.state.mods)?.enabled
   const cls = (primary: boolean): string => [primary && 'primary', wide && 'wide'].filter(Boolean).join(' ')
   const install = (): void => void run(() => window.api.marketInstall(item.id, 'mod'))
@@ -352,8 +368,8 @@ export function ModMarketAction({ item, wide = false }: { item: { id: string; sh
     return (
       <>
         <div className="spacer" />
-        <button className={cls(true)} onClick={() => void installNew()}>
-          {t('modsView.install')}
+        <button className={cls(true)} onClick={paid ? paid.run : () => void installNew()}>
+          {paid ? paid.label : t('modsView.install')}
         </button>
       </>
     )
@@ -368,8 +384,8 @@ export function ModMarketAction({ item, wide = false }: { item: { id: string; sh
         {update ? <span className="accent-text small">{t('modsView.newVersion')}</span> : <span className="state">{enabled ? t('common.enabled') : t('common.disabled')}</span>}
         <div className="spacer" />
         {update ? (
-          <button className="primary" onClick={install}>
-            {t('modsView.update')}
+          <button className="primary" onClick={paid ? paid.run : install}>
+            {paid ? paid.label : t('modsView.update')}
           </button>
         ) : (
           toggle
@@ -380,8 +396,8 @@ export function ModMarketAction({ item, wide = false }: { item: { id: string; sh
     <>
       <span className="state big">{enabled ? t('modsView.stateEnabled') : t('modsView.stateDisabled')}</span>
       {update && (
-        <button className={cls(true)} onClick={install}>
-          {t('modsView.update')}
+        <button className={cls(true)} onClick={paid ? paid.run : install}>
+          {paid ? paid.label : t('modsView.update')}
         </button>
       )}
       {toggle}

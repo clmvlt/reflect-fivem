@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { app, BrowserWindow, dialog, nativeImage, nativeTheme, net, Notification, safeStorage, screen, shell, systemPreferences } from 'electron'
 import type { AppState, FiveMInstance, GamesInfo, InstanceSummary, MarketKind, Overview, PackPatch, RootId, Settings, TaskProgress } from '@shared/types'
-import type { AccountMe, BuilderBuild, BuilderSaveInput, BuilderTools, CheckoutInput, ProfileInput, QuoteInput, ToolKey } from '@shared/types'
+import type { AccountMe, BuilderBuild, BuilderSaveInput, BuilderTools, CheckoutInput, ItemCheckoutInput, ProfileInput, QuoteInput, ToolKey } from '@shared/types'
 import type { AuthorQuery, CommentQuery, ComponentFile, ForeignSelection, MarketQuery, PackManagerApi } from '@shared/api'
 import { canUseBuilder, IPC, PENDING } from '@shared/api'
 import i18next, { t } from 'i18next'
@@ -31,6 +31,7 @@ import { isCheckoutUrl } from '@shared/billing'
 import { isThemeChoice, resolveTheme, themeBackground, type ThemeChoice } from '@shared/themes'
 import { Marketplace } from './core/marketplace'
 import { Builder, coverUrl } from './core/builder'
+import { Purchases } from './core/purchases'
 import { DownloadQueue, type DownloadContext, type DownloadJob } from './core/downloads'
 import { AppUpdater } from './core/updater'
 import { killProcesses, launchDetached, readVideoAdapters, runningGameProcesses } from './util/win'
@@ -79,6 +80,8 @@ export class Service {
   marketplace!: Marketplace
   /** « Créer ton pack » : catalogue, créations du compte, packs construits. */
   builder!: Builder
+  /** Achats du compte et packs payants du catalogue (packs à soi gardés pour les badges). */
+  purchases!: Purchases
   updater: AppUpdater
   private gamesCache: GamesInfo | null = null
   /** Détection des jeux lancée au démarrage (null en cas d'échec). */
@@ -143,6 +146,8 @@ export class Service {
       onChange: (me) => {
         this.emit(IPC.account, me)
         this.accountLanguage(me)
+        // Packs payants à soi : relus à la connexion, oubliés à la déconnexion.
+        this.purchases?.accountChanged(me)
         // Créations d'un autre compte, plus de compte, droit « Peut créer un pack » donné ou retiré : mises à jour revérifiées.
         const builderAccount = me && canUseBuilder(me) ? me.id : null
         if (builderAccount !== this.builderAccount) {
@@ -469,6 +474,15 @@ export class Service {
     this.marketplace = new Marketplace(this.apiUrl, path.join(this.dataDir, 'Marketplace', 'images'), () => this.library, this.account, () => this.modLibrary)
     this.community = new Community(this.account, (items) => this.marketplace.toPacks(items))
     this.builder = new Builder({ apiUrl: this.apiUrl, dir: path.join(this.dataDir, 'builder'), account: this.account, library: () => this.library, fetch: apiFetch })
+    this.purchases = new Purchases({
+      account: this.account,
+      file: path.join(this.dataDir, 'owned-packs.json'),
+      siteUrl: (sitePath) => this.marketplace.siteUrl(sitePath),
+      supportUrl: () => this.links.current.discord ?? null,
+      kindOf: (id) => this.marketplace.kindOf(id),
+      onOwnedChange: () => this.changed()
+    })
+    await this.purchases.load()
     const me = this.account.current()
     this.builderAccount = me && canUseBuilder(me) ? me.id : null
   }
@@ -519,6 +533,7 @@ export class Service {
       // Compte : connexion expirée ou révoquée, nom ou photo modifiés sur le site.
       this.account.refresh().catch((err: unknown) => log.info(`Compte non vérifié : ${(err as Error).message}`))
       void refreshMarket()
+      void this.purchases.refreshOwned(true)
       void this.marketplace.pruneImageCache()
       void this.marketplace.pruneDownloads()
       // Créations installées : nouvelle révision en ligne ? Puis ménage des caches de « Créer ton pack ».
@@ -855,6 +870,7 @@ export class Service {
         apiUrl: this.apiUrl,
         // Packs de « Créer ton pack » avec une nouvelle révision : signalés comme une nouvelle version.
         market: { updates: [...market.updates, ...builds.updates], gone: market.gone },
+        owned: this.purchases.ownedPacks(),
         builder: { gone: builds.gone },
         pausedDownloads: this.paused.list().map(({ id, kind, name }) => ({ id, kind, name })),
         update: this.updater.state,
@@ -1455,19 +1471,29 @@ export class Service {
 
     builderCheckout: (input: CheckoutInput) => this.builder.checkout(input),
 
-    builderOpenCheckout: async (url: string) => {
+    builderUnlockBuild: (id: string) => this.builder.unlockBuild(id),
+
+    saleInfo: () => this.purchases.saleInfo(),
+
+    itemAccess: (kind: MarketKind, id: string) => this.purchases.access(kind, id),
+
+    ownedPacks: async (refresh?: boolean) => (refresh ? this.purchases.refreshOwned(true) : this.purchases.ownedPacks()),
+
+    itemQuote: (kind: MarketKind, id: string, promoCode: string | null) => this.purchases.quote(kind, id, promoCode),
+
+    itemCheckout: (kind: MarketKind, id: string, input: ItemCheckoutInput) => this.purchases.checkout(kind, id, input),
+
+    openCheckout: async (url: string) => {
       // Adresse reçue de l'API : seule la page de paiement de Stripe s'ouvre (une autre page https en développement).
       if (!isCheckoutUrl(url, !app.isPackaged)) throw this.toError(t('builder.errors.badCheckoutUrl'))
       await shell.openExternal(url)
     },
 
-    builderPurchase: (id: string) => this.builder.purchase(id),
+    purchaseGet: (id: string) => this.purchases.purchase(id),
 
-    builderCancelPurchase: (id: string) => this.builder.cancelPurchase(id),
+    purchaseCancel: (id: string) => this.purchases.cancel(id),
 
-    builderPurchases: () => this.builder.purchases(),
-
-    builderUnlockBuild: (id: string) => this.builder.unlockBuild(id),
+    purchaseList: () => this.purchases.list(),
 
     accountGet: async () => this.account.current(),
 

@@ -93,7 +93,10 @@
       "registering": "Création du compte…",
       "submitRegister": "Créer le compte"
     },
-    "title": "Compte"
+    "title": "Compte",
+    "purchases": {
+      "title": "Achats"
+    }
   },
   "analyzer": {
     "groups": {
@@ -502,7 +505,16 @@
           "notApplicable": "Ce code promo ne s’applique pas à cet achat.",
           "exhausted": "Ce code promo n’est plus disponible.",
           "alreadyUsed": "Tu as déjà utilisé ce code promo."
-        }
+        },
+        "itemTitle": "Acheter {{name}}",
+        "itemPackText": "Un pack de la Marketplace, à toi une fois acheté : tu le télécharges et tu reçois ses mises à jour.",
+        "itemModText": "Un mod de la Marketplace, à toi une fois acheté : tu le télécharges et tu reçois ses mises à jour.",
+        "needItem": "{{name}} est payant : achète-le pour le télécharger.",
+        "gotItem": "{{name}} est à toi.",
+        "installing": "Son téléchargement commence.",
+        "owned": "Tu as déjà {{name}} : rien à payer.",
+        "installNow": "Installer maintenant",
+        "later": "Plus tard"
       },
       "history": {
         "title": "Mes achats",
@@ -519,7 +531,9 @@
           "failed": "Échoué",
           "canceled": "Annulé",
           "refunded": "Remboursé"
-        }
+        },
+        "viewItem": "Voir la fiche",
+        "itemUnknown": "Pack de la Marketplace"
       }
     }
   },
@@ -1322,11 +1336,15 @@
       "downloadFailed": "Téléchargement impossible (erreur {{status}}).",
       "emptyResponse": "Réponse vide.",
       "incomplete": "Téléchargement incomplet.",
+      "loginRequiredMod": "Ce mod est payant : connectez-vous pour l’acheter ou le télécharger.",
+      "loginRequiredPack": "Ce pack est payant : connectez-vous pour l’acheter ou le télécharger.",
       "modUpdateFailed": "Mise à jour de {{name}} non installée : {{error}}",
       "noArchiveMod": "Ce mod n’a pas encore d’archive.",
       "noArchivePack": "Ce pack n’a pas encore d’archive.",
       "noModLibrary": "Bibliothèque des mods indisponible.",
       "noSpace": "Pas assez de place sur le disque ({{size}} nécessaires).",
+      "purchaseRequiredMod": "Ce mod est payant : achetez-le pour le télécharger.",
+      "purchaseRequiredPack": "Ce pack est payant : achetez-le pour le télécharger.",
       "unreachable": "Marketplace injoignable. Vérifiez votre connexion à Internet."
     },
     "modGone": "Ce mod n’est plus disponible sur la Marketplace.",
@@ -1431,6 +1449,20 @@
       "rating": "Mieux notés",
       "recent": "Récents",
       "recommended": "Recommandés"
+    },
+    "paid": {
+      "buy": "Acheter - {{price}}",
+      "signInToBuy": "Se connecter pour acheter - {{price}}",
+      "purchased": "Acheté",
+      "gifted": "Offert",
+      "priceTitle": "Payant : {{price}}",
+      "purchasedTitle": "Acheté avec ton compte",
+      "giftedTitle": "Offert à ton compte",
+      "updatePaidPack": "Ce pack est devenu payant : achète-le pour recevoir ses mises à jour.",
+      "updatePaidMod": "Ce mod est devenu payant : achète-le pour recevoir ses mises à jour.",
+      "signInTitle": "{{name}} est payant",
+      "signInDetail": "Connecte-toi pour l’acheter, ou pour le télécharger si tu l’as déjà.",
+      "signIn": "Se connecter"
     }
   },
   "modsView": {

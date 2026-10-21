@@ -93,7 +93,10 @@
       "registering": "Creating account…",
       "submitRegister": "Create account"
     },
-    "title": "Account"
+    "title": "Account",
+    "purchases": {
+      "title": "Purchases"
+    }
   },
   "analyzer": {
     "groups": {
@@ -502,7 +505,16 @@
           "notApplicable": "This promo code doesn’t apply to this purchase.",
           "exhausted": "This promo code is no longer available.",
           "alreadyUsed": "You’ve already used this promo code."
-        }
+        },
+        "itemTitle": "Buy {{name}}",
+        "itemPackText": "A Marketplace pack, yours once bought: you download it and receive its updates.",
+        "itemModText": "A Marketplace mod, yours once bought: you download it and receive its updates.",
+        "needItem": "{{name}} is paid: buy it to download it.",
+        "gotItem": "{{name}} is yours.",
+        "installing": "Its download is starting.",
+        "owned": "You already have {{name}}: nothing to pay.",
+        "installNow": "Install now",
+        "later": "Later"
       },
       "history": {
         "title": "My purchases",
@@ -519,7 +531,9 @@
           "failed": "Failed",
           "canceled": "Canceled",
           "refunded": "Refunded"
-        }
+        },
+        "viewItem": "View page",
+        "itemUnknown": "Marketplace pack"
       }
     }
   },
@@ -1322,11 +1336,15 @@
       "downloadFailed": "Download failed (error {{status}}).",
       "emptyResponse": "Empty response.",
       "incomplete": "Incomplete download.",
+      "loginRequiredMod": "This mod is paid: sign in to buy or download it.",
+      "loginRequiredPack": "This pack is paid: sign in to buy or download it.",
       "modUpdateFailed": "Update of {{name}} not installed: {{error}}",
       "noArchiveMod": "This mod doesn’t have an archive yet.",
       "noArchivePack": "This pack doesn’t have an archive yet.",
       "noModLibrary": "Mod library unavailable.",
       "noSpace": "Not enough disk space ({{size}} required).",
+      "purchaseRequiredMod": "This mod is paid: buy it to download it.",
+      "purchaseRequiredPack": "This pack is paid: buy it to download it.",
       "unreachable": "Can’t reach the Marketplace. Check your internet connection."
     },
     "modGone": "This mod is no longer available on the Marketplace.",
@@ -1431,6 +1449,20 @@
       "rating": "Top rated",
       "recent": "Recent",
       "recommended": "Recommended"
+    },
+    "paid": {
+      "buy": "Buy - {{price}}",
+      "signInToBuy": "Sign in to buy - {{price}}",
+      "purchased": "Purchased",
+      "gifted": "Gifted",
+      "priceTitle": "Paid: {{price}}",
+      "purchasedTitle": "Purchased with your account",
+      "giftedTitle": "Gifted to your account",
+      "updatePaidPack": "This pack is now paid: buy it to receive its updates.",
+      "updatePaidMod": "This mod is now paid: buy it to receive its updates.",
+      "signInTitle": "{{name}} is paid",
+      "signInDetail": "Sign in to buy it, or to download it if you already own it.",
+      "signIn": "Sign in"
     }
   },
   "modsView": {

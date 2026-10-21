@@ -12,6 +12,10 @@
 // photos des auteurs par pm-media://avatar/... (même cache).
 // Compte connecté : l'archive, le paquet chiffré et sa clé sont demandés avec son jeton d'accès, pour que le
 // téléchargement lui soit compté (nécessaire pour noter le pack). Sans connexion, le téléchargement reste anonyme.
+// Pack payant (`price`, voir purchases.ts) : refusé à qui ne l'a pas, 401 « pack-login-required » sans compte, 402
+// « pack-purchase-required » avec un compte. L'erreur garde ce code (sans nouvel essai) : l'interface propose alors la
+// connexion ou l'achat. Un pack déjà dans la bibliothèque qui devient payant reste utilisable ; seule sa mise à jour
+// est refusée, avant que la bibliothèque ne change.
 // Maintenance (MaintenanceError, voir http.ts) : jamais réessayée ici. Un téléchargement interrompu par une maintenance
 // garde son fichier partiel et s'arrête ; le service le reprend (requête Range) à la fin de la maintenance. L'admin
 // n'est pas bloqué : les requêtes publiques refusées sont refaites avec son jeton.
@@ -36,10 +40,11 @@ import type {
   MarketTag,
   ProfileLink
 } from '@shared/types'
-import { MOD_GONE, PACK_GONE, type AuthorQuery, type MarketQuery } from '@shared/api'
+import { MOD_GONE, PACK_GONE, PACK_LOGIN_REQUIRED, PACK_PURCHASE_REQUIRED, type AuthorQuery, type MarketQuery } from '@shared/api'
 import { formatBytes as displayBytes } from '@shared/intl'
 import { parsePackPerformance, parsePerformanceDetail, type PerformanceDetail } from '@shared/performance'
 import { toAuthorRef } from './account'
+import { priceOf } from './purchases'
 import { ApiError, MaintenanceError, serverFetch } from './http'
 import type { Report } from './installer'
 import type { ImportProgress, Library, StoredManifest } from './library'
@@ -86,6 +91,8 @@ export interface RemoteSummary {
   commentsLocked?: boolean
   /** Poids sur les performances (null : pas encore analysé ; absent avec une API plus ancienne). */
   performance?: unknown
+  /** Prix en centimes TTC (null : gratuit ; absent avec une API plus ancienne). */
+  price?: number | null
 }
 
 interface RemoteAuthorRef {
@@ -203,6 +210,21 @@ async function problemOf(response: Response): Promise<{ detail: string | null; c
   return { detail: typeof p?.detail === 'string' && p.detail.trim() ? p.detail : null, code: typeof p?.code === 'string' ? p.code : null }
 }
 
+/**
+ * Pack payant refusé (401 « pack-login-required » sans compte, 402 « pack-purchase-required ») : erreur avec son code,
+ * sans nouvel essai ; null pour toute autre réponse.
+ */
+async function paidError(response: Response, kind: MarketKind): Promise<ApiError | null> {
+  if (response.status !== 401 && response.status !== 402) return null
+  const { code } = await problemOf(response)
+  const mod = kind === 'mod'
+  if (code === PACK_LOGIN_REQUIRED)
+    return Object.assign(new ApiError(t(mod ? 'market.errors.loginRequiredMod' : 'market.errors.loginRequiredPack'), 401, PACK_LOGIN_REQUIRED), { fatal: true })
+  if (code === PACK_PURCHASE_REQUIRED)
+    return Object.assign(new ApiError(t(mod ? 'market.errors.purchaseRequiredMod' : 'market.errors.purchaseRequiredPack'), 402, PACK_PURCHASE_REQUIRED), { fatal: true })
+  return null
+}
+
 /** Pack de l'API tel que l'interface le reçoit ; `local` : sa version la plus récente dans la bibliothèque. */
 export function toMarketPack(r: RemoteSummary, local: StoredManifest | undefined): MarketPack {
   const kind = kindOf(r)
@@ -231,6 +253,7 @@ export function toMarketPack(r: RemoteSummary, local: StoredManifest | undefined
     commentsLocked: r.commentsLocked === true,
     // API plus ancienne, sans le champ : rien à afficher (et non « pas encore analysé »).
     ...('performance' in r ? { performance: parsePackPerformance(r.performance) } : {}),
+    price: priceOf(r.price),
     localId: local?.id ?? null,
     updateAvailable: !!local && local.marketplace!.sha256 !== r.sha256
   }
@@ -289,6 +312,8 @@ export class Marketplace {
       throw new Error(t('market.errors.unreachable'))
     }
     if (response.status === 404) throw notFound()
+    const paid = await paidError(response, pathAndQuery.startsWith('/mods') ? 'mod' : 'pack')
+    if (paid) throw paid
     if (!response.ok) throw new Error((await problemOf(response)).detail ?? t('market.errors.badStatus', { status: response.status }))
     return (await response.json()) as T
   }
@@ -468,6 +493,12 @@ export class Marketplace {
     }
     this.catalog = all
     this.complete = complete
+  }
+
+  /** Catalogue d'un pack ou d'un mod du catalogue lu (null s'il n'y est pas). */
+  kindOf(id: string): MarketKind | null {
+    const r = this.catalog.get(id)
+    return r ? kindOf(r) : null
   }
 
   /** Packs et mods de la bibliothèque dont une autre version est en ligne, et ceux qui ne sont plus publiés. */
@@ -775,6 +806,8 @@ export class Marketplace {
     const response = await this.fetchAsAccount(url, { headers, signal })
     if (response.status === 200) start = 0
     else if (response.status !== 206) {
+      const paid = await paidError(response, kind)
+      if (paid) throw paid
       const detail = (await problemOf(response)).detail
       const error = response.status === 404 ? goneError(kind) : new Error(detail ?? t('market.errors.downloadFailed', { status: response.status }))
       if (response.status < 500) Object.assign(error, { fatal: true })

@@ -4176,3 +4176,66 @@ button.google {
   margin: 1px 0 0;
   user-select: text;
 }
+
+/* ------------------------------------------------------------ Packs et mods payants */
+
+/* Prix d'un pack payant, ou « Acheté » / « Offert » quand il est à soi : pastille discrète sur la couverture (en haut à
+   droite, la place de « Du moment » étant en haut à gauche) et sur la fiche. */
+.item-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 11px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 22px;
+  white-space: nowrap;
+}
+.item-badge.is-price {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  color: var(--accent-text);
+}
+.item-badge.is-owned {
+  background: color-mix(in srgb, var(--ok-text) 16%, var(--surface));
+  color: var(--ok-text);
+}
+.item-badge.on-cover {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.item-badge.on-cover.is-price {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.item-badge.inline {
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 7px;
+  font-size: 10px;
+  line-height: 18px;
+  vertical-align: 1px;
+}
+.side .item-badge {
+  align-self: flex-start;
+  margin-bottom: -4px;
+}
+.purchase-what {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.purchase-cover {
+  flex: none;
+  width: 96px;
+  aspect-ratio: 16 / 9;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--media);
+}
+.purchase-list .meta .link {
+  font-size: inherit;
+}

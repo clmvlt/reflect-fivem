@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
-import type { AuthorProfile, AuthorSummary, MarketCategory, MarketKind, MarketPack, MarketPackDetail, MarketPage, PackManifest } from '@shared/types'
+import type { AuthorProfile, AuthorSummary, ItemAccess, MarketCategory, MarketImage, MarketKind, MarketPack, MarketPackDetail, MarketPage, PackManifest } from '@shared/types'
 import { MOD_GONE, PACK_GONE, type MarketQuery } from '@shared/api'
 import { apiError, cleanError, useStore } from '../store'
 import { bytes, longDate as date, marketImageUrl, num, ratingText } from '../lib/format'
@@ -12,6 +12,8 @@ import { isRated, PackReviews, RatingLine, useRatings } from './Reviews'
 import { categoryLabel, localMod, ModMarketAction, useModCategories } from './Mods'
 import { PerfBadge, PerfDetails, PerfFacts, usePerfConfirm, usePerformance, type PerfContext } from './Performance'
 import { estimate, type PackPerformance } from '@shared/performance'
+import { installChoice } from '@shared/billing'
+import { ItemBadge, useItemAccess, usePaidAction } from './Purchase'
 
 /** Vue ouverte dans la Marketplace : fiche d'un pack (ou d'un mod, catalog) ou page d'un auteur. */
 export type MarketView = { kind: 'pack'; id: string; catalog?: MarketKind } | { kind: 'author'; slug: string }
@@ -443,6 +445,7 @@ function FeaturedCard({ item, library, onOpen, onOpenLocal }: Nav & { item: Mark
       {item.cover && !failed && (
         <img className="cover-img" src={marketImageUrl(item.id, item.cover.id, true, item.kind)} alt="" draggable={false} onError={() => setFailed(true)} />
       )}
+      <ItemBadge id={item.id} price={item.price} className="on-cover" />
       <div className="featured-body">
         <div className="featured-name" title={item.name}>
           {item.name}
@@ -528,6 +531,7 @@ function MarketCard({
     <article className={`card clickable ${item.featured ? 'is-featured' : ''}`} onClick={() => onOpen(openItem(item))}>
       <div className="cover">
         {item.featured && <FeaturedBadge kind={item.kind} className="on-cover" />}
+        <ItemBadge id={item.id} price={item.price} className="on-cover" />
         {item.cover && !failed ? (
           <img className="cover-img" src={marketImageUrl(item.id, item.cover.id, true, item.kind)} alt="" draggable={false} onError={() => setFailed(true)} />
         ) : (
@@ -565,23 +569,31 @@ function MarketCard({
   )
 }
 
-/** Pack : Télécharger / Mettre à jour / Dans la bibliothèque. Mod : Installer / Mettre à jour / Activer / Désactiver. */
+/**
+ * Pack : Télécharger / Mettre à jour / Dans la bibliothèque. Mod : Installer / Mettre à jour / Activer / Désactiver.
+ * Pack ou mod payant qu'on n'a pas : « Acheter - 4,00 € » ou « Se connecter pour acheter - 4,00 € » à la place de Télécharger
+ * (ou de Mettre à jour : un pack devenu payant reste utilisable, seule sa mise à jour demande l'achat). `access` : droit
+ * relu à l'ouverture de la fiche.
+ */
 function MarketAction({
   item,
   library,
   onOpenLocal,
-  wide = false
+  wide = false,
+  access
 }: {
-  item: { id: string; sha256: string; kind: MarketKind; name: string; performance?: PackPerformance | null }
+  item: { id: string; sha256: string; kind: MarketKind; name: string; price: number | null; cover?: MarketImage | null; performance?: PackPerformance | null }
   library: PackManifest[]
   onOpenLocal: (id: string) => void
   wide?: boolean
+  access?: ItemAccess | null
 }) {
   const { run } = useStore()
   const { t } = useTranslation()
   const confirmHeavy = usePerfConfirm()
-  if (item.kind === 'mod') return <ModMarketAction item={item} wide={wide} />
   const { local, update } = localState(item, library)
+  const paid = usePaidAction(item, { access, update })
+  if (item.kind === 'mod') return <ModMarketAction item={item} wide={wide} access={access} />
   const install = async (): Promise<void> => {
     // Nouvelle version d'un pack déjà choisi : pas de nouvelle confirmation.
     if (!update && !(await confirmHeavy(item, t('marketplace.action.downloadAnyway')))) return
@@ -601,15 +613,21 @@ function MarketAction({
     <>
       {update && !wide && <span className="accent-text small">{t('marketplace.action.newVersion')}</span>}
       <div className="spacer" />
-      <button className={`primary ${wide ? 'wide' : ''}`} onClick={() => void install()}>
-        {update ? t('marketplace.action.update') : t('marketplace.action.download')}
-      </button>
+      {paid ? (
+        <button className={`primary ${wide ? 'wide' : ''}`} onClick={paid.run}>
+          {paid.label}
+        </button>
+      ) : (
+        <button className={`primary ${wide ? 'wide' : ''}`} onClick={() => void install()}>
+          {update ? t('marketplace.action.update') : t('marketplace.action.download')}
+        </button>
+      )}
     </>
   )
 }
 
 function MarketDetail({ id, catalog, back, onOpen, onOpenLocal, onSignIn }: Nav & { id: string; catalog: MarketKind; back: ReactNode; onSignIn: () => void }) {
-  const { overview, run } = useStore()
+  const { overview, account, run } = useStore()
   const { t, i18n } = useTranslation()
   const categories = useModCategories()
   const [pack, setPack] = useState<MarketPackDetail | null>(null)
@@ -619,6 +637,8 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal, onSignIn }: Nav 
   const [installs, setInstalls] = useState(0)
   const dl = useDownload(pack?.id)
   const ratings = useRatings(pack?.id ?? null, catalog)
+  // Pack payant : prix et droit de le télécharger, relus à l'ouverture de la fiche (connexion, achat compris).
+  const access = useItemAccess(catalog, pack?.id)
   const downloading = !!dl
   const wasDownloading = useRef(false)
 
@@ -674,6 +694,11 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal, onSignIn }: Nav 
   const { local, update } = mod ? { local: localMod(pack.id, overview.mods), update: false } : localState(pack, overview.library)
   const modUpdate = mod && !!local && !!pack.sha256 && local.marketplace!.sha256 !== pack.sha256
   const category = mod ? categoryLabel(pack.category, categories) : null
+  const price = access ? access.price : pack.price
+  // Pack devenu payant, déjà dans la bibliothèque : sa mise à jour demande l'achat.
+  const paidUpdate =
+    (update || modUpdate) &&
+    installChoice({ price, canDownload: access ? access.canDownload : overview.owned.some((o) => o.packId === pack.id), signedIn: !!account }) !== 'download'
 
   // Clé : la fiche chargée remplace « Chargement… » par une nouvelle page, animée à son arrivée.
   return (
@@ -691,6 +716,7 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal, onSignIn }: Nav 
 
         <aside className="side">
           {pack.featured && <FeaturedBadge kind={pack.kind} />}
+          <ItemBadge id={pack.id} price={price} currency={access?.currency} />
           <h1 className="pack-title">{pack.name}</h1>
           {pack.author && (
             <div className="tags by">
@@ -702,10 +728,11 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal, onSignIn }: Nav 
           </button>
           {pack.summary && <p className="summary">{pack.summary}</p>}
           <div className={mod ? 'side-actions mod-actions' : 'side-actions row-actions'}>
-            {dl ? <DownloadInline d={dl} /> : <MarketAction item={pack} library={overview.library} onOpenLocal={onOpenLocal} wide />}
+            {dl ? <DownloadInline d={dl} /> : <MarketAction item={pack} library={overview.library} onOpenLocal={onOpenLocal} wide access={access} />}
           </div>
-          {update && !dl && <p className="hint">{t('marketplace.detail.updatePack')}</p>}
-          {modUpdate && !dl && <p className="hint">{t('marketplace.detail.updateMod')}</p>}
+          {paidUpdate && !dl && <p className="hint">{t(mod ? 'marketplace.paid.updatePaidMod' : 'marketplace.paid.updatePaidPack')}</p>}
+          {update && !paidUpdate && !dl && <p className="hint">{t('marketplace.detail.updatePack')}</p>}
+          {modUpdate && !paidUpdate && !dl && <p className="hint">{t('marketplace.detail.updateMod')}</p>}
           {pack.protected && <p className="hint">{t(mod ? 'common.protectedMod' : 'common.protectedPack')}</p>}
           <dl className="facts">
             {category && (

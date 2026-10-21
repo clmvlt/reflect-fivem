@@ -132,16 +132,21 @@ export class DownloadQueue {
     }
     void this.opts.run(entry.job, ctx).then(
       (result) => this.finish(entry, { ok: true, result }),
-      (err: unknown) =>
-        this.finish(entry, entry.abort.signal.aborted ? { ok: false, cancelled: true } : { ok: false, error: (err as Error)?.message ?? String(err) })
+      (err: unknown) => {
+        if (entry.abort.signal.aborted) return this.finish(entry, { ok: false, cancelled: true })
+        // Code de l'erreur de l'API (pack payant refusé : l'interface propose la connexion ou l'achat).
+        const code = (err as { code?: unknown })?.code
+        this.finish(entry, { ok: false, error: (err as Error)?.message ?? String(err), ...(typeof code === 'string' ? { code } : {}) })
+      }
     )
   }
 
-  private finish(entry: Entry, outcome: Pick<DownloadDone, 'ok' | 'cancelled' | 'error' | 'result'>): void {
+  private finish(entry: Entry, outcome: Pick<DownloadDone, 'ok' | 'cancelled' | 'error' | 'code' | 'result'>): void {
     this.entries = this.entries.filter((e) => e !== entry)
     this.current = null
     this.emit(true)
-    this.opts.onDone({ id: entry.job.id, kind: entry.job.kind, name: entry.job.name, ...outcome })
+    const update = entry.job.localId ? { update: true } : {}
+    this.opts.onDone({ id: entry.job.id, kind: entry.job.kind, name: entry.job.name, ...update, ...outcome })
     this.next()
   }
 

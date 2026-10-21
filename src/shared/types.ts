@@ -400,6 +400,10 @@ export interface DownloadDone {
   ok: boolean
   cancelled?: boolean
   error?: string
+  /** Code de l'erreur de l'API (pack payant : PACK_LOGIN_REQUIRED, PACK_PURCHASE_REQUIRED). */
+  code?: string
+  /** Mise à jour d'un pack (ou d'un mod) déjà dans la bibliothèque. */
+  update?: boolean
   result?: unknown
 }
 
@@ -425,6 +429,8 @@ export interface Overview {
    * ceux retirés de la Marketplace.
    */
   market: { updates: string[]; gone: string[] }
+  /** Packs et mods payants du compte connecté (achetés ou offerts), derniers connus ; vide sans compte. */
+  owned: OwnedPack[]
   /** Packs de « Créer ton pack » dont la création a été supprimée du compte. */
   builder: { gone: string[] }
   /** Téléchargements arrêtés par une maintenance, repris automatiquement à sa fin. */
@@ -520,6 +526,8 @@ export interface MarketPack {
    * afficher).
    */
   performance?: PackPerformance | null
+  /** Prix en centimes TTC, fixé par l'admin ; null : gratuit (absent d'une API plus ancienne : gratuit). */
+  price: number | null
   /** Pack correspondant dans la bibliothèque (null s'il n'a pas été téléchargé). */
   localId: string | null
   /** La version en ligne diffère de celle de la bibliothèque. */
@@ -1093,15 +1101,64 @@ export interface BuildPlan {
   locked: boolean
 }
 
-/** Achat : un pack de plus (un crédit), ou le déblocage d'un pack gratuit. */
-export type BillingProduct = 'pack' | 'unlock'
+/** Achat de « Créer ton pack » : un pack de plus (un crédit), ou le déblocage d'un pack gratuit. */
+export type BuilderProduct = 'pack' | 'unlock'
 
-/** État de la vente pour le compte connecté (GET /builder/billing). Montants en centimes TTC. */
-export interface AccountBilling {
+/** Achat : ceux de « Créer ton pack », ou un pack (ou un mod) payant du catalogue (`item`). */
+export type BillingProduct = BuilderProduct | 'item'
+
+/**
+ * Vente en public (GET /billing/info, complété par l'application) : ce qu'il faut pour acheter un pack ou un mod du
+ * catalogue sans accès à « Créer ton pack ». AccountBilling en a aussi tous les champs.
+ */
+export interface SaleInfo {
+  currency: string
+  /** Le paiement est possible (Stripe configuré). */
+  checkout: boolean
+  /** Paiements de test (clés Stripe de test de l'API de dev) : rien n'est débité. */
+  testMode: boolean
+  /** Conditions générales de vente du site. */
+  termsUrl: string | null
+  /** Discord (support), null sans lien. */
+  supportUrl: string | null
+}
+
+/** Droit d'un compte (ou d'un visiteur) sur un pack ou un mod du catalogue (GET /{packs|mods}/{id}/access). */
+export interface ItemAccess {
+  packId: string
+  /** Centimes TTC ; null : gratuit. */
+  price: number | null
+  currency: string
+  /** Payant et à lui : acheté, offert, ou il en est l'auteur ou l'admin. */
+  owned: boolean
+  canDownload: boolean
+}
+
+/** Pack ou mod payant acheté (`purchase`) ou offert par l'admin (`admin`) au compte connecté (GET /me/packs/owned). */
+export interface OwnedPack {
+  packId: string
+  kind: MarketKind
+  slug: string
+  name: string
+  /** Toujours visible sur la Marketplace. */
+  available: boolean
+  source: 'purchase' | 'admin'
+  purchaseId: string | null
+  since: string
+}
+
+/** Commande d'un pack ou d'un mod payant : CGV acceptées et renonciation au droit de rétractation, obligatoires. */
+export interface ItemCheckoutInput {
+  promoCode?: string | null
+  acceptTerms: boolean
+  waiveWithdrawal: boolean
+}
+
+/** État de la vente de « Créer ton pack » pour le compte connecté (GET /builder/billing). Montants en centimes TTC. */
+export interface AccountBilling extends SaleInfo {
   enabled: boolean
   /** Tout est illimité (admin, ou vente coupée) : aucune offre à montrer. */
   unlimited: boolean
-  currency: string
   prices: { pack: number; unlock: number }
   free: { packs: number; used: number; remaining: number; edits: number }
   credits: { total: number; used: number; available: number }
@@ -1110,18 +1167,10 @@ export interface AccountBilling {
   canCreate: boolean
   builds: number
   maxBuilds: number
-  /** Le paiement est possible (Stripe configuré). */
-  checkout: boolean
-  /** Conditions générales de vente du site. */
-  termsUrl: string | null
-  /** Discord (support), null sans lien. */
-  supportUrl: string | null
-  /** Paiements de test (clés Stripe de test de l'API de dev) : rien n'est débité. */
-  testMode: boolean
 }
 
 export interface QuoteInput {
-  product: BillingProduct
+  product: BuilderProduct
   /** Pack gratuit à débloquer (achat « unlock »). */
   buildId?: string | null
   promoCode?: string | null
@@ -1151,6 +1200,11 @@ export interface Purchase {
   product: BillingProduct
   buildId: string | null
   buildName: string | null
+  /** Pack ou mod du catalogue (achat `item`). */
+  packId: string | null
+  packName: string | null
+  /** Catalogue du pack, quand l'application le connaît (packs à soi, catalogue lu) ; null sinon. */
+  packKind: MarketKind | null
   currency: string
   baseAmount: number
   discount: number

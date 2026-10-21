@@ -130,7 +130,7 @@ export function avatarMediaUrl(apiPath: string | null | undefined): string | nul
 }
 
 export function deviceName(): string {
-  return `Reflect FiveM — ${os.hostname()}`.slice(0, 80)
+  return `Reflect FiveM - ${os.hostname()}`.slice(0, 80)
 }
 
 // ------------------------------------------------------------------ réponses de l'API

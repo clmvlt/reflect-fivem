@@ -1107,7 +1107,7 @@ function RecapPanel({
         <>
           <dl className="facts builder-facts">
             <dt>{t('builder.recap.size')}</dt>
-            <dd>{p ? bytes(p.estimate.size) : '—'}</dd>
+            <dd>{p ? bytes(p.estimate.size) : '-'}</dd>
           </dl>
           {p && <PcEstimate perf={p.estimate.performance} />}
           {preview.error && <p className="warn-text small">{preview.error}</p>}

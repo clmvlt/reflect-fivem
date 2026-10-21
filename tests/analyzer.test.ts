@@ -14,7 +14,7 @@ const destOf = (map: ReturnType<typeof resolveInstallMap>, rel: string): string 
   return m ? `${m.dest.root}:${m.dest.path}` : undefined
 }
 
-describe('analyzePack — pack réel BH 1960 (enb / mods / plugins)', () => {
+describe('analyzePack - pack réel BH 1960 (enb / mods / plugins)', () => {
   const raw = fixture('bh1960-listing.json')
   const { entries } = stripWrapper(raw)
   const result = analyzePack(entries)
@@ -59,7 +59,7 @@ describe('analyzePack — pack réel BH 1960 (enb / mods / plugins)', () => {
   })
 })
 
-describe('analyzePack — structures courantes', () => {
+describe('analyzePack - structures courantes', () => {
   it('pack « tout en vrac » : rpf, ReShade, ENB et readme mélangés', () => {
     const { entries } = stripWrapper(
       files(

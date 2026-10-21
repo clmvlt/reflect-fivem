@@ -446,7 +446,7 @@
         "credits_one": "{{n}} pack credit available",
         "credits_other": "{{n}} pack credits available",
         "creditsTitle": "One credit = one pack you can edit as much as you like.",
-        "buy": "Buy a pack — {{price}}",
+        "buy": "Buy a pack - {{price}}",
         "unavailable": "Payment unavailable for now",
         "history": "My purchases"
       },
@@ -455,16 +455,16 @@
         "card": "Test payment: card 4242 4242 4242 4242, any future date, any CVC. Nothing is actually charged."
       },
       "plan": {
-        "free_one": "Free — {{n}} edit left",
-        "free_other": "Free — {{n}} edits left",
-        "locked": "Free — to unlock",
+        "free_one": "Free - {{n}} edit left",
+        "free_other": "Free - {{n}} edits left",
+        "locked": "Free - to unlock",
         "unlimited": "Unlimited",
         "open": "Complimentary",
         "edit_one": "This free pack can be edited {{n}} time: the edit will be used when you save.",
         "edit_other": "This free pack can still be edited {{n}} times: each saved change uses one.",
         "lockedText": "This free pack has already been edited. Unlock it to edit it as much as you like.",
         "useCredit": "Use a credit",
-        "unlock": "Unlock — {{price}}",
+        "unlock": "Unlock - {{price}}",
         "deleteFree": "A deleted free pack isn’t given back.",
         "deleteCredit": "Its credit becomes available for another pack."
       },

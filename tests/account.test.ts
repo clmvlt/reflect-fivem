@@ -278,7 +278,7 @@ describe('compte', () => {
     const me = await account.login(' joueur@example.com ', 'motdepasse')
     expect(me.avatarUrl).toBe('pm-media://avatar/12/3f2a9c1e-77aa-4b1b-8a7e-0c2d8a9b1f00')
     expect(changes).toEqual([me])
-    expect(body(calls[0].init)).toMatchObject({ login: 'joueur@example.com', password: 'motdepasse', deviceName: expect.stringMatching(/^Reflect FiveM — /) })
+    expect(body(calls[0].init)).toMatchObject({ login: 'joueur@example.com', password: 'motdepasse', deviceName: expect.stringMatching(/^Reflect FiveM - /) })
     expect(await stored()).toMatchObject({ accessToken: 'at_1', refreshToken: 'rt_1', me: { id: 12 } })
 
     await account.profile()
@@ -504,7 +504,7 @@ describe('compte', () => {
     const me = await account.refresh()
     expect(me?.displayName).toBe('Joueur')
     expect(calls.map((c) => `${c.init.method} ${c.route} ${bearer(c.init)}`)).toEqual(['POST /auth/app/migrate Bearer pm_ancien', 'GET /auth/me Bearer at_1'])
-    expect(body(calls[0].init)).toEqual({ deviceName: expect.stringMatching(/^Reflect FiveM — /) })
+    expect(body(calls[0].init)).toEqual({ deviceName: expect.stringMatching(/^Reflect FiveM - /) })
     const saved = await stored()
     expect(saved).toMatchObject({ accessToken: 'at_1', refreshToken: 'rt_1' })
     expect(saved).not.toHaveProperty('token')

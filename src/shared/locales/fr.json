@@ -446,7 +446,7 @@
         "credits_one": "{{n}} crédit de pack libre",
         "credits_other": "{{n}} crédits de pack libres",
         "creditsTitle": "Un crédit = un pack modifiable à l’infini.",
-        "buy": "Acheter un pack — {{price}}",
+        "buy": "Acheter un pack - {{price}}",
         "unavailable": "Paiement indisponible pour le moment",
         "history": "Mes achats"
       },
@@ -455,16 +455,16 @@
         "card": "Paiement de test : carte 4242 4242 4242 4242, date future, CVC au choix. Aucun vrai débit."
       },
       "plan": {
-        "free_one": "Gratuit — {{n}} modification restante",
-        "free_other": "Gratuit — {{n}} modifications restantes",
-        "locked": "Gratuit — à débloquer",
+        "free_one": "Gratuit - {{n}} modification restante",
+        "free_other": "Gratuit - {{n}} modifications restantes",
+        "locked": "Gratuit - à débloquer",
         "unlimited": "Illimité",
         "open": "Offert",
         "edit_one": "Ce pack gratuit peut être modifié {{n}} fois : la modification sera utilisée à l’enregistrement.",
         "edit_other": "Ce pack gratuit peut encore être modifié {{n}} fois : chaque enregistrement d’un changement en utilise une.",
         "lockedText": "Ce pack gratuit a déjà été modifié. Débloque-le pour le modifier à l’infini.",
         "useCredit": "Utiliser un crédit",
-        "unlock": "Débloquer — {{price}}",
+        "unlock": "Débloquer - {{price}}",
         "deleteFree": "Un pack gratuit supprimé n’est pas rendu.",
         "deleteCredit": "Son crédit redevient disponible pour un autre pack."
       },

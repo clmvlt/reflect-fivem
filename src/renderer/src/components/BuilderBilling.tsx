@@ -70,7 +70,7 @@ export function OfferPanel({ billing }: { billing: AccountBilling | null }) {
   )
 }
 
-/** Formule d'une création : « Gratuit — 1 modification restante », « Gratuit — à débloquer », « Illimité », « Offert ». */
+/** Formule d'une création : « Gratuit - 1 modification restante », « Gratuit - à débloquer », « Illimité », « Offert ». */
 export function PlanBadge({ plan, billing }: { plan: BuildPlan; billing: AccountBilling | null }) {
   const { t } = useTranslation()
   const badge = planBadge(plan, billing)

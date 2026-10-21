@@ -295,7 +295,7 @@ function ParamRow({ file, param, adjustments, start, onChange }: { file: string;
         {param.label && <div className="meta">{param.name}</div>}
       </div>
       <ParamInput param={param} value={value} label={label} onSet={set} />
-      <button className="link reset-link" onClick={() => set(null)} disabled={mine === undefined} title={t('builder.tool.startValueTitle', { value: baseValue(param) || '—' })}>
+      <button className="link reset-link" onClick={() => set(null)} disabled={mine === undefined} title={t('builder.tool.startValueTitle', { value: baseValue(param) || '-' })}>
         {t('builder.tool.startValue')}
       </button>
     </li>

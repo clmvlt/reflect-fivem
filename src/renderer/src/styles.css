@@ -4182,6 +4182,32 @@ button.google {
   user-select: text;
 }
 
+/* Brouillon (pas encore publié) vu par l'admin dans la Marketplace : en bas à gauche de la couverture, et sur la fiche. */
+.draft-badge {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 11px;
+  background: var(--warning-bg);
+  color: var(--warn-text);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 22px;
+  white-space: nowrap;
+}
+.draft-badge.on-cover {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.side .draft-badge {
+  margin-bottom: -4px;
+}
+
 /* ------------------------------------------------------------ Packs et mods payants */
 
 /* Prix d'un pack payant, ou « Acheté » / « Offert » quand il est à soi : pastille discrète sur la couverture (en haut à

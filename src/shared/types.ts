@@ -528,6 +528,8 @@ export interface MarketPack {
   performance?: PackPerformance | null
   /** Prix en centimes TTC, fixé par l'admin ; null : gratuit (absent d'une API plus ancienne : gratuit). */
   price: number | null
+  /** Faux pour un brouillon (pas encore publié), que seul l'admin connecté voit. */
+  published: boolean
   /** Pack correspondant dans la bibliothèque (null s'il n'a pas été téléchargé). */
   localId: string | null
   /** La version en ligne diffère de celle de la bibliothèque. */

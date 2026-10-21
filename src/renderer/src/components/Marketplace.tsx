@@ -163,6 +163,8 @@ function useMarketPage(query: MarketQuery): { page: MarketPage | null; error: st
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const { i18n } = useTranslation()
+  const { account } = useStore()
+  const admin = !!account?.admin
   const key = JSON.stringify(query)
 
   const load = useCallback(async () => {
@@ -177,10 +179,11 @@ function useMarketPage(query: MarketQuery): { page: MarketPage | null; error: st
     }
   }, [key])
 
-  // Langue changée : page relue (textes et messages d'erreur de l'API).
+  // Langue changée : page relue (textes et messages d'erreur de l'API) ; admin connecté ou déconnecté : brouillons
+  // ajoutés ou retirés.
   useEffect(() => {
     void load()
-  }, [load, i18n.language])
+  }, [load, i18n.language, admin])
 
   return { page, error, loading, reload: () => void load() }
 }
@@ -410,6 +413,16 @@ function FeaturedBadge({ kind, className = '' }: { kind: MarketKind; className?:
   )
 }
 
+/** Brouillon (pas encore publié) : seul l'admin connecté le voit dans la Marketplace. */
+function DraftBadge({ className = '' }: { className?: string }) {
+  const { t } = useTranslation()
+  return (
+    <span className={`draft-badge ${className}`} title={t('marketplace.draft.title')}>
+      {t('marketplace.draft.badge')}
+    </span>
+  )
+}
+
 const openItem = (item: MarketPack): MarketView => ({ kind: 'pack', id: item.id, catalog: item.kind })
 
 /**
@@ -532,6 +545,7 @@ function MarketCard({
       <div className="cover">
         {item.featured && <FeaturedBadge kind={item.kind} className="on-cover" />}
         <ItemBadge id={item.id} price={item.price} className="on-cover" />
+        {!item.published && <DraftBadge className="on-cover" />}
         {item.cover && !failed ? (
           <img className="cover-img" src={marketImageUrl(item.id, item.cover.id, true, item.kind)} alt="" draggable={false} onError={() => setFailed(true)} />
         ) : (
@@ -717,6 +731,7 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal, onSignIn }: Nav 
 
         <aside className="side">
           {pack.featured && <FeaturedBadge kind={pack.kind} />}
+          {!pack.published && <DraftBadge />}
           <ItemBadge id={pack.id} price={price} currency={access?.currency} />
           <h1 className="pack-title">{pack.name}</h1>
           {pack.author && (

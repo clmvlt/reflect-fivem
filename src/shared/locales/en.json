@@ -1430,6 +1430,10 @@
       "noneMod": "No mods published yet.",
       "nonePack": "No packs published yet."
     },
+    "draft": {
+      "badge": "Unpublished",
+      "title": "Draft: only visible to admins."
+    },
     "featured": {
       "badgeMod": "Featured mod",
       "badgePack": "Featured pack",

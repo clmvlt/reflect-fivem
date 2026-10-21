@@ -1430,6 +1430,10 @@
       "noneMod": "Aucun mod publié pour le moment.",
       "nonePack": "Aucun pack publié pour le moment."
     },
+    "draft": {
+      "badge": "Non publié",
+      "title": "Brouillon : visible seulement par l'admin."
+    },
     "featured": {
       "badgeMod": "Mod du moment",
       "badgePack": "Pack du moment",

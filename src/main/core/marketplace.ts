@@ -18,7 +18,10 @@
 // est refusée, avant que la bibliothèque ne change.
 // Maintenance (MaintenanceError, voir http.ts) : jamais réessayée ici. Un téléchargement interrompu par une maintenance
 // garde son fichier partiel et s'arrête ; le service le reprend (requête Range) à la fin de la maintenance. L'admin
-// n'est pas bloqué : les requêtes publiques refusées sont refaites avec son jeton.
+// n'est pas bloqué : ses requêtes portent toujours son jeton.
+// Admin connecté : la liste demande aussi les brouillons (`drafts=true`, packs pas encore publiés dont l'archive est
+// prête), pour les essayer avant de les publier ; l'API les ignore pour tout autre compte. Ils sont marqués
+// `published: false`.
 
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream, promises as fs } from 'node:fs'
@@ -93,6 +96,8 @@ export interface RemoteSummary {
   performance?: unknown
   /** Prix en centimes TTC (null : gratuit ; absent avec une API plus ancienne). */
   price?: number | null
+  /** Faux pour un brouillon, servi à l'admin seulement (absent avec une API plus ancienne : publié). */
+  published?: boolean
 }
 
 interface RemoteAuthorRef {
@@ -254,6 +259,7 @@ export function toMarketPack(r: RemoteSummary, local: StoredManifest | undefined
     // API plus ancienne, sans le champ : rien à afficher (et non « pas encore analysé »).
     ...('performance' in r ? { performance: parsePackPerformance(r.performance) } : {}),
     price: priceOf(r.price),
+    published: r.published !== false,
     localId: local?.id ?? null,
     updateAvailable: !!local && local.marketplace!.sha256 !== r.sha256
   }
@@ -348,14 +354,17 @@ export class Marketplace {
     return send(next)
   }
 
-  /** Requête anonyme ; refusée pour maintenance, refaite avec le jeton de l'admin connecté (jamais bloqué). */
+  /** Admin connecté : brouillons visibles, jamais bloqué par une maintenance. */
+  private admin(): boolean {
+    return !!this.auth?.isAdmin?.()
+  }
+
+  /**
+   * Requête anonyme ; celle de l'admin connecté porte son jeton (fiches, images et téléchargements des brouillons, et
+   * jamais de blocage pour maintenance).
+   */
   private async fetchPublic(url: string, init: { signal: AbortSignal }): Promise<Response> {
-    try {
-      return await apiFetch(url, init)
-    } catch (err) {
-      if (err instanceof MaintenanceError && this.auth?.isAdmin?.()) return this.fetchAsAccount(url, init)
-      throw err
-    }
+    return this.admin() ? this.fetchAsAccount(url, init) : apiFetch(url, init)
   }
 
   private async localIndex(kind: MarketKind = 'pack'): Promise<Map<string, StoredManifest>> {
@@ -387,6 +396,7 @@ export class Marketplace {
     // « Compatibles avec mon PC » seulement : sinon, rien de la machine ne part vers l'API.
     if (Number.isInteger(query.vram) && query.vram! > 0) params.set('vram', String(query.vram))
     if (Number.isInteger(query.gpuClass) && query.gpuClass! >= 0) params.set('gpuClass', String(query.gpuClass))
+    if (this.admin()) params.set('drafts', 'true')
     const [page, index] = await Promise.all([this.get<RemotePage>(`${catalogPath(kind)}?${params}`), this.localIndex(kind)])
     for (const r of page.items) this.catalog.set(r.id, r)
     return { items: page.items.map((r) => toMarketPack(r, index.get(r.id))), page: page.page, total: page.total, totalPages: page.totalPages }
@@ -480,7 +490,8 @@ export class Marketplace {
       if (kind === 'mod' && !this.modLibrary) continue
       try {
         for (let page = 0; page < 50; page++) {
-          const result = await this.get<RemotePage>(`${catalogPath(kind)}?page=${page}&size=100`)
+          // Brouillons de l'admin compris : un brouillon téléchargé n'est pas marqué retiré.
+          const result = await this.get<RemotePage>(`${catalogPath(kind)}?page=${page}&size=100${this.admin() ? '&drafts=true' : ''}`)
           for (const r of result.items) all.set(r.id, { ...r, kind: r.kind ?? kind })
           if (page + 1 >= result.totalPages) break
         }

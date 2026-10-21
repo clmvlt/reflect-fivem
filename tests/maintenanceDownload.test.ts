@@ -150,7 +150,7 @@ describe('téléchargement pendant une maintenance', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('l’admin connecté n’est pas bloqué : la requête refusée est refaite avec son jeton', async () => {
+  it('l’admin connecté n’est pas bloqué : ses requêtes portent son jeton', async () => {
     const { lib } = fakeLibrary()
     const auth = { accessToken: async () => 'at_admin', renewRejected: async () => 'at_admin', isAdmin: () => true }
     const market = new Marketplace(API, path.join(dir, 'cache'), () => lib, auth)
@@ -158,6 +158,6 @@ describe('téléchargement pendant une maintenance', () => {
       new Headers(init?.headers).get('Authorization') === 'Bearer at_admin' ? json(200, { items: [], page: 0, size: 24, total: 0, totalPages: 0 }) : maintenance503()
     )
     await expect(market.list({})).resolves.toMatchObject({ items: [], total: 0 })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })

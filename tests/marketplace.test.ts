@@ -121,6 +121,22 @@ describe('requêtes de la Marketplace', () => {
     expect(fetchMock.mock.calls.map(header)).toEqual([undefined, undefined])
   })
 
+  it('admin connecté : brouillons demandés avec son jeton ; sinon, requête anonyme sans brouillons', async () => {
+    const page = { items: [remote({ published: false })], page: 0, size: 24, total: 1, totalPages: 1 }
+    fetchMock.mockImplementation(async () => json(200, page))
+    const auth = (admin: boolean) => ({ accessToken: async () => 'at_1', renewRejected: async () => null, isAdmin: () => admin })
+    const listed = await new Marketplace('https://api.test/api', 'cache', () => library, auth(true)).list({})
+    expect(listed.items[0].published).toBe(false)
+    await new Marketplace('https://api.test/api', 'cache', () => library, auth(false)).list({})
+    const drafts = fetchMock.mock.calls.map((call) => new URL(call[0]).searchParams.get('drafts'))
+    expect(drafts).toEqual(['true', null])
+    expect(fetchMock.mock.calls.map(header)).toEqual(['Bearer at_1', undefined])
+  })
+
+  it('publié par défaut (API plus ancienne, sans le champ)', () => {
+    expect(toMarketPack(remote(), undefined).published).toBe(true)
+  })
+
   it('erreur de l’API : son message (detail)', async () => {
     fetchMock.mockResolvedValue(json(403, { detail: 'Ce pack est réservé.', code: 'not-allowed' }))
     await expect(new Marketplace('https://api.test/api', 'cache', () => library).packageKey('p1')).rejects.toThrow('Ce pack est réservé.')

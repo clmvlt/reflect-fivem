@@ -11,6 +11,14 @@ export function saleActive(billing: AccountBilling | null | undefined): billing 
   return !!billing && billing.enabled && !billing.unlimited
 }
 
+/**
+ * Paiements de test (API de dev, clés Stripe de test) : badge « Mode test » sur « Mon offre » et dans la fenêtre
+ * d'achat, avec la carte de test à utiliser. Rien de tout cela pour des paiements réels.
+ */
+export function isTestMode(billing: AccountBilling | null | undefined): boolean {
+  return !!billing && billing.testMode === true
+}
+
 /** Prix en centimes dans la langue affichée (« 4,00 € », « €4.00 »). */
 export function formatPrice(cents: number, currency: string): string {
   const code = (currency || 'eur').toUpperCase()

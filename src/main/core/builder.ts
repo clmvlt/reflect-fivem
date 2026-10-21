@@ -665,7 +665,9 @@ export function toBilling(raw: unknown): AccountBilling {
     checkout: o.checkout === true,
     termsUrl: webUrl(o.termsUrl),
     // Ouvert dans le navigateur : https seulement, comme les liens du site.
-    supportUrl: httpsUrl(o.supportUrl)
+    supportUrl: httpsUrl(o.supportUrl),
+    // Absent (API d'avant le mode test) : paiements réels.
+    testMode: o.testMode === true
   }
 }
 

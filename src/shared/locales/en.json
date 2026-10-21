@@ -443,6 +443,10 @@
         "unavailable": "Payment unavailable for now",
         "history": "My purchases"
       },
+      "test": {
+        "badge": "Test mode",
+        "card": "Test payment: card 4242 4242 4242 4242, any future date, any CVC. Nothing is actually charged."
+      },
       "plan": {
         "free_one": "Free — {{n}} edit left",
         "free_other": "Free — {{n}} edits left",

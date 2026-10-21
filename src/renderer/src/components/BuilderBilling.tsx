@@ -8,7 +8,7 @@ import { Trans, useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import type { AccountBilling, BillingProduct, BuildPlan, Purchase, Quote } from '@shared/types'
 import { BUILDER_EDIT_LOCKED, BUILDER_PAYMENT_REQUIRED } from '@shared/api'
-import { canPay, failureOf, formatPrice, planBadge, planBanner, purchaseOutcome, saleActive } from '@shared/billing'
+import { canPay, failureOf, formatPrice, isTestMode, planBadge, planBanner, purchaseOutcome, saleActive } from '@shared/billing'
 import { formatDateTime } from '@shared/intl'
 import { apiError, cleanError, useStore } from '../store'
 import { fullDate, num, q } from '../lib/format'
@@ -57,6 +57,12 @@ export function useBilling(): { billing: AccountBilling | null; reload: () => vo
 // ---------------------------------------------------------------------------
 // Accueil, cartes, assistant
 
+/** « Mode test » : paiements de test de l'API de dev (clés Stripe de test, rien n'est débité). */
+function TestBadge() {
+  const { t } = useTranslation()
+  return <span className="badge test-badge">{t('builder.billing.test.badge')}</span>
+}
+
 /** « Mon offre » : packs gratuits restants, crédits libres, achat d'un pack et historique. Caché sans vente. */
 export function OfferPanel({ billing }: { billing: AccountBilling | null }) {
   const { t } = useTranslation()
@@ -66,7 +72,10 @@ export function OfferPanel({ billing }: { billing: AccountBilling | null }) {
   return (
     <section className="builder-offer" aria-label={t('builder.billing.offer.title')}>
       <div className="builder-offer-text">
-        <span className="builder-offer-title">{t('builder.billing.offer.title')}</span>
+        <span className="builder-offer-title">
+          {t('builder.billing.offer.title')}
+          {isTestMode(billing) && <TestBadge />}
+        </span>
         <span className="muted small" title={t('builder.billing.offer.creditsTitle')}>
           {t('builder.billing.offer.free', { count: billing.free.remaining, n: num(billing.free.remaining) })} ·{' '}
           {t('builder.billing.offer.credits', { count: billing.credits.available, n: num(billing.credits.available) })}
@@ -508,6 +517,13 @@ function PurchaseDialog({ request, onClose }: { request: PurchaseRequest; onClos
       <span className="bar-text">{note.text}</span>
     </div>
   )
+  // Paiement de test : la carte de test à saisir sur la page Stripe (copiable).
+  const test = isTestMode(billing) && (
+    <div className="purchase-test">
+      <TestBadge />
+      <span className="hint">{t('builder.billing.test.card')}</span>
+    </div>
+  )
   const support = billing?.supportUrl && (
     <p className="hint purchase-support">
       <Trans i18nKey="builder.billing.dialog.support" components={{ discord: <button className="link" onClick={() => openLink(billing.supportUrl)} /> }} />
@@ -552,6 +568,7 @@ function PurchaseDialog({ request, onClose }: { request: PurchaseRequest; onClos
         <p className="purchase-waiting loading">{t('builder.billing.dialog.waiting')}</p>
         <p className="hint">{t('builder.billing.dialog.waitingHint')}</p>
         {p.expiresAt && <p className="hint">{t('builder.billing.dialog.expiresAt', { time: formatDateTime(p.expiresAt, { timeStyle: 'short' }) })}</p>}
+        {test}
         {notice}
         {support}
       </Modal>
@@ -657,6 +674,7 @@ function PurchaseDialog({ request, onClose }: { request: PurchaseRequest; onClos
                 <span>{t('builder.billing.dialog.withdrawal')}</span>
               </label>
             </div>
+            {test}
             {!billing.checkout && amount !== 0 && <p className="hint">{t('builder.billing.offer.unavailable')}</p>}
           </>
         )}

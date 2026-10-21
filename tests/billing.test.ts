@@ -4,7 +4,7 @@
 // paiement selon son statut, et bouton « Payer » inactif sans les deux cases.
 import { describe, expect, it, vi } from 'vitest'
 import { BUILDER_EDIT_LOCKED, BUILDER_PAYMENT_REQUIRED, readApiError, tagApiError } from '@shared/api'
-import { canPay, deleteNote, failureOf, formatPrice, isCheckoutUrl, needsPack, planBadge, planBanner, purchaseOutcome, saleActive } from '@shared/billing'
+import { canPay, deleteNote, failureOf, formatPrice, isCheckoutUrl, isTestMode, needsPack, planBadge, planBanner, purchaseOutcome, saleActive } from '@shared/billing'
 import type { AccountBilling, AccountMe, BuildPlan, PurchaseStatus } from '@shared/types'
 import i18next from 'i18next'
 import { Builder, toBilling, toPlan, toPurchase, type BuilderAccount } from '../src/main/core/builder'
@@ -48,6 +48,7 @@ const billing = (over: Partial<AccountBilling> = {}): AccountBilling => ({
   checkout: true,
   termsUrl: 'https://reflect-fivem.com/cgv',
   supportUrl: null,
+  testMode: false,
   ...over
 })
 
@@ -91,6 +92,12 @@ describe('lecture des réponses de la vente', () => {
       supportUrl: null,
       termsUrl: 'https://reflect-fivem.com/cgv'
     })
+  })
+
+  it('mode test : absent (ancienne API) ou illisible, paiements réels', () => {
+    expect(toBilling({ enabled: true, unlimited: false }).testMode).toBe(false)
+    expect(toBilling({ testMode: 'true' }).testMode).toBe(false)
+    expect(toBilling({ enabled: true, unlimited: false, testMode: true }).testMode).toBe(true)
   })
 
   it('achat : statut inconnu lu comme échoué, identifiant obligatoire', () => {
@@ -190,6 +197,33 @@ describe('badge et bandeaux selon la formule', () => {
     } finally {
       await i18next.changeLanguage('fr')
     }
+  })
+})
+
+describe('mode test', () => {
+  it('badge « Mode test » et carte de test seulement pour des paiements de test', () => {
+    expect(isTestMode(billing({ testMode: true }))).toBe(true)
+    expect(isTestMode(billing())).toBe(false)
+    expect(isTestMode(toBilling({ enabled: true, unlimited: false }))).toBe(false)
+    // État pas encore lu (ou ancienne API sans /builder/billing) : rien.
+    expect(isTestMode(null)).toBe(false)
+  })
+
+  it('la carte de test est rappelée dans les deux langues', async () => {
+    expect(i18next.t('builder.billing.test.card')).toContain('4242 4242 4242 4242')
+    await i18next.changeLanguage('en')
+    try {
+      expect(i18next.t('builder.billing.test.badge')).toBe('Test mode')
+      expect(i18next.t('builder.billing.test.card')).toContain('4242 4242 4242 4242')
+    } finally {
+      await i18next.changeLanguage('fr')
+    }
+  })
+
+  it('la page Stripe de test s’ouvre comme la vraie, en production comme en développement', () => {
+    const page = 'https://checkout.stripe.com/c/pay/cs_test_a1B2c3#fidkdWxOYHwnPyd1blpxYHZxWjA0'
+    expect(isCheckoutUrl(page, false)).toBe(true)
+    expect(isCheckoutUrl(page, true)).toBe(true)
   })
 })
 

@@ -1116,6 +1116,8 @@ export interface AccountBilling {
   termsUrl: string | null
   /** Discord (support), null sans lien. */
   supportUrl: string | null
+  /** Paiements de test (clés Stripe de test de l'API de dev) : rien n'est débité. */
+  testMode: boolean
 }
 
 export interface QuoteInput {

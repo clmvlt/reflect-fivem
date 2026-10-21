@@ -4152,3 +4152,27 @@ button.google {
 .purchase-status.is-pending {
   color: var(--accent-text);
 }
+/* Paiements de test (API de dev) : pastille discrète, carte de test copiable. */
+.test-badge {
+  margin-left: 8px;
+  background: var(--warning-bg);
+  color: var(--warn-text);
+  font-weight: 600;
+  vertical-align: 1px;
+}
+.purchase-test {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.purchase-dialog .modal-body > .purchase-test {
+  margin-top: 8px;
+}
+.purchase-test .test-badge {
+  flex: none;
+  margin-left: 0;
+}
+.purchase-test .hint {
+  margin: 1px 0 0;
+  user-select: text;
+}

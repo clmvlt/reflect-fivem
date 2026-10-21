@@ -443,6 +443,10 @@
         "unavailable": "Paiement indisponible pour le moment",
         "history": "Mes achats"
       },
+      "test": {
+        "badge": "Mode test",
+        "card": "Paiement de test : carte 4242 4242 4242 4242, date future, CVC au choix. Aucun vrai débit."
+      },
       "plan": {
         "free_one": "Gratuit — {{n}} modification restante",
         "free_other": "Gratuit — {{n}} modifications restantes",

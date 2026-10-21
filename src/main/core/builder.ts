@@ -25,6 +25,12 @@
 // Une nouvelle révision (fichier d'un composant changé, création modifiée) se propose comme une nouvelle version d'un
 // pack de la Marketplace : reconstruit, même nom, mêmes réglages personnels, réinstallé s'il était installé.
 //
+// Vente (/builder/billing, mêmes règles d'accès) : chaque création a une formule (`plan` : pack gratuit aux
+// modifications comptées, crédit de pack ou offert ; absente d'une ancienne API : offert, illimité). Une création
+// refusée faute de pack libre, ou la modification d'un pack gratuit au bout de ses modifications, répond 402
+// (BUILDER_PAYMENT_REQUIRED, BUILDER_EDIT_LOCKED) : l'interface propose alors l'achat. Le paiement se fait sur une page
+// Stripe Checkout ouverte dans le navigateur ; l'application ne voit ni carte bancaire ni clé Stripe.
+//
 // Aucune dépendance à Electron ici (testé avec vitest) : le service fournit fetch, le compte et la bibliothèque.
 
 import { createHash } from 'node:crypto'
@@ -37,10 +43,14 @@ import { t } from 'i18next'
 import { BUILDER_NOT_ALLOWED, canUseBuilder, SIGNED_OUT } from '@shared/api'
 import { currentLocale } from '@shared/i18n'
 import { formatBytes as displayBytes } from '@shared/intl'
+import { httpsUrl } from '@shared/links'
 import { parsePackPerformance } from '@shared/performance'
 import { cleanTools, fromLegacy, isToolKey, isToolMode, lookImages, styleOf } from '@shared/ambiance'
 import type {
+  AccountBilling,
   AccountMe,
+  BillingProduct,
+  BuildPlan,
   BuilderBase,
   BuilderBuild,
   BuilderBuildComponent,
@@ -68,8 +78,13 @@ import type {
   BuilderTool,
   BuilderTools,
   BuilderToolView,
+  CheckoutInput,
   Destination,
   MarketImage,
+  Purchase,
+  PurchaseStatus,
+  Quote,
+  QuoteInput,
   RootId,
   ToolKey
 } from '@shared/types'
@@ -570,6 +585,7 @@ function toSummary(raw: unknown): Omit<BuilderBuildSummary, keyof BuilderLocal> 
     name: str(o.name),
     componentCount: num(o.componentCount) ?? 0,
     unavailableCount: num(o.unavailableCount) ?? 0,
+    plan: toPlan(o.plan),
     createdAt: str(o.createdAt),
     updatedAt: str(o.updatedAt)
   }
@@ -594,9 +610,104 @@ function toBuild(raw: unknown): Omit<BuilderBuild, keyof BuilderLocal> {
     tools,
     problems: arr(o.problems).map(toProblem),
     estimate: isObj(o.estimate) ? toEstimate(o.estimate) : null,
+    plan: toPlan(o.plan),
     createdAt: str(o.createdAt),
     updatedAt: str(o.updatedAt)
   }
+}
+
+// ------------------------------------------------------------------ vente (formules, état du compte, achats)
+
+const PLAN_TYPES: readonly string[] = ['free', 'credit', 'open']
+const PURCHASE_STATUSES: readonly string[] = ['pending', 'paid', 'free', 'expired', 'failed', 'canceled', 'refunded']
+/** Entier positif ou nul (montant en centimes, nombre de packs). */
+const count = (x: unknown): number => Math.max(0, Math.round(num(x) ?? 0))
+const product = (x: unknown): BillingProduct => (x === 'unlock' ? 'unlock' : 'pack')
+const webUrl = (x: unknown): string | null => (typeof x === 'string' && /^https?:\/\/[^\s]+$/i.test(x) ? x : null)
+
+/**
+ * Formule d'une création. Absente (API d'avant la vente) ou illisible : offerte, illimitée. Un pack gratuit n'est
+ * jamais à débloquer quand il est illimité.
+ */
+export function toPlan(raw: unknown): BuildPlan {
+  if (!isObj(raw) || typeof raw.type !== 'string' || !PLAN_TYPES.includes(raw.type))
+    return { type: 'open', unlimited: true, editsAllowed: 0, editsUsed: 0, editsLeft: null, locked: false }
+  const type = raw.type as BuildPlan['type']
+  const unlimited = typeof raw.unlimited === 'boolean' ? raw.unlimited : type !== 'free'
+  return {
+    type,
+    unlimited,
+    editsAllowed: count(raw.editsAllowed),
+    editsUsed: count(raw.editsUsed),
+    editsLeft: unlimited ? null : count(raw.editsLeft),
+    locked: !unlimited && raw.locked === true
+  }
+}
+
+/** État de la vente pour le compte ; réponse incomplète : rien de limité (aucune offre montrée). */
+export function toBilling(raw: unknown): AccountBilling {
+  const o = obj(raw)
+  const prices = obj(o.prices)
+  const free = obj(o.free)
+  const credits = obj(o.credits)
+  const next = o.nextPlan
+  return {
+    enabled: o.enabled === true,
+    unlimited: o.unlimited !== false,
+    currency: str(o.currency) || 'eur',
+    prices: { pack: count(prices.pack), unlock: count(prices.unlock) },
+    free: { packs: count(free.packs), used: count(free.used), remaining: count(free.remaining), edits: count(free.edits) },
+    credits: { total: count(credits.total), used: count(credits.used), available: count(credits.available) },
+    nextPlan: next === 'credit' || next === 'free' || next === 'open' ? next : null,
+    canCreate: o.canCreate !== false,
+    builds: count(o.builds),
+    maxBuilds: count(o.maxBuilds) || 50,
+    checkout: o.checkout === true,
+    termsUrl: webUrl(o.termsUrl),
+    // Ouvert dans le navigateur : https seulement, comme les liens du site.
+    supportUrl: httpsUrl(o.supportUrl)
+  }
+}
+
+export function toQuote(raw: unknown): Quote {
+  const o = obj(raw)
+  const promo = isObj(o.promo) && typeof o.promo.code === 'string' ? o.promo : null
+  return {
+    product: product(o.product),
+    currency: str(o.currency) || 'eur',
+    baseAmount: count(o.baseAmount),
+    discount: count(o.discount),
+    amount: count(o.amount),
+    promo: promo ? { code: promo.code as string, percentOff: num(promo.percentOff), amountOff: num(promo.amountOff) } : null
+  }
+}
+
+/** Achat ; statut inconnu : échoué (l'attente d'un paiement ne dure jamais sans fin). */
+export function toPurchase(raw: unknown): Purchase {
+  const o = obj(raw)
+  if (typeof o.id !== 'string' || !UUID.test(o.id)) throw badResponse()
+  return {
+    id: o.id,
+    product: product(o.product),
+    buildId: uuidOrNull(o.buildId),
+    buildName: strOrNull(o.buildName),
+    currency: str(o.currency) || 'eur',
+    baseAmount: count(o.baseAmount),
+    discount: count(o.discount),
+    amount: count(o.amount),
+    promoCode: strOrNull(o.promoCode),
+    status: typeof o.status === 'string' && PURCHASE_STATUSES.includes(o.status) ? (o.status as PurchaseStatus) : 'failed',
+    checkoutUrl: strOrNull(o.checkoutUrl),
+    expiresAt: strOrNull(o.expiresAt),
+    createdAt: str(o.createdAt),
+    paidAt: strOrNull(o.paidAt)
+  }
+}
+
+/** Corps d'un prix ou d'une commande : produit connu, pack visé (UUID), code promo nettoyé (null s'il est vide). */
+function order(input: QuoteInput): { product: BillingProduct; buildId: string | null; promoCode: string | null } {
+  const code = typeof input.promoCode === 'string' ? input.promoCode.trim().slice(0, 32) : ''
+  return { product: product(input.product), buildId: uuidOrNull(input.buildId), promoCode: code || null }
 }
 
 /** Corps d'une erreur de l'API (application/problem+json), lu sur une copie de la réponse. */
@@ -855,6 +966,63 @@ export class Builder {
     await this.call<void>('DELETE', `/builder/builds/${id}`)
     if ((await this.builtIndex()).has(id)) this.revisions.set(id, null)
     log.info('Créer ton pack : création supprimée')
+  }
+
+  // ---------------------------------------------------------------- vente
+
+  /** Packs gratuits et crédits du compte, prix, formule d'un nouveau pack ; tout illimité pour l'admin ou sans vente. */
+  async billing(): Promise<AccountBilling> {
+    return toBilling(await this.call<unknown>('GET', '/builder/billing'))
+  }
+
+  /** Prix d'un achat avec un code promo (refusé : 422 avec un code « promo-… »). */
+  async quote(input: QuoteInput): Promise<Quote> {
+    return toQuote(await this.call<unknown>('POST', '/builder/billing/quote', order(input)))
+  }
+
+  /**
+   * Commande (CGV acceptées et droit de rétractation abandonné, sinon 400 « terms-required ») : `pending` avec la page
+   * de paiement à ouvrir, ou `free` (offert par un code, crédit déjà donné). Une commande identique en cours est reprise.
+   */
+  async checkout(input: CheckoutInput): Promise<Purchase> {
+    const body = { ...order(input), acceptTerms: input.acceptTerms === true, waiveWithdrawal: input.waiveWithdrawal === true }
+    const purchase = toPurchase(await this.call<unknown>('POST', '/builder/billing/checkout', body))
+    log.info(`Créer ton pack : achat ${purchase.product} commandé (${purchase.status})`)
+    return purchase
+  }
+
+  /** Un achat ; l'API relit chez Stripe un paiement en cours (au plus toutes les 3 s). */
+  async purchase(id: string): Promise<Purchase> {
+    if (!UUID.test(id)) throw new Error(t('builder.errors.purchaseNotFound'))
+    return toPurchase(await this.call<unknown>('GET', `/builder/billing/purchases/${id}`))
+  }
+
+  /** Abandon d'un paiement en cours (la page Stripe est fermée) ; un paiement déjà fait reste acquis. */
+  async cancelPurchase(id: string): Promise<Purchase> {
+    if (!UUID.test(id)) throw new Error(t('builder.errors.purchaseNotFound'))
+    const purchase = toPurchase(await this.call<unknown>('POST', `/builder/billing/purchases/${id}/cancel`))
+    log.info(`Créer ton pack : paiement abandonné (${purchase.status})`)
+    return purchase
+  }
+
+  /** Achats du compte, le plus récent d'abord (ceux qui sont illisibles sont laissés de côté). */
+  async purchases(): Promise<Purchase[]> {
+    return arr(await this.call<unknown>('GET', '/builder/billing/purchases')).flatMap((raw) => {
+      try {
+        return [toPurchase(raw)]
+      } catch {
+        return []
+      }
+    })
+  }
+
+  /** Débloque un pack gratuit avec un crédit libre du compte : modifications illimitées (402 sans crédit libre). */
+  async unlockBuild(id: string): Promise<BuilderBuild> {
+    if (!UUID.test(id)) throw new Error(t('builder.errors.notFound'))
+    const [raw, index] = await Promise.all([this.call<unknown>('POST', `/builder/builds/${id}/unlock`), this.builtIndex()])
+    const b = toBuild(raw)
+    log.info('Créer ton pack : création débloquée avec un crédit')
+    return { ...b, ...this.localState(b.id, index) }
   }
 
   // ---------------------------------------------------------------- mises à jour

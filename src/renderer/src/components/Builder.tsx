@@ -4,10 +4,14 @@
 // chaque outil réglé lui-même avec un style, voir BuilderAmbiance.tsx), enregistre ses créations sur son compte et les
 // installe comme n'importe quel pack de la bibliothèque. Assistant par étapes (les groupes du catalogue,
 // puis le récapitulatif), avec un panneau qui résume la composition, son poids sur ce PC et ses problèmes, revérifiés
-// par l'API 400 ms après chaque changement.
+// par l'API 400 ms après chaque changement. Vente (voir BuilderBilling.tsx) : « Mon offre » sur l'accueil, formule de
+// chaque création, et achat proposé quand l'enregistrement le demande (nouvelle création sans pack libre, pack gratuit
+// déjà modifié).
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type {
+  AccountBilling,
+  BuildPlan,
   BuilderBuild,
   BuilderBuildSummary,
   BuilderCatalog,
@@ -23,6 +27,7 @@ import type {
   ToolMode
 } from '@shared/types'
 import { canUseBuilder } from '@shared/api'
+import { deleteNote, needsPack, saleActive } from '@shared/billing'
 import { estimate, VERDICT_LABEL, type PackPerformance } from '@shared/performance'
 import {
   ambianceChoice,
@@ -40,7 +45,7 @@ import {
 } from '@shared/ambiance'
 import { apiError, cleanError, useStore } from '../store'
 import { bytes, longDate, num, q } from '../lib/format'
-import { blockersOf, cardIndex, conflictsOf, shownProblems, draftOf, missingBases, NAME_MAX, newDraft, snapshot, SUMMARY, toggle, upgradeDraft, type CardRef, type Draft } from '../lib/builder'
+import { blockersOf, cardIndex, conflictsOf, shownProblems, draftOf, missingBases, NAME_MAX, newDraft, sameComposition, snapshot, SUMMARY, toggle, upgradeDraft, type CardRef, type Draft } from '../lib/builder'
 import { Cover, EmptyState } from './common'
 import { confirmDialog } from './Confirm'
 import { DownloadInline, useDownload } from './Downloads'
@@ -49,6 +54,7 @@ import { popupMenu } from './Menu'
 import { memText, usePerfConfirm, usePerformance, verdictReasons } from './Performance'
 import { activate, blockedText, Check, ComponentModal, ComponentTile } from './BuilderParts'
 import { AmbianceSection, toolName, toolSummary } from './BuilderAmbiance'
+import { OfferPanel, onBillingChanged, PlanBadge, PlanBanner, useBilling, withPurchase, type PurchaseNeed } from './BuilderBilling'
 
 /** Création à ouvrir depuis une autre page (fiche d'un pack, file des téléchargements). */
 export interface BuilderRequest {
@@ -56,7 +62,7 @@ export interface BuilderRequest {
   at: number
 }
 
-/** Créations par compte (limite de l'API). */
+/** Créations par compte (limite de l'API, donnée par l'état de la vente quand il est connu). */
 const MAX_BUILDS = 50
 
 interface WizardState {
@@ -68,6 +74,8 @@ interface WizardState {
   ambiance: AmbianceChoice
   /** Image en jeu des aperçus des styles (null : celle par défaut), choisie à l'étape de l'ambiance. */
   reference: string | null
+  /** Formule de la création enregistrée (null : nouvelle création). */
+  plan: BuildPlan | null
 }
 
 /** Assistant en cours quand on passe à une autre page de l'application : retrouvé au retour. */
@@ -168,6 +176,7 @@ type View = { kind: 'home' } | { kind: 'new' } | { kind: 'open'; id: string } | 
 function BuilderPage({ account, request, onOpenLocal }: { account: number; request: BuilderRequest | null; onOpenLocal: (packId: string) => void }) {
   const { t } = useTranslation()
   const { catalog, error, reload } = useCatalog()
+  const { billing, reload: reloadBilling } = useBilling()
   const resume = kept?.account === account ? kept : null
   const [view, setView] = useState<View>(() =>
     request ? (resume?.draft.id === request.buildId ? { kind: 'kept' } : { kind: 'open', id: request.buildId }) : resume ? { kind: 'kept' } : { kind: 'home' }
@@ -194,25 +203,48 @@ function BuilderPage({ account, request, onOpenLocal }: { account: number; reque
     kept = null
     setView({ kind: 'home' })
   }
-  const common = { catalog, account, onExit: home, onOpenLocal }
+  const common = { catalog, account, billing, reloadBilling, onExit: home, onOpenLocal }
   if (view.kind === 'open') return <BuildLoader key={view.id} id={view.id} {...common} />
   if (view.kind === 'new') {
     // Une nouvelle création démarre sur « Recommandé ».
     const draft = newDraft(t('builder.newName'), catalog)
-    return <Wizard {...common} start={{ draft, saved: snapshot(draft), step: null, tabs: {}, ambiance: 'recommended', reference: savedReference() }} />
+    return <Wizard {...common} start={{ draft, saved: snapshot(draft), step: null, tabs: {}, ambiance: 'recommended', reference: savedReference(), plan: null }} />
   }
   if (view.kind === 'kept' && resume) {
     const index = cardIndex(catalog)
     const draft = upgradeDraft(resume.draft, (id) => index.get(id)?.category.key)
-    return <Wizard {...common} start={{ ...resume, draft }} />
+    return <Wizard {...common} start={{ ...resume, draft }} resumed />
   }
-  return <Home catalog={catalog} onNew={() => setView({ kind: 'new' })} onOpen={(id) => setView({ kind: 'open', id })} onOpenLocal={onOpenLocal} />
+  return (
+    <Home
+      catalog={catalog}
+      billing={billing}
+      reloadBilling={reloadBilling}
+      onNew={() => setView({ kind: 'new' })}
+      onOpen={(id) => setView({ kind: 'open', id })}
+      onOpenLocal={onOpenLocal}
+    />
+  )
 }
 
 // ---------------------------------------------------------------------------
 // Accueil : nouveau pack, mes créations
 
-function Home({ catalog, onNew, onOpen, onOpenLocal }: { catalog: BuilderCatalog; onNew: () => void; onOpen: (id: string) => void; onOpenLocal: (packId: string) => void }) {
+function Home({
+  catalog,
+  billing,
+  reloadBilling,
+  onNew,
+  onOpen,
+  onOpenLocal
+}: {
+  catalog: BuilderCatalog
+  billing: AccountBilling | null
+  reloadBilling: () => void
+  onNew: () => void
+  onOpen: (id: string) => void
+  onOpenLocal: (packId: string) => void
+}) {
   const { t } = useTranslation()
   const [builds, setBuilds] = useState<BuilderBuildSummary[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -232,15 +264,23 @@ function Home({ catalog, onNew, onOpen, onOpenLocal }: { catalog: BuilderCatalog
       () => undefined
     )
   }, [load])
-  const full = (builds?.length ?? 0) >= MAX_BUILDS
+  // Achat fait, pack débloqué : formules des créations relues.
+  useEffect(() => onBillingChanged(() => void load()), [load])
+  /** Création supprimée ou dupliquée : les packs gratuits et les crédits ont pu changer. */
+  const changed = (): void => {
+    void load()
+    reloadBilling()
+  }
+  const max = billing?.maxBuilds ?? MAX_BUILDS
+  const full = (builds?.length ?? 0) >= max
 
   return (
     <div className="page">
       <header className="page-head">
         <h1>{t('builder.title')}</h1>
-        {builds && <span className="page-note">{t('builder.home.count', { n: num(builds.length), max: num(MAX_BUILDS) })}</span>}
+        {builds && <span className="page-note">{t('builder.home.count', { n: num(builds.length), max: num(max) })}</span>}
         <div className="spacer" />
-        <button className="primary" onClick={onNew} disabled={full} title={full ? t('builder.home.full', { max: num(MAX_BUILDS) }) : undefined}>
+        <button className="primary" onClick={onNew} disabled={full} title={full ? t('builder.home.full', { max: num(max) }) : undefined}>
           {t('builder.home.new')}
         </button>
       </header>
@@ -250,6 +290,7 @@ function Home({ catalog, onNew, onOpen, onOpenLocal }: { catalog: BuilderCatalog
         </div>
       )}
       <p className="builder-lead">{t('builder.home.intro')}</p>
+      <OfferPanel billing={billing} />
       <div className="section-head">
         <h2>{t('builder.home.mine')}</h2>
       </div>
@@ -269,10 +310,10 @@ function Home({ catalog, onNew, onOpen, onOpenLocal }: { catalog: BuilderCatalog
               <BuilderIcon size={22} />
             </div>
             <div className="name">{t('builder.home.newTitle')}</div>
-            <p className="add-text">{full ? t('builder.home.full', { max: num(MAX_BUILDS) }) : t('builder.home.newText')}</p>
+            <p className="add-text">{full ? t('builder.home.full', { max: num(max) }) : t('builder.home.newText')}</p>
           </article>
           {builds.map((b) => (
-            <BuildCard key={b.id} build={b} onOpen={() => onOpen(b.id)} onOpenLocal={onOpenLocal} onChanged={() => void load()} />
+            <BuildCard key={b.id} build={b} billing={billing} onOpen={() => onOpen(b.id)} onOpenLocal={onOpenLocal} onChanged={changed} />
           ))}
         </div>
       )}
@@ -286,7 +327,19 @@ async function savedInput(id: string, name: string): Promise<BuilderSaveInput> {
   return { name, components: draft.components, tools: draft.tools }
 }
 
-function BuildCard({ build, onOpen, onOpenLocal, onChanged }: { build: BuilderBuildSummary; onOpen: () => void; onOpenLocal: (packId: string) => void; onChanged: () => void }) {
+function BuildCard({
+  build,
+  billing,
+  onOpen,
+  onOpenLocal,
+  onChanged
+}: {
+  build: BuilderBuildSummary
+  billing: AccountBilling | null
+  onOpen: () => void
+  onOpenLocal: (packId: string) => void
+  onChanged: () => void
+}) {
   const { t } = useTranslation()
   const { overview, run, setMessage } = useStore()
   const dl = useDownload(build.id)
@@ -316,13 +369,23 @@ function BuildCard({ build, onOpen, onOpenLocal, onChanged }: { build: BuilderBu
     else if (choice === 'library' && local) onOpenLocal(local.id)
     else if (choice === 'duplicate') {
       const name = t('builder.home.copyName', { name: build.name }).slice(0, NAME_MAX)
-      const copy = await run(async () => window.api.builderBuildSave(null, await savedInput(build.id, name)))
+      // Une copie est une nouvelle création : sans pack libre, l'achat d'un pack de plus est proposé.
+      const copy = await run(async () => {
+        const input = await savedInput(build.id, name)
+        return withPurchase(() => window.api.builderBuildSave(null, input), { need: needsPack(billing) ? 'pack' : null, request: () => ({ product: 'pack', blocked: true }) })
+      })
       if (copy) {
         setMessage({ kind: 'info', text: t('builder.home.duplicated', { name: q(copy.name) }) })
         onChanged()
       }
     } else if (choice === 'delete') {
-      const ok = await confirmDialog(t('builder.home.deleteTitle', { name: q(build.name) }), local ? t('builder.home.deleteDetailLocal') : t('builder.home.deleteDetail'), t('common.delete'))
+      // Pack gratuit : pas rendu ; pack payé : son crédit redevient libre.
+      const note = deleteNote(build.plan, billing)
+      const detail = [
+        local ? t('builder.home.deleteDetailLocal') : t('builder.home.deleteDetail'),
+        note === 'free' ? t('builder.billing.plan.deleteFree') : note === 'credit' ? t('builder.billing.plan.deleteCredit') : ''
+      ]
+      const ok = await confirmDialog(t('builder.home.deleteTitle', { name: q(build.name) }), detail.filter(Boolean).join(' '), t('common.delete'))
       if (ok && (await run(() => window.api.builderBuildDelete(build.id).then(() => true)))) onChanged()
     }
   }
@@ -346,6 +409,7 @@ function BuildCard({ build, onOpen, onOpenLocal, onChanged }: { build: BuilderBu
         <div className="meta" title={facts.filter(Boolean).join(' · ')}>
           {facts.filter(Boolean).join(' · ')}
         </div>
+        <PlanBadge plan={build.plan} billing={billing} />
         <div className="card-foot" onClick={(e) => e.stopPropagation()}>
           {dl ? (
             <DownloadInline d={dl} />
@@ -389,7 +453,18 @@ function RenameField({ value, onDone, onCancel }: { value: string; onDone: (v: s
 }
 
 /** Création enregistrée, chargée puis ouverte sur son récapitulatif. */
-function BuildLoader({ id, ...rest }: { id: string; catalog: BuilderCatalog; account: number; onExit: () => void; onOpenLocal: (packId: string) => void }) {
+function BuildLoader({
+  id,
+  ...rest
+}: {
+  id: string
+  catalog: BuilderCatalog
+  account: number
+  billing: AccountBilling | null
+  reloadBilling: () => void
+  onExit: () => void
+  onOpenLocal: (packId: string) => void
+}) {
   const { t } = useTranslation()
   const [build, setBuild] = useState<BuilderBuild | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -426,7 +501,10 @@ function BuildLoader({ id, ...rest }: { id: string; catalog: BuilderCatalog; acc
     )
   const draft = draftOf(build)
   return (
-    <Wizard {...rest} start={{ draft, saved: snapshot(draft), step: SUMMARY, tabs: {}, ambiance: ambianceChoice(draft.tools, rest.catalog), reference: savedReference() }} />
+    <Wizard
+      {...rest}
+      start={{ draft, saved: snapshot(draft), step: SUMMARY, tabs: {}, ambiance: ambianceChoice(draft.tools, rest.catalog), reference: savedReference(), plan: build.plan }}
+    />
   )
 }
 
@@ -465,13 +543,20 @@ function usePreview(components: string[], tools: BuilderTools): PreviewState {
 function Wizard({
   catalog,
   account,
+  billing,
+  reloadBilling,
   start,
+  resumed = false,
   onExit,
   onOpenLocal
 }: {
   catalog: BuilderCatalog
   account: number
+  billing: AccountBilling | null
+  reloadBilling: () => void
   start: WizardState
+  /** Assistant retrouvé en revenant sur la page (brouillon gardé). */
+  resumed?: boolean
   onExit: () => void
   onOpenLocal: (packId: string) => void
 }) {
@@ -484,6 +569,7 @@ function Wizard({
   const [tabs, setTabs] = useState(start.tabs)
   const [ambiance, setAmbiance] = useState(start.ambiance)
   const [reference, setReference] = useState(start.reference)
+  const [plan, setPlan] = useState(start.plan)
   const [note, setNote] = useState<{ tool: ToolKey; note: ToolNote } | null>(null)
   const [focus, setFocus] = useState<{ tool: ToolKey; at: number } | null>(null)
   const [details, setDetails] = useState<string | null>(null)
@@ -518,8 +604,28 @@ function Wizard({
   const activeTools = catalog.tools.filter((tool) => draft.tools[tool.key].mode !== 'none').length
 
   useEffect(() => {
-    kept = { account, draft, saved, step, tabs, ambiance, reference }
-  }, [account, draft, saved, step, tabs, ambiance, reference])
+    kept = { account, draft, saved, step, tabs, ambiance, reference, plan }
+  }, [account, draft, saved, step, tabs, ambiance, reference, plan])
+
+  /** Formule de la création relue (modification utilisée, pack débloqué) : le bandeau suit. */
+  const refreshPlan = async (id = draft.id): Promise<void> => {
+    if (!id) return
+    const b = await window.api.builderBuildGet(id).catch(() => null)
+    if (b) setPlan(b.plan)
+  }
+  // Brouillon gardé (`resumed`) : sa formule a pu changer depuis (modification utilisée, pack débloqué ailleurs).
+  const startId = resumed ? start.draft.id : null
+  useEffect(() => {
+    if (!startId) return
+    let live = true
+    window.api.builderBuildGet(startId).then(
+      (b) => live && setPlan(b.plan),
+      () => undefined
+    )
+    return () => {
+      live = false
+    }
+  }, [startId])
 
   const choose = (category: BuilderCategory, id: string | null): void => setDraft({ ...draft, components: toggle(draft.components, index, category, id) })
   const remove = (id: string): void => {
@@ -592,22 +698,45 @@ function Wizard({
     const next = { ...draft, id, name, tools: withKnownStyles(draft.tools, catalog), removed: [] }
     setDraft(next)
     setSaved(snapshot(next))
+    // Pack gratuit ou crédit pris par une nouvelle création, modification utilisée.
+    reloadBilling()
   }
+  /**
+   * Achat à proposer avant d'enregistrer : nouvelle création sans pack libre, ou pack gratuit sans modification restante
+   * dont les éléments ou les réglages ont changé (renommer seulement reste permis). Sinon, un refus 402 de l'API l'ouvre.
+   */
+  const purchaseNeed = (): PurchaseNeed | null => {
+    if (!draft.id) return needsPack(billing) ? 'pack' : null
+    return plan?.locked && saleActive(billing) && !sameComposition(snapshot(draft), saved) ? 'unlock' : null
+  }
+  /** Enregistrement (ou installation, qui enregistre d'abord) : l'achat demandé s'ouvre, puis l'action reprend. */
+  const withSale = <T,>(action: () => Promise<T>): Promise<T | undefined> =>
+    withPurchase(action, {
+      need: purchaseNeed(),
+      request: (need) =>
+        need === 'unlock' && draft.id ? { product: 'unlock', build: { id: draft.id, name: draft.name.trim() || t('builder.newName') }, blocked: true } : { product: 'pack', blocked: true },
+      paid: async (need) => {
+        if (need === 'unlock') await refreshPlan()
+      }
+    })
   const save = async (): Promise<void> => {
     setBusy(true)
-    const b = await run(() => window.api.builderBuildSave(draft.id, input()))
+    const b = await run(() => withSale(() => window.api.builderBuildSave(draft.id, input())))
     setBusy(false)
     if (!b) return
     afterSave(b.id, b.name)
+    setPlan(b.plan)
     setMessage({ kind: 'info', text: t('builder.saved', { name: q(b.name) }) })
   }
   const install = async (): Promise<void> => {
     const data = input()
     if (!(await confirmHeavy({ name: data.name, kind: 'pack', performance: preview.data?.estimate.performance }, t('builder.summary.installAnyway')))) return
     setBusy(true)
-    const id = await run(() => window.api.builderInstall(draft.id, data))
+    const id = await run(() => withSale(() => window.api.builderInstall(draft.id, data)))
     setBusy(false)
-    if (id) afterSave(id, data.name)
+    if (!id) return
+    afterSave(id, data.name)
+    void refreshPlan(id)
   }
 
   const groupOf = (key: string): (typeof groups)[number] | undefined => groups.find((g) => g.group.key === key)
@@ -630,6 +759,12 @@ function Wizard({
         {dirty && <span className="page-note">{t('builder.unsaved')}</span>}
         {catalog.offline && <span className="page-note">{t('builder.offlineShort')}</span>}
       </header>
+      <PlanBanner
+        plan={plan}
+        billing={billing}
+        build={draft.id ? { id: draft.id, name: draft.name.trim() || t('builder.newName') } : null}
+        onChanged={() => void refreshPlan()}
+      />
 
       <nav className="builder-steps" aria-label={t('builder.stepsLabel')}>
         {steps.map((key, i) => {

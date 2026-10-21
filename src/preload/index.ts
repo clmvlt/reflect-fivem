@@ -18,7 +18,8 @@ const IPC = {
   maintenance: 'pm:maintenance',
   links: 'pm:links',
   changelog: 'pm:changelog',
-  openMarketPack: 'pm:open-market-pack'
+  openMarketPack: 'pm:open-market-pack',
+  openPurchase: 'pm:open-purchase'
 }
 
 const call =
@@ -116,6 +117,14 @@ const methods = [
   'builderStatus',
   'builderCacheInfo',
   'builderCacheClear',
+  'builderBilling',
+  'builderQuote',
+  'builderCheckout',
+  'builderOpenCheckout',
+  'builderPurchase',
+  'builderCancelPurchase',
+  'builderPurchases',
+  'builderUnlockBuild',
   'accountGet',
   'accountLogin',
   'accountRegister',
@@ -223,6 +232,24 @@ api.onOpenMarketPack = (cb: (id: string, kind: MarketKind) => void) => {
   }
   return () => {
     marketPackListeners.delete(cb)
+  }
+}
+
+// Achat signalé par la page de fin de paiement du site : gardé de même jusqu'au premier abonné.
+const purchaseListeners = new Set<(id: string) => void>()
+let pendingPurchase: string | null = null
+ipcRenderer.on(IPC.openPurchase, (_e: unknown, id: string) => {
+  if (purchaseListeners.size) purchaseListeners.forEach((cb) => cb(id))
+  else pendingPurchase = id
+})
+api.onOpenPurchase = (cb: (id: string) => void) => {
+  purchaseListeners.add(cb)
+  if (pendingPurchase) {
+    cb(pendingPurchase)
+    pendingPurchase = null
+  }
+  return () => {
+    purchaseListeners.delete(cb)
   }
 }
 

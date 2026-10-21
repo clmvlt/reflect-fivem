@@ -1037,6 +1037,7 @@ export interface BuilderBuildSummary extends BuilderLocal {
   componentCount: number
   /** Composants retirés depuis l'enregistrement. */
   unavailableCount: number
+  plan: BuildPlan
   createdAt: string
   updatedAt: string
 }
@@ -1056,6 +1057,7 @@ export interface BuilderBuild extends BuilderLocal {
   tools: BuilderTools
   problems: BuilderProblem[]
   estimate: BuilderEstimate | null
+  plan: BuildPlan
   createdAt: string
   updatedAt: string
 }
@@ -1071,6 +1073,92 @@ export interface BuilderSaveInput {
 export interface BuilderStatus {
   updates: string[]
   gone: string[]
+}
+
+// ---------------------------------------------------------------------------
+// Vente de « Créer ton pack » : packs gratuits, crédits de pack, paiement par Stripe Checkout (dans le navigateur)
+
+/** Formule d'une création : pack gratuit (modifications comptées), payé par un crédit, ou offert (illimité). */
+export type BuildPlanType = 'free' | 'credit' | 'open'
+
+export interface BuildPlan {
+  type: BuildPlanType
+  /** Modifications illimitées (crédit, offert, admin, ou vente coupée). */
+  unlimited: boolean
+  editsAllowed: number
+  editsUsed: number
+  /** Modifications complètes restantes ; null quand le pack est illimité. */
+  editsLeft: number | null
+  /** La prochaine modification des éléments ou des réglages sera refusée (402 « builder-edit-locked ») : à débloquer. */
+  locked: boolean
+}
+
+/** Achat : un pack de plus (un crédit), ou le déblocage d'un pack gratuit. */
+export type BillingProduct = 'pack' | 'unlock'
+
+/** État de la vente pour le compte connecté (GET /builder/billing). Montants en centimes TTC. */
+export interface AccountBilling {
+  enabled: boolean
+  /** Tout est illimité (admin, ou vente coupée) : aucune offre à montrer. */
+  unlimited: boolean
+  currency: string
+  prices: { pack: number; unlock: number }
+  free: { packs: number; used: number; remaining: number; edits: number }
+  credits: { total: number; used: number; available: number }
+  /** Formule d'un nouveau pack ; null s'il faut d'abord payer. */
+  nextPlan: 'credit' | 'free' | 'open' | null
+  canCreate: boolean
+  builds: number
+  maxBuilds: number
+  /** Le paiement est possible (Stripe configuré). */
+  checkout: boolean
+  /** Conditions générales de vente du site. */
+  termsUrl: string | null
+  /** Discord (support), null sans lien. */
+  supportUrl: string | null
+}
+
+export interface QuoteInput {
+  product: BillingProduct
+  /** Pack gratuit à débloquer (achat « unlock »). */
+  buildId?: string | null
+  promoCode?: string | null
+}
+
+/** Commande : CGV acceptées et renonciation au droit de rétractation, toutes deux obligatoires. */
+export interface CheckoutInput extends QuoteInput {
+  acceptTerms: boolean
+  waiveWithdrawal: boolean
+}
+
+/** Prix d'un achat : `amount` à payer (0 : offert par le code), `discount` du code promo. */
+export interface Quote {
+  product: BillingProduct
+  currency: string
+  baseAmount: number
+  discount: number
+  amount: number
+  promo: { code: string; percentOff: number | null; amountOff: number | null } | null
+}
+
+export type PurchaseStatus = 'pending' | 'paid' | 'free' | 'expired' | 'failed' | 'canceled' | 'refunded'
+
+/** Achat du compte ; `checkoutUrl` (page Stripe) et `expiresAt` tant qu'il est `pending`. */
+export interface Purchase {
+  id: string
+  product: BillingProduct
+  buildId: string | null
+  buildName: string | null
+  currency: string
+  baseAmount: number
+  discount: number
+  amount: number
+  promoCode: string | null
+  status: PurchaseStatus
+  checkoutUrl: string | null
+  expiresAt: string | null
+  createdAt: string
+  paidAt: string | null
 }
 
 // ---------------------------------------------------------------------------

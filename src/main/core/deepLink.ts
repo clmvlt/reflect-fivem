@@ -1,15 +1,16 @@
 // Liens « fivem-pack-manager://pack/<id> » et « fivem-pack-manager://mod/<id> » du site : ouvrent l'application sur
-// la fiche d'un pack ou d'un mod de la Marketplace. Windows les transmet sur la ligne de commande (premier lancement,
-// ou instance déjà ouverte via second-instance). Seuls le catalogue et l'identifiant (UUID) en sont tirés : rien
-// d'autre n'est ouvert ni exécuté.
+// la fiche d'un pack ou d'un mod de la Marketplace. « fivem-pack-manager://achat/<id> » : ouvert par la page de fin de
+// paiement du site (« Créer ton pack »), l'achat est relu par l'application. Windows les transmet sur la ligne de
+// commande (premier lancement, ou instance déjà ouverte via second-instance). Seuls le genre et l'identifiant (UUID)
+// en sont tirés : rien d'autre n'est ouvert ni exécuté.
 
 export const PROTOCOL = 'fivem-pack-manager'
 
 const PREFIX = `${PROTOCOL}://`
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const KINDS = ['pack', 'mod'] as const
+const KINDS = ['pack', 'mod', 'achat'] as const
 
-/** Fiche demandée par un lien : catalogue (packs ou mods) et identifiant. */
+/** Ce que demande un lien : fiche d'un pack ou d'un mod de la Marketplace, ou achat à relire, et son identifiant. */
 export interface MarketLink {
   kind: (typeof KINDS)[number]
   id: string
@@ -20,7 +21,7 @@ export function findDeepLink(argv: readonly string[]): string | null {
   return argv.find((a) => a.slice(0, PREFIX.length).toLowerCase() === PREFIX) ?? null
 }
 
-/** Fiche d'un lien « fivem-pack-manager://pack/<uuid> » ou « …://mod/<uuid> », null pour toute autre adresse. */
+/** Lien « fivem-pack-manager://pack/<uuid> », « …://mod/<uuid> » ou « …://achat/<uuid> », null pour toute autre adresse. */
 export function parseMarketLink(link: string): MarketLink | null {
   let url: URL
   try {

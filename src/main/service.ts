@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { app, BrowserWindow, dialog, nativeImage, nativeTheme, net, Notification, safeStorage, screen, shell, systemPreferences } from 'electron'
 import type { AppState, FiveMInstance, GamesInfo, InstanceSummary, MarketKind, Overview, PackPatch, RootId, Settings, TaskProgress } from '@shared/types'
-import type { AccountMe, BuilderBuild, BuilderSaveInput, BuilderTools, ProfileInput, ToolKey } from '@shared/types'
+import type { AccountMe, BuilderBuild, BuilderSaveInput, BuilderTools, CheckoutInput, ProfileInput, QuoteInput, ToolKey } from '@shared/types'
 import type { AuthorQuery, CommentQuery, ComponentFile, ForeignSelection, MarketQuery, PackManagerApi } from '@shared/api'
 import { canUseBuilder, IPC, PENDING } from '@shared/api'
 import i18next, { t } from 'i18next'
@@ -27,6 +27,7 @@ import { MaintenanceWatch, PausedDownloads } from './core/maintenance'
 import { LinksWatch } from './core/links'
 import { WhatsNewWatch } from './core/changelog'
 import { httpsUrl } from '@shared/links'
+import { isCheckoutUrl } from '@shared/billing'
 import { isThemeChoice, resolveTheme, themeBackground, type ThemeChoice } from '@shared/themes'
 import { Marketplace } from './core/marketplace'
 import { Builder, coverUrl } from './core/builder'
@@ -41,7 +42,7 @@ import { copyPlan, currentInstanceId, instanceStateFile, listInstances, MAIN_INS
 import { exists, formatBytes, freeSpace, isInside, moveDir, newId, readJson, writeJsonAtomic } from './util/fsx'
 import { log } from './util/log'
 
-type ServerApi = Omit<PackManagerApi, 'onTask' | 'onDownloads' | 'onDownloadDone' | 'onChanged' | 'onUpdate' | 'onAccount' | 'onLanguage' | 'onMaintenance' | 'onLinks' | 'onChangelog' | 'onOpenMarketPack' | 'getPathForFile'>
+type ServerApi = Omit<PackManagerApi, 'onTask' | 'onDownloads' | 'onDownloadDone' | 'onChanged' | 'onUpdate' | 'onAccount' | 'onLanguage' | 'onMaintenance' | 'onLinks' | 'onChangelog' | 'onOpenMarketPack' | 'onOpenPurchase' | 'getPathForFile'>
 
 const MARKET_REFRESH = 6 * 60 * 60 * 1000
 /** Bibliothèque des mods : sous-dossier de la bibliothèque des packs (ignoré par celle-ci, comme tout dossier « . »). */
@@ -1447,6 +1448,26 @@ export class Service {
       await this.builder.clearCache()
       log.info('Cache de « Créer ton pack » vidé')
     },
+
+    builderBilling: () => this.builder.billing(),
+
+    builderQuote: (input: QuoteInput) => this.builder.quote(input),
+
+    builderCheckout: (input: CheckoutInput) => this.builder.checkout(input),
+
+    builderOpenCheckout: async (url: string) => {
+      // Adresse reçue de l'API : seule la page de paiement de Stripe s'ouvre (une autre page https en développement).
+      if (!isCheckoutUrl(url, !app.isPackaged)) throw this.toError(t('builder.errors.badCheckoutUrl'))
+      await shell.openExternal(url)
+    },
+
+    builderPurchase: (id: string) => this.builder.purchase(id),
+
+    builderCancelPurchase: (id: string) => this.builder.cancelPurchase(id),
+
+    builderPurchases: () => this.builder.purchases(),
+
+    builderUnlockBuild: (id: string) => this.builder.unlockBuild(id),
 
     accountGet: async () => this.account.current(),
 

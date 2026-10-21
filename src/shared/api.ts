@@ -1,4 +1,5 @@
 import type {
+  AccountBilling,
   AccountMe,
   AccountProfile,
   AuthorPage,
@@ -13,6 +14,7 @@ import type {
   BuilderStatus,
   BuilderTools,
   BuilderToolView,
+  CheckoutInput,
   CommentPage,
   DownloadDone,
   DownloadItem,
@@ -33,6 +35,9 @@ import type {
   PackPatch,
   PackRatings,
   ProfileInput,
+  Purchase,
+  Quote,
+  QuoteInput,
   ReplyPage,
   RootId,
   TaskProgress,
@@ -258,6 +263,26 @@ export interface PackManagerApi {
   /** Vide ces fichiers (ceux du téléchargement en cours sont gardés). */
   builderCacheClear(): Promise<void>
 
+  // Vente de « Créer ton pack » (mêmes règles d'accès) : packs gratuits, crédits de pack et paiement par une page Stripe
+  // Checkout ouverte dans le navigateur. L'application ne voit jamais de carte bancaire ni de clé Stripe.
+
+  /** État du compte : packs gratuits, crédits, prix (centimes TTC), formule d'un nouveau pack ; tout illimité sans vente. */
+  builderBilling(): Promise<AccountBilling>
+  /** Prix d'un achat, avec un code promo (refusé : erreur 422 avec un code « promo-… »). */
+  builderQuote(input: QuoteInput): Promise<Quote>
+  /** Commande : `pending` (page de paiement à ouvrir, voir builderOpenCheckout), ou `free` (offert par un code, crédit déjà donné). */
+  builderCheckout(input: CheckoutInput): Promise<Purchase>
+  /** Ouvre la page de paiement dans le navigateur : https://checkout.stripe.com/… seulement (une autre adresse https en développement). */
+  builderOpenCheckout(url: string): Promise<void>
+  /** Un achat, relu chez Stripe s'il est en cours : à interroger jusqu'à la fin du paiement. */
+  builderPurchase(id: string): Promise<Purchase>
+  /** Abandonne un paiement en cours ; un paiement déjà fait reste acquis. */
+  builderCancelPurchase(id: string): Promise<Purchase>
+  /** Historique des achats, le plus récent d'abord. */
+  builderPurchases(): Promise<Purchase[]>
+  /** Débloque un pack gratuit avec un crédit libre : ses modifications deviennent illimitées. */
+  builderUnlockBuild(id: string): Promise<BuilderBuild>
+
   /** Compte connecté sur cet appareil (gardé localement, vérifié en arrière-plan), null sans compte. */
   accountGet(): Promise<AccountMe | null>
   /** Connexion par e-mail (ou identifiant) et mot de passe. */
@@ -346,6 +371,8 @@ export interface PackManagerApi {
   onChangelog(cb: (whatsNew: WhatsNew | null) => void): () => void
   /** Lien « fivem-pack-manager://pack/<id> » ou « …://mod/<id> » reçu du site : ouvrir cette fiche dans la Marketplace. */
   onOpenMarketPack(cb: (id: string, kind: MarketKind) => void): () => void
+  /** Lien « fivem-pack-manager://achat/<id> » de la page de fin de paiement du site : relire cet achat. */
+  onOpenPurchase(cb: (id: string) => void): () => void
 }
 
 export interface MarketQuery {
@@ -409,7 +436,8 @@ export const IPC = {
   maintenance: 'pm:maintenance',
   links: 'pm:links',
   changelog: 'pm:changelog',
-  openMarketPack: 'pm:open-market-pack'
+  openMarketPack: 'pm:open-market-pack',
+  openPurchase: 'pm:open-purchase'
 } as const
 
 /** Renvoyé à la place d'un identifiant de tâche quand le changement attend la fermeture de FiveM. */
@@ -427,6 +455,12 @@ export const SIGNED_OUT = 'signed-out'
 
 /** Code d'une requête de « Créer ton pack » refusée (403) : le compte n'a pas (ou plus) le droit « Peut créer un pack ». */
 export const BUILDER_NOT_ALLOWED = 'builder-not-allowed'
+
+/** Code d'une nouvelle création refusée (402) : ni crédit libre ni pack gratuit, il faut acheter un pack de plus. */
+export const BUILDER_PAYMENT_REQUIRED = 'builder-payment-required'
+
+/** Code d'une modification refusée (402) : le pack gratuit a utilisé ses modifications, il faut le débloquer. */
+export const BUILDER_EDIT_LOCKED = 'builder-edit-locked'
 
 /**
  * « Créer ton pack » est proposé : compte connecté qui a le droit « Peut créer un pack » (l'admin l'a toujours). Sans

@@ -1,4 +1,5 @@
-// Liens « fivem-pack-manager://pack/<id> » et « …://mod/<id> » du site : seule une adresse de fiche valide est acceptée.
+// Liens « fivem-pack-manager://pack/<id> », « …://mod/<id> » et « …://achat/<id> » du site : seule une adresse de fiche
+// (ou d'achat) valide est acceptée.
 import { describe, expect, it } from 'vitest'
 import { describeLink, findDeepLink, parseMarketLink } from '../src/main/core/deepLink'
 
@@ -37,8 +38,17 @@ describe('parseMarketLink', () => {
     expect(parseMarketLink(`fivem-pack-manager://mod/${ID}?source=site#x`)).toEqual(mod)
   })
 
+  it('accepte un achat (fin d’un paiement sur le site)', () => {
+    const purchase = { kind: 'achat', id: ID }
+    expect(parseMarketLink(`fivem-pack-manager://achat/${ID}`)).toEqual(purchase)
+    expect(parseMarketLink(`fivem-pack-manager://achat/${ID}/`)).toEqual(purchase)
+    expect(parseMarketLink(`fivem-pack-manager://ACHAT/${ID.toUpperCase()}`)).toEqual(purchase)
+    expect(parseMarketLink(`fivem-pack-manager://achat/${ID}?statut=paye`)).toEqual(purchase)
+    expect(findDeepLink(['app.exe', `fivem-pack-manager://achat/${ID}`])).toBe(`fivem-pack-manager://achat/${ID}`)
+  })
+
   it('refuse toute autre adresse', () => {
-    for (const host of ['pack', 'mod'])
+    for (const host of ['pack', 'mod', 'achat'])
       for (const link of [
         `fivem-pack-manager://${host}/`,
         `fivem-pack-manager://${host}/bh-1960`,
@@ -58,6 +68,8 @@ describe('parseMarketLink', () => {
       `fivem-pack-manager://author/${ID}`,
       `fivem-pack-manager://mods/${ID}`,
       `fivem-pack-manager://packs/${ID}`,
+      `fivem-pack-manager://achats/${ID}`,
+      `fivem-pack-manager://purchase/${ID}`,
       `fivem-pack-manager://pack.mod/${ID}`,
       `fivem-pack-manager:///mod/${ID}`,
       'pas une adresse'

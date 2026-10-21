@@ -11,6 +11,7 @@ import { InstancesView } from './components/InstancesView'
 import { Graphics } from './components/Graphics'
 import { Marketplace, type MarketView } from './components/Marketplace'
 import { Builder, BuilderNavIcon, type BuilderRequest } from './components/Builder'
+import { PurchaseHost, usePurchaseLinks } from './components/BuilderBilling'
 import { AccountView } from './components/AccountView'
 import { Avatar } from './components/common'
 import { UpdatePanel } from './components/UpdatePanel'
@@ -187,6 +188,11 @@ export function App() {
     setOpenPack(null)
     setBuilderRequest({ buildId, at: Date.now() })
   }
+  // Lien de la page de fin de paiement du site, pour un achat qu'aucune fenêtre n'attendait : une fois payé, « Créer ton
+  // pack » s'ouvre (un assistant en cours y est retrouvé).
+  usePurchaseLinks(() => {
+    if (builderAllowed && page !== 'builder') go('builder')
+  })
   /**
    * Fiche d'un téléchargement de la file : pack ou mod de la Marketplace, ou création (dans l'assistant ; sans le droit,
    * le pack construit de la bibliothèque s'il existe).
@@ -358,6 +364,7 @@ export function App() {
         <DownloadBar onOpen={openDownload} />
       </main>
       <ConfirmHost />
+      <PurchaseHost />
       <MenuHost />
       {showWhatsNew && <WhatsNew whatsNew={whatsNew} onClose={dismissWhatsNew} />}
       {dragging && <div className="drop">{catalog === 'mod' && (page === 'library' || page === 'market') ? t('app.drop.mods') : t('app.drop.library')}</div>}

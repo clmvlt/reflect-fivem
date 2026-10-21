@@ -58,13 +58,15 @@ function startApp(): void {
   let win: BrowserWindow | null = null
   const service = new Service(dataDir, () => win, apiUrl)
 
-  // Lien « fivem-pack-manager://pack/<id> » ou « …://mod/<id> » : gardé jusqu'à ce que la page de l'application soit chargée.
-  let pendingPack: MarketLink | null = null
+  // Lien « fivem-pack-manager://pack/<id> », « …://mod/<id> » ou « …://achat/<id> » (fin d'un paiement sur le site) :
+  // gardé jusqu'à ce que la page de l'application soit chargée.
+  let pendingLink: MarketLink | null = null
   let pageLoaded = false
-  const sendPendingPack = (): void => {
-    if (!pendingPack || !pageLoaded || !win || win.isDestroyed()) return
-    win.webContents.send(IPC.openMarketPack, pendingPack.id, pendingPack.kind)
-    pendingPack = null
+  const sendPendingLink = (): void => {
+    if (!pendingLink || !pageLoaded || !win || win.isDestroyed()) return
+    if (pendingLink.kind === 'achat') win.webContents.send(IPC.openPurchase, pendingLink.id)
+    else win.webContents.send(IPC.openMarketPack, pendingLink.id, pendingLink.kind)
+    pendingLink = null
   }
   const receiveLink = (argv: readonly string[]): void => {
     const link = findDeepLink(argv)
@@ -75,8 +77,8 @@ function startApp(): void {
       return
     }
     log.info(`Lien reçu : ${target.kind} ${target.id}`)
-    pendingPack = target
-    sendPendingPack()
+    pendingLink = target
+    sendPendingLink()
   }
   receiveLink(process.argv)
 
@@ -181,11 +183,11 @@ function startApp(): void {
       win?.hide()
     })
     // Lancée par un lien : au premier plan dès son affichage (après le show() de createWindow).
-    if (pendingPack) win.once('ready-to-show', () => win && bringToFront(win))
+    if (pendingLink) win.once('ready-to-show', () => win && bringToFront(win))
     // isLoading() est encore vrai pendant did-finish-load : d'où l'indicateur.
     win.webContents.on('did-finish-load', () => {
       pageLoaded = true
-      sendPendingPack()
+      sendPendingLink()
     })
     service.startBackground()
     // Liens modifiables depuis le site, et compte (droits donnés ou retirés par l'admin, comme « Peut créer un pack ») :

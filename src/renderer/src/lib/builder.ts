@@ -77,6 +77,12 @@ export function snapshot(d: Pick<Draft, 'name' | 'components' | 'tools'>): strin
   return JSON.stringify({ name: d.name.trim(), components: [...d.components].sort(), tools: sortKeys(cleanTools(d.tools)) })
 }
 
+/** Deux instantanés (snapshot) aux mêmes éléments et réglages : seul le nom diffère, ce n'est pas une modification. */
+export function sameComposition(a: string, b: string): boolean {
+  const unnamed = (s: string): string => JSON.stringify({ ...(JSON.parse(s) as object), name: null })
+  return unnamed(a) === unnamed(b)
+}
+
 function sortKeys(value: unknown): unknown {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value
   return Object.fromEntries(

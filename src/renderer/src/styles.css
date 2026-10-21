@@ -4027,3 +4027,128 @@ button.google {
     max-width: 360px;
   }
 }
+
+/* Vente : « Mon offre » sur l'accueil, formule de chaque création, bandeau d'un pack gratuit, fenêtre d'achat. Discret :
+   un encart et des pastilles, pas de bandeau commercial. */
+.builder-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  max-width: 720px;
+  margin-top: 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.builder-offer-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.builder-offer-title {
+  font-weight: 600;
+}
+.builder-offer-note {
+  flex-basis: 100%;
+  margin: 0;
+  text-align: right;
+}
+.plan-badge {
+  align-self: flex-start;
+  margin-top: 6px;
+}
+.plan-badge.is-free {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-text);
+}
+.plan-badge.is-locked {
+  background: var(--warning-bg);
+  color: var(--warn-text);
+}
+.builder-plan-bar {
+  margin-bottom: 14px;
+}
+.builder-plan-bar button {
+  flex: none;
+}
+.purchase-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 4px;
+}
+.purchase-body p {
+  margin: 0;
+}
+.purchase-reason {
+  color: var(--text-2);
+}
+.purchase-credit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.purchase-credit span {
+  flex: 1;
+  min-width: 200px;
+}
+.purchase-price {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 28px;
+}
+.purchase-price s {
+  font-size: 14px;
+  font-weight: 400;
+}
+.purchase-promo {
+  display: flex;
+  gap: 8px;
+  max-width: 360px;
+}
+.purchase-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.purchase-checks .check-line {
+  align-items: flex-start;
+  margin-top: 0;
+}
+.purchase-checks input[type='checkbox'] {
+  flex: none;
+  margin-top: 1px;
+}
+.purchase-note {
+  margin: 0;
+}
+.purchase-waiting {
+  font-weight: 600;
+}
+.purchase-dialog .modal-body > p + p {
+  margin-top: 6px;
+}
+.purchase-dialog .purchase-support {
+  margin-top: 12px;
+}
+.purchase-status {
+  flex: none;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.purchase-status.is-paid,
+.purchase-status.is-free {
+  color: var(--ok-text);
+}
+.purchase-status.is-pending {
+  color: var(--accent-text);
+}

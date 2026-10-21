@@ -427,7 +427,96 @@
       "incomplete": "Téléchargement incomplet.",
       "downloadFailed": "Téléchargement impossible (erreur {{status}}).",
       "corrupted": "Un fichier téléchargé est endommagé. Relance l’installation.",
-      "empty": "Cette création n’a rien à installer."
+      "empty": "Cette création n’a rien à installer.",
+      "purchaseNotFound": "Achat introuvable.",
+      "badCheckoutUrl": "Adresse de paiement refusée : la page n’a pas été ouverte."
+    },
+    "billing": {
+      "offer": {
+        "title": "Mon offre",
+        "free_one": "{{n}} pack gratuit restant",
+        "free_other": "{{n}} packs gratuits restants",
+        "credits_one": "{{n}} crédit de pack libre",
+        "credits_other": "{{n}} crédits de pack libres",
+        "creditsTitle": "Un crédit = un pack modifiable à l’infini.",
+        "buy": "Acheter un pack — {{price}}",
+        "unavailable": "Paiement indisponible pour le moment",
+        "history": "Mes achats"
+      },
+      "plan": {
+        "free_one": "Gratuit — {{n}} modification restante",
+        "free_other": "Gratuit — {{n}} modifications restantes",
+        "locked": "Gratuit — à débloquer",
+        "unlimited": "Illimité",
+        "open": "Offert",
+        "edit_one": "Ce pack gratuit peut être modifié {{n}} fois : la modification sera utilisée à l’enregistrement.",
+        "edit_other": "Ce pack gratuit peut encore être modifié {{n}} fois : chaque enregistrement d’un changement en utilise une.",
+        "lockedText": "Ce pack gratuit a déjà été modifié. Débloque-le pour le modifier à l’infini.",
+        "useCredit": "Utiliser un crédit",
+        "unlock": "Débloquer — {{price}}",
+        "deleteFree": "Un pack gratuit supprimé n’est pas rendu.",
+        "deleteCredit": "Son crédit redevient disponible pour un autre pack."
+      },
+      "dialog": {
+        "packTitle": "Un pack de plus",
+        "packText": "Un crédit de pack : une nouvelle création, modifiable à l’infini.",
+        "unlockTitle": "Débloquer {{name}}",
+        "unlockText": "{{name}} devient modifiable à l’infini.",
+        "needPack": "Tu n’as plus de pack gratuit ni de crédit libre : il te faut un pack de plus pour enregistrer cette nouvelle création. Tes choix restent dans l’assistant.",
+        "needUnlock": "Ce pack gratuit a déjà été modifié : débloque-le pour enregistrer tes changements. Tes choix restent dans l’assistant.",
+        "credit_one": "Tu as {{n}} crédit libre : utilise-le pour débloquer ce pack sans payer.",
+        "credit_other": "Tu as {{n}} crédits libres : utilise-en un pour débloquer ce pack sans payer.",
+        "price": "Prix",
+        "discount": "{{amount}} de réduction avec le code {{code}}",
+        "promo": "Code promo",
+        "apply": "Appliquer",
+        "terms": "J’accepte les <terms>conditions générales de vente</terms>.",
+        "withdrawal": "Je demande l’accès immédiat à mon pack et je renonce à mon droit de rétractation.",
+        "pay": "Payer {{price}}",
+        "getFree": "Valider",
+        "waiting": "Paiement en cours dans ton navigateur…",
+        "waitingHint": "Cette fenêtre se met à jour toute seule une fois le paiement fait.",
+        "expiresAt": "La page de paiement reste valable jusqu’à {{time}}.",
+        "reopen": "Rouvrir la page de paiement",
+        "paid": "Paiement reçu, merci !",
+        "freeBy": "Offert par le code {{code}}.",
+        "gotPack": "Tu as un pack de plus.",
+        "unlocked": "{{name}} est débloqué : tu peux le modifier à l’infini.",
+        "nothingToPay": "Rien à payer : « Créer ton pack » est illimité pour ton compte.",
+        "continue": "Continuer",
+        "support": "Un souci avec un paiement ? <discord>Support sur Discord</discord>",
+        "ended": {
+          "expired": "La page de paiement a expiré. Tu peux recommencer.",
+          "canceled": "Paiement annulé.",
+          "failed": "Le paiement n’a pas abouti.",
+          "refunded": "Ce paiement a été remboursé."
+        },
+        "promoErrors": {
+          "invalid": "Ce code promo n’existe pas.",
+          "notStarted": "Ce code promo n’est pas encore valable.",
+          "expired": "Ce code promo a expiré.",
+          "notApplicable": "Ce code promo ne s’applique pas à cet achat.",
+          "exhausted": "Ce code promo n’est plus disponible.",
+          "alreadyUsed": "Tu as déjà utilisé ce code promo."
+        }
+      },
+      "history": {
+        "title": "Mes achats",
+        "empty": "Aucun achat pour le moment.",
+        "pack": "Un pack de plus",
+        "unlock": "Déblocage de {{name}}",
+        "code": "code {{code}}",
+        "resume": "Reprendre le paiement",
+        "status": {
+          "pending": "En cours",
+          "paid": "Payé",
+          "free": "Offert",
+          "expired": "Expiré",
+          "failed": "Échoué",
+          "canceled": "Annulé",
+          "refunded": "Remboursé"
+        }
+      }
     }
   },
   "cleanup": {

@@ -22,6 +22,7 @@ import { WhatsNew } from './components/WhatsNew'
 import { DownloadBar } from './components/Downloads'
 import { ConfirmHost } from './components/Confirm'
 import { MenuHost } from './components/Menu'
+import { PageBoundary } from './components/PageBoundary'
 import icon from './assets/icon.png'
 
 /** instances : page des instances FiveM, ouverte depuis les réglages. */
@@ -313,7 +314,8 @@ export function App() {
         <MaintenanceBanner info={maintenance} screen={!!maintenanceScreen} />
         {maintenanceScreen && <MaintenanceScreen ongoing={maintenance.ongoing!} state={maintenance.state!} />}
         {overview && !maintenanceScreen && (
-          <>
+          // Une erreur d'affichage ne vide que la page ouverte (message et « Réessayer ») ; changer de page l'efface.
+          <PageBoundary key={`${page}:${openPack ?? ''}`}>
             {page === 'library' &&
               (detail ? (
                 <PackDetail
@@ -354,7 +356,7 @@ export function App() {
                 } />}
             {page === 'settings' && <SettingsView onManageInstances={() => go('instances')} />}
             {page === 'instances' && <InstancesView onBack={() => go('settings')} />}
-          </>
+          </PageBoundary>
         )}
 
         {message && (

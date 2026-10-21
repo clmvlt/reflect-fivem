@@ -141,6 +141,7 @@ const methods = [
   'accountPickAvatar',
   'accountRemoveAvatar',
   'accountChangePassword',
+  'reportError',
   'getLanguage',
   'getTheme',
   'setTheme',

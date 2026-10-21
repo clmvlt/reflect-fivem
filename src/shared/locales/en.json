@@ -160,6 +160,10 @@
   },
   "app": {
     "acceptedFormats": "Accepted formats",
+    "crash": {
+      "title": "This page couldn’t be displayed.",
+      "text": "The problem was written to the app log. Try again, or open another page."
+    },
     "drop": {
       "library": "Drop to add to the library",
       "mods": "Drop to add to your mods"

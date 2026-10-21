@@ -323,6 +323,9 @@ export interface PackManagerApi {
   /** currentPassword : null pour un compte qui n'a pas encore de mot de passe. */
   accountChangePassword(currentPassword: string | null, newPassword: string): Promise<AccountMe>
 
+  /** Erreur d'affichage de l'interface (page remplacée par un message) : notée dans le journal de l'application. */
+  reportError(message: string): Promise<void>
+
   /** Langue affichée (choisie par le processus principal). */
   getLanguage(): Promise<string>
   /** Thème choisi dans les réglages (« system » : celui de Windows), connu avant le premier affichage. */

@@ -160,6 +160,10 @@
   },
   "app": {
     "acceptedFormats": "Formats acceptés",
+    "crash": {
+      "title": "Cette page n’a pas pu s’afficher.",
+      "text": "Le problème est noté dans le journal de l’application. Réessayez, ou ouvrez une autre page."
+    },
     "drop": {
       "library": "Déposez pour ajouter à la bibliothèque",
       "mods": "Déposez pour ajouter à vos mods"

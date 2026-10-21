@@ -199,6 +199,17 @@ function startApp(): void {
       void service.purchases.refreshOwned()
     })
     nativeTheme.on('updated', () => win?.setBackgroundColor(service.windowBackground()))
+    // Fenêtre vide ou figée sans erreur de l'interface : processus de la page arrêté (rechargé), page qui ne répond plus,
+    // processus de la carte graphique arrêté. Noté dans le journal pour en trouver la cause.
+    win.webContents.on('render-process-gone', (_e, d) => {
+      log.error(`Interface : processus de la page arrêté (${d.reason}, code ${d.exitCode})`)
+      if (d.reason !== 'clean-exit' && win && !win.isDestroyed()) win.webContents.reload()
+    })
+    win.on('unresponsive', () => log.warn('Interface : la page ne répond plus'))
+    win.on('responsive', () => log.info('Interface : la page répond de nouveau'))
+    app.on('child-process-gone', (_e, d) => {
+      if (d.type === 'GPU') log.warn(`Interface : processus graphique arrêté (${d.reason}, code ${d.exitCode})`)
+    })
   })
 }
 

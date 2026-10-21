@@ -1537,6 +1537,10 @@ export class Service {
 
     accountChangePassword: (currentPassword: string | null, newPassword: string) => this.account.changePassword(currentPassword, newPassword),
 
+    reportError: async (message: string) => {
+      log.error(`Interface : ${String(message).slice(0, 8000)}`)
+    },
+
     getLanguage: async () => currentLocale(),
 
     getTheme: async () => this.settings.get().theme ?? 'system',

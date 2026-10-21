@@ -128,7 +128,7 @@ function ControlRow({ control, adjustments, start, onChange }: { control: Builde
       </div>
       {input}
       <button className="link reset-link" onClick={() => set(null)} disabled={!changed}>
-        {t('builder.tool.default')}
+        {t('builder.tool.reset')}
       </button>
     </li>
   )

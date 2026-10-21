@@ -350,7 +350,7 @@
       "backToStyle": "Revenir au style",
       "backToPack": "Revenir au réglage du pack",
       "noControls": "Rien à ajuster ici : tout se règle dans « Avancé ».",
-      "default": "Par défaut",
+      "reset": "Reset",
       "advanced": "Avancé",
       "advancedHint": "Pour les connaisseurs : chaque effet et chaque réglage du fichier, un par un.",
       "effects": "Effets",

@@ -528,9 +528,26 @@ function toTechnique(raw: unknown): BuilderTechnique | null {
   return { name: o.name, effect: strOrNull(o.effect), enabled: o.enabled === true, costMs: num(o.costMs) ?? 0, costLabel: str(o.costLabel) }
 }
 
+/**
+ * Sans doublon, le premier gardé (`ignoreCase` : noms de fichiers d'effets, comparés sans la casse comme sous Windows).
+ * Un shader déclare souvent deux fois le même réglage, selon ses options de compilation (#if) : ReShade n'en garde
+ * qu'un, et l'interface ne peut pas afficher deux lignes de même nom (même clé : sa mise à jour se fausse et peut
+ * effacer toute la fenêtre).
+ */
+function unique<T>(list: T[], name: (x: T) => string, ignoreCase = false): T[] {
+  const seen = new Set<string>()
+  return list.filter((x) => {
+    const key = ignoreCase ? name(x).toLowerCase() : name(x)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 function toEffect(raw: unknown): BuilderEffect | null {
   const o = obj(raw)
-  return typeof o.file === 'string' && o.file ? { file: o.file, params: arr(o.params).map(toParam).filter(present) } : null
+  if (typeof o.file !== 'string' || !o.file) return null
+  return { file: o.file, params: unique(arr(o.params).map(toParam).filter(present), (p) => p.name) }
 }
 
 function toToolView(raw: unknown, tool: ToolKey): BuilderToolView {
@@ -541,10 +558,10 @@ function toToolView(raw: unknown, tool: ToolKey): BuilderToolView {
     componentId: uuidOrNull(o.componentId),
     styleId: uuidOrNull(o.styleId),
     path: strOrNull(o.path),
-    techniques: Array.isArray(o.techniques) ? o.techniques.map(toTechnique).filter(present) : null,
-    available: Array.isArray(o.available) ? strings(o.available) : null,
-    effects: arr(o.effects).map(toEffect).filter(present),
-    controls: arr(o.controls).map(toControl).filter(present),
+    techniques: Array.isArray(o.techniques) ? unique(o.techniques.map(toTechnique).filter(present), (x) => x.name, true) : null,
+    available: Array.isArray(o.available) ? unique(strings(o.available), (x) => x, true) : null,
+    effects: unique(arr(o.effects).map(toEffect).filter(present), (e) => e.file, true),
+    controls: unique(arr(o.controls).map(toControl).filter(present), (c) => c.key),
     problems: arr(o.problems).map(toProblem)
   }
 }

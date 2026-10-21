@@ -925,9 +925,23 @@ describe('création avec des outils d’ambiance', () => {
       componentId: REFERENCE_ID,
       styleId: STYLE_REAL,
       path: 'plugins/Reflect.ini',
-      techniques: [{ name: 'Bloom@Bloom.fx', effect: 'Bloom.fx', enabled: true, costMs: 0.4, costLabel: 'Léger' }],
+      techniques: [
+        { name: 'Bloom@Bloom.fx', effect: 'Bloom.fx', enabled: true, costMs: 0.4, costLabel: 'Léger' },
+        { name: 'Bloom@bloom.FX', effect: 'Bloom.fx', enabled: false, costMs: 0.4, costLabel: 'Léger' }
+      ],
       available: ['Bloom@Bloom.fx', 'Vignette@Vignette.fx'],
-      effects: [{ file: 'Bloom.fx', params: [{ name: 'Intensity', type: 'float', value: '0.6', defaultValue: '0.3', baseValue: '0.5' }] }],
+      effects: [
+        {
+          file: 'Bloom.fx',
+          params: [
+            { name: 'Intensity', type: 'float', value: '0.6', defaultValue: '0.3', baseValue: '0.5' },
+            // Même réglage déclaré deux fois par le shader (#if) : le premier seulement.
+            { name: 'Blend', type: 'float', ui: 'slider', min: 0, max: 1, defaultValue: '0.5' },
+            { name: 'Blend', type: 'int', ui: 'combo', items: ['Mix', 'Add'], defaultValue: '0' }
+          ]
+        },
+        { file: 'BLOOM.fx', params: [{ name: 'Intensity', type: 'float' }] }
+      ],
       controls: [{ key: 'brightness', label: 'Luminosité', type: 'slider', value: 0, tool: 'reshade' }],
       problems: []
     })
@@ -935,6 +949,13 @@ describe('création avec des outils d’ambiance', () => {
     expect(view).toMatchObject({ mode: 'custom', styleId: STYLE_REAL, available: ['Bloom@Bloom.fx', 'Vignette@Vignette.fx'] })
     expect(view.effects[0].params[0]).toMatchObject({ value: '0.6', baseValue: '0.5', defaultValue: '0.3' })
     expect(view.controls[0].tool).toBe('reshade')
+    // Doublons retirés : une ligne par nom dans l'interface.
+    expect(view.techniques?.map((x) => x.name)).toEqual(['Bloom@Bloom.fx'])
+    expect(view.effects.map((e) => e.file)).toEqual(['Bloom.fx'])
+    expect(view.effects[0].params.map((p) => [p.name, p.type])).toEqual([
+      ['Intensity', 'float'],
+      ['Blend', 'float']
+    ])
 
     // Effet inconnu : réponse vide.
     s.account.fetchAuthed.mockResolvedValueOnce(new Response('', { status: 200 }))

@@ -614,8 +614,9 @@ function MarketAction({
       {update && !wide && <span className="accent-text small">{t('marketplace.action.newVersion')}</span>}
       <div className="spacer" />
       {paid ? (
-        <button className={`primary ${wide ? 'wide' : ''}`} onClick={paid.run}>
-          {paid.label}
+        // Carte : le prix seul (le texte complet ne tient pas), en entier sur la fiche.
+        <button className={`primary ${wide ? 'wide' : ''}`} onClick={paid.run} title={wide ? undefined : paid.label}>
+          {wide ? paid.label : paid.price}
         </button>
       ) : (
         <button className={`primary ${wide ? 'wide' : ''}`} onClick={() => void install()}>

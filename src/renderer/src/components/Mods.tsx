@@ -368,8 +368,9 @@ export function ModMarketAction({
     return (
       <>
         <div className="spacer" />
-        <button className={cls(true)} onClick={paid ? paid.run : () => void installNew()}>
-          {paid ? paid.label : t('modsView.install')}
+        {/* Carte : le prix seul (le texte complet ne tient pas), en entier sur la fiche. */}
+        <button className={cls(true)} onClick={paid ? paid.run : () => void installNew()} title={paid && !wide ? paid.label : undefined}>
+          {paid ? (wide ? paid.label : paid.price) : t('modsView.install')}
         </button>
       </>
     )
@@ -384,8 +385,8 @@ export function ModMarketAction({
         {update ? <span className="accent-text small">{t('modsView.newVersion')}</span> : <span className="state">{enabled ? t('common.enabled') : t('common.disabled')}</span>}
         <div className="spacer" />
         {update ? (
-          <button className="primary" onClick={paid ? paid.run : install}>
-            {paid ? paid.label : t('modsView.update')}
+          <button className="primary" onClick={paid ? paid.run : install} title={paid?.label}>
+            {paid ? paid.price : t('modsView.update')}
           </button>
         ) : (
           toggle

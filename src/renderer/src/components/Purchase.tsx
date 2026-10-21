@@ -84,13 +84,15 @@ export interface PurchaseItem {
 
 /**
  * Bouton d'installation d'un pack payant qu'on n'a pas : « Acheter - 4,00 € » (fenêtre d'achat, puis téléchargement)
- * ou « Se connecter pour acheter - 4,00 € ». Null quand il se télécharge (gratuit, ou à soi). `access` : relu à l'ouverture
- * de la fiche ; sur une carte, les packs à soi font foi. `update` : nouvelle version d'un pack de la bibliothèque.
+ * ou « Se connecter pour acheter - 4,00 € » (`label`, sur la fiche) ; sur une carte, où la place manque, le prix seul
+ * (`price`, le texte complet en info-bulle). Null quand il se télécharge (gratuit, ou à soi). `access` : relu à
+ * l'ouverture de la fiche ; sur une carte, les packs à soi font foi. `update` : nouvelle version d'un pack de la
+ * bibliothèque.
  */
 export function usePaidAction(
   item: { id: string; kind: MarketKind; name: string; price: number | null; cover?: { id: string } | null },
   opts: { access?: ItemAccess | null; update?: boolean } = {}
-): { label: string; run: () => void } | null {
+): { label: string; price: string; run: () => void } | null {
   const { t } = useTranslation()
   const { account, overview } = useStore()
   const price = opts.access ? opts.access.price : item.price
@@ -99,9 +101,10 @@ export function usePaidAction(
   if (choice === 'download' || price === null) return null
   // Le prix aussi sans compte : « Se connecter pour acheter - 4,00 € ».
   const text = formatPrice(price, opts.access?.currency)
-  if (choice === 'signIn') return { label: t('marketplace.paid.signInToBuy', { price: text }), run: requestSignIn }
+  if (choice === 'signIn') return { label: t('marketplace.paid.signInToBuy', { price: text }), price: text, run: requestSignIn }
   return {
     label: t('marketplace.paid.buy', { price: text }),
+    price: text,
     run: () =>
       void purchaseDialog({ product: 'item', item: { kind: item.kind, id: item.id, name: item.name, coverId: item.cover?.id ?? null }, install: true, update: opts.update })
   }

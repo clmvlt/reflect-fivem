@@ -3,7 +3,7 @@
 // bibliothèque (zips, puis fichiers, puis fichiers écrits, dont ceux de chaque outil d'ambiance sous leur racine), et
 // nouvelle révision proposée comme une mise à jour. Droit « Peut créer un pack » : sans lui, aucune requête. Outils
 // d'ambiance : conversion des créations d'avant les outils, règles QuantV / ReShade, choix rapide (Basique, Recommandé)
-// et aperçu d'un style.
+// et aperçu d'un style. Images de référence en jeu : lues dans le catalogue et gardées sur le disque.
 import { createHash } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
@@ -200,7 +200,7 @@ function setup() {
   const fetch = vi.fn(async (url: string, init?: RequestInit): Promise<Response> => {
     const headers = Object.fromEntries(new Headers(init?.headers).entries())
     requests.push({ url, headers })
-    if (url.includes('/images/') || url.includes('/builder/styles/')) return new Response(new Uint8Array(JPEG), { status: 200 })
+    if (url.includes('/images/') || url.includes('/builder/styles/') || url.includes('/builder/references/')) return new Response(new Uint8Array(JPEG), { status: 200 })
     const m = /\/builder\/files\/([0-9a-f]{64})$/.exec(url)
     const served = m && blobs.get(m[1])
     if (!served) return json({ detail: 'Fichier introuvable.' }, { status: 404 })
@@ -544,6 +544,26 @@ const REFERENCE_ID = 'aaaaaaaa-0000-4000-8000-000000000005'
 const STYLE_REAL = 'cccccccc-0000-4000-8000-000000000001'
 const STYLE_CINEMA = 'cccccccc-0000-4000-8000-000000000002'
 const STYLE_QUANTV = 'cccccccc-0000-4000-8000-000000000003'
+const REF_CAR = 'dddddddd-0000-4000-8000-000000000001'
+const REF_CITY = 'dddddddd-0000-4000-8000-000000000002'
+const REF_NIGHT = 'dddddddd-0000-4000-8000-000000000003'
+
+const referenceImage = (id: string, version: number, extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+  id,
+  imageUrl: `/builder/references/${id}/image?v=${version}`,
+  thumbUrl: `/builder/references/${id}/image?v=${version}&size=thumb`,
+  width: 1920,
+  height: 1080,
+  byDefault: false,
+  ...extra
+})
+
+/** Images de référence en jeu publiées, dans l'ordre de l'admin : Voiture, Centre-ville (par défaut), Ville la nuit. */
+const references = (): Record<string, unknown>[] => [
+  referenceImage(REF_CAR, 4, { label: 'Voiture', credits: 'Capture : Dimzou' }),
+  referenceImage(REF_CITY, 2, { label: 'Centre-ville', credits: null, byDefault: true }),
+  referenceImage(REF_NIGHT, 7, { label: 'Ville la nuit', width: undefined, height: undefined })
+]
 
 const card = (id: string, category: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({
   id,
@@ -556,8 +576,11 @@ const card = (id: string, category: string, extra: Record<string, unknown> = {})
   ...extra
 })
 
-/** Catalogue avec les quatre outils : ReShade et QuantV réglables, NVE sans rien, ENB importé d'un pack. */
-const toolsCatalog = (opts: { reshadeCustom?: boolean; reshadePacks?: boolean } = {}): Record<string, unknown> => ({
+/**
+ * Catalogue avec les quatre outils : ReShade et QuantV réglables, NVE sans rien, ENB importé d'un pack. Sans
+ * `references` : catalogue d'une API d'avant les images de référence en jeu.
+ */
+const toolsCatalog = (opts: { reshadeCustom?: boolean; reshadePacks?: boolean; references?: unknown[] } = {}): Record<string, unknown> => ({
   version: 'v-outils',
   groups: [{ key: 'ambiance', label: 'Ambiance graphique', categories: ['quantv', 'reshade', 'nve', 'enb', 'timecycle'] }],
   categories: [
@@ -616,7 +639,8 @@ const toolsCatalog = (opts: { reshadeCustom?: boolean; reshadePacks?: boolean } 
     { key: 'nve', label: 'NVE', category: 'nve', defaultMode: 'none', custom: false, packs: 0, styles: [], requires: [] },
     { key: 'enb', label: 'ENB', category: 'enb', defaultMode: 'pack', custom: false, packs: 1, styles: [], requires: [] }
   ],
-  controls: [{ key: 'brightness', label: 'Luminosité', type: 'slider', min: -100, max: 100, step: 1, group: 'image', groupLabel: 'Image', tool: 'reshade' }]
+  controls: [{ key: 'brightness', label: 'Luminosité', type: 'slider', min: -100, max: 100, step: 1, group: 'image', groupLabel: 'Image', tool: 'reshade' }],
+  ...(opts.references ? { references: opts.references } : {})
 })
 
 const parsed = (opts?: Parameters<typeof toolsCatalog>[0]) => toCatalog(toolsCatalog(opts), { offline: false, checked: true })
@@ -639,6 +663,50 @@ describe('catalogue des outils d’ambiance', () => {
     // Adresse d'un autre style ou d'un autre serveur : pas d'image.
     expect(styleImageVersion(STYLE_REAL, `/builder/styles/${STYLE_CINEMA}/image?v=3`)).toBeNull()
     expect(styleImageVersion(STYLE_REAL, `https://ailleurs.test/builder/styles/${STYLE_REAL}/image?v=3`)).toBeNull()
+    expect(styleImageVersion(STYLE_REAL, `/builder/references/${STYLE_REAL}/image?v=3`)).toBeNull()
+  })
+
+  it('lit les images de référence en jeu dans l’ordre de l’admin, sans celles qui n’ont pas d’image valable', () => {
+    const other = 'dddddddd-0000-4000-8000-000000000009'
+    const catalog = parsed({
+      references: [
+        ...references(),
+        // Sans image, adresse d'une autre image ou d'un autre serveur, identifiant invalide, en double : ignorées.
+        { id: other, label: 'Sans image', imageUrl: null },
+        referenceImage(other, 1, { imageUrl: `/builder/references/${REF_CAR}/image?v=4` }),
+        referenceImage(other, 1, { imageUrl: `https://ailleurs.test/builder/references/${other}/image?v=1` }),
+        referenceImage('pas-un-identifiant', 1),
+        referenceImage(REF_CAR, 4, { label: 'Voiture en double' }),
+        'pas un objet'
+      ]
+    })
+    expect(catalog.references).toEqual([
+      { id: REF_CAR, label: 'Voiture', credits: 'Capture : Dimzou', version: '4', width: 1920, height: 1080, byDefault: false },
+      { id: REF_CITY, label: 'Centre-ville', credits: '', version: '2', width: 1920, height: 1080, byDefault: true },
+      { id: REF_NIGHT, label: 'Ville la nuit', credits: '', version: '7', width: 0, height: 0, byDefault: false }
+    ])
+    // API d'avant les images en jeu : aucune, l'image du composant de base de l'outil reste le repli.
+    const old = parsed()
+    expect(old.references).toEqual([])
+    expect(old.tools[0]).toMatchObject({ referenceComponent: REFERENCE_ID, reference: { id: IMAGE_ID } })
+  })
+
+  it('sert les images de référence en jeu sans jeton et les garde sur le disque, comme celles des styles', async () => {
+    const s = setup()
+    const thumb = await s.builder.referenceImage(REF_CAR, '4', true)
+    expect(thumb.status).toBe(200)
+    expect(thumb.headers.get('Content-Type')).toBe('image/jpeg')
+    expect(Buffer.from(await thumb.arrayBuffer())).toEqual(JPEG)
+    expect(s.requests).toEqual([{ url: `${API}/builder/references/${REF_CAR}/image?v=4&size=thumb`, headers: {} }])
+    await expect(fs.stat(path.join(dir, 'builder', 'images', `reference-${REF_CAR}-4-thumb.jpg`))).resolves.toBeTruthy()
+    // Déjà sur le disque : pas de nouvelle requête ; la grande image est un autre fichier.
+    expect((await s.builder.referenceImage(REF_CAR, '4', true)).status).toBe(200)
+    expect((await s.builder.referenceImage(REF_CAR, '4', false)).status).toBe(200)
+    expect(s.requests.map((r) => r.url)).toEqual([`${API}/builder/references/${REF_CAR}/image?v=4&size=thumb`, `${API}/builder/references/${REF_CAR}/image?v=4`])
+    // Identifiant ou version refusés : rien n'est demandé.
+    expect((await s.builder.referenceImage('../secret', '4', false)).status).toBe(403)
+    expect((await s.builder.referenceImage(REF_CAR, '4&size=x', false)).status).toBe(403)
+    expect(s.requests).toHaveLength(2)
   })
 })
 

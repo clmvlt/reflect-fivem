@@ -873,12 +873,28 @@ export interface BuilderTool {
   custom: boolean
   /** Composants publiés à importer d'un pack. */
   packs: number
-  /** Image de référence pour l'aperçu des styles (image du composant `referenceComponent`). */
+  /**
+   * Image du composant `referenceComponent` pour l'aperçu des styles : repli quand le catalogue n'a aucune image de
+   * référence en jeu ({@link BuilderCatalog.references}).
+   */
   referenceComponent: string | null
   reference: MarketImage | null
   styles: BuilderStyle[]
   /** Outils dont il a besoin (QuantV : ReShade). */
   requires: ToolKey[]
+}
+
+/** Image de référence en jeu (« Voiture », « Centre-ville »...) sur laquelle dessiner l'aperçu des styles. */
+export interface BuilderReference {
+  id: string
+  /** Nom dans la langue affichée. */
+  label: string
+  credits: string
+  /** Version de l'image (pm-media://builder-reference/<image>/<version>), changée avec l'image. */
+  version: string
+  width: number
+  height: number
+  byDefault: boolean
 }
 
 export interface BuilderCatalog {
@@ -887,6 +903,8 @@ export interface BuilderCatalog {
   categories: BuilderCategory[]
   /** Outils d'ambiance proposés, dans l'ordre reshade, quantv, nve, enb. */
   tools: BuilderTool[]
+  /** Images de référence en jeu publiées, dans l'ordre choisi par l'admin (vide : ancienne API, ou aucune publiée). */
+  references: BuilderReference[]
   controls: BuilderControl[]
   /** Copie gardée sur le disque, l'API n'ayant pas pu être jointe. */
   offline: boolean

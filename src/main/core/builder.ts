@@ -9,7 +9,8 @@
 // Sur le disque (<données>/builder) :
 //   catalog-<langue>.json   dernier catalogue reçu et son ETag : consultable hors ligne, revérifié par If-None-Match
 //                           (304 : rien à faire) ;
-//   images/                 images des composants et des styles (publiques, jamais modifiées), 200 Mo au plus ;
+//   images/                 images des composants, des styles et des images de référence en jeu (publiques, jamais
+//                           modifiées), 200 Mo au plus ;
 //   blobs/<xx>/<sha256>     fichiers des composants, rangés par empreinte : un fichier partagé par plusieurs composants
 //                           n'est téléchargé qu'une fois ; <sha256>.part pendant le téléchargement (repris par Range).
 //                           Gardés tant qu'un pack construit de la bibliothèque s'en sert (reconstruction sans tout
@@ -57,6 +58,7 @@ import type {
   BuilderPerformance,
   BuilderPreview,
   BuilderProblem,
+  BuilderReference,
   BuilderSaveInput,
   BuilderStatus,
   BuilderStyle,
@@ -80,8 +82,8 @@ import { formatBytes, freeSpace, readJson, sameVolume, walkFiles, writeJsonAtomi
 import { log } from '../util/log'
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-/** Version de l'image d'un style (« ?v=… » de son adresse). */
-const STYLE_VERSION = /^[A-Za-z0-9_-]{1,64}$/
+/** Version de l'image d'un style ou d'une image de référence en jeu (« ?v=… » de son adresse). */
+const IMAGE_VERSION = /^[A-Za-z0-9_-]{1,64}$/
 const SHA256 = /^[0-9a-f]{64}$/
 const IMAGE_CACHE_MAX = 200 * 1024 * 1024
 const NAME_MAX = 80
@@ -354,8 +356,16 @@ const uuidOrNull = (x: unknown): string | null => (typeof x === 'string' && UUID
 
 /** Version de l'image d'un style, lue dans son adresse (« /builder/styles/<id>/image?v=<version> ») ; null sans image. */
 export function styleImageVersion(id: string, url: unknown): string | null {
-  const m = typeof url === 'string' ? /^\/builder\/styles\/([0-9a-f-]{36})\/image\?v=([A-Za-z0-9_-]{1,64})(&|$)/i.exec(url) : null
-  return m && m[1].toLowerCase() === id.toLowerCase() ? m[2] : null
+  return imageVersion('styles', id, url)
+}
+
+/**
+ * Version lue dans l'adresse d'une image de l'API (« /builder/<route>/<id>/image?v=<version> ») ; null sans adresse,
+ * ou pour celle d'une autre image ou d'un autre serveur.
+ */
+function imageVersion(route: 'styles' | 'references', id: string, url: unknown): string | null {
+  const m = typeof url === 'string' ? /^\/builder\/(styles|references)\/([0-9a-f-]{36})\/image\?v=([A-Za-z0-9_-]{1,64})(&|$)/i.exec(url) : null
+  return m && m[1].toLowerCase() === route && m[2].toLowerCase() === id.toLowerCase() ? m[3] : null
 }
 
 function toStylePreview(raw: unknown): BuilderStylePreview | null {
@@ -409,6 +419,15 @@ function toTool(raw: unknown): BuilderTool | null {
   }
 }
 
+/** Image de référence en jeu ; null sans identifiant ou sans adresse d'image valable. */
+function toReference(raw: unknown): BuilderReference | null {
+  const o = obj(raw)
+  if (typeof o.id !== 'string' || !UUID.test(o.id)) return null
+  const version = imageVersion('references', o.id, o.imageUrl)
+  if (!version) return null
+  return { id: o.id, label: str(o.label), credits: str(o.credits), version, width: num(o.width) ?? 0, height: num(o.height) ?? 0, byDefault: o.byDefault === true }
+}
+
 /** Catalogue reçu (ou gardé sur le disque) ; erreur s'il est inutilisable. */
 export function toCatalog(raw: unknown, flags: { offline: boolean; checked: boolean }): BuilderCatalog {
   const r = obj(raw)
@@ -433,6 +452,11 @@ export function toCatalog(raw: unknown, flags: { offline: boolean; checked: bool
         })
       ),
     tools: arr(r.tools).map(toTool).filter(present),
+    // Chacune une seule fois (une pastille par image dans l'interface).
+    references: arr(r.references)
+      .map(toReference)
+      .filter(present)
+      .filter((x, i, all) => all.findIndex((y) => y.id === x.id) === i),
     controls: arr(r.controls).map(toControl).filter(present),
     ...flags
   }
@@ -909,7 +933,7 @@ export class Builder {
    * nouvelle image change la version, donc l'adresse).
    */
   async styleImage(styleId: string, version: string, thumb: boolean): Promise<Response> {
-    if (!UUID.test(styleId) || !STYLE_VERSION.test(version)) return new Response('Interdit', { status: 403 })
+    if (!UUID.test(styleId) || !IMAGE_VERSION.test(version)) return new Response('Interdit', { status: 403 })
     try {
       return new Response(new Uint8Array(await this.styleImageData(styleId, version, thumb)), { headers: { 'Content-Type': 'image/jpeg' } })
     } catch {
@@ -919,6 +943,26 @@ export class Builder {
 
   private styleImageData(styleId: string, version: string, thumb: boolean): Promise<Buffer> {
     return this.cachedImage(`style-${styleId}-${version}${thumb ? '-thumb' : ''}.jpg`, `/builder/styles/${styleId}/image?v=${version}${thumb ? '&size=thumb' : ''}`)
+  }
+
+  /**
+   * pm-media://builder-reference/<image>/<version>[?size=thumb] : image de référence en jeu (publique), en cache sur le
+   * disque comme celles des styles (une nouvelle image change la version, donc l'adresse).
+   */
+  async referenceImage(referenceId: string, version: string, thumb: boolean): Promise<Response> {
+    if (!UUID.test(referenceId) || !IMAGE_VERSION.test(version)) return new Response('Interdit', { status: 403 })
+    try {
+      return new Response(new Uint8Array(await this.referenceImageData(referenceId, version, thumb)), { headers: { 'Content-Type': 'image/jpeg' } })
+    } catch {
+      return new Response('', { status: 404 })
+    }
+  }
+
+  private referenceImageData(referenceId: string, version: string, thumb: boolean): Promise<Buffer> {
+    return this.cachedImage(
+      `reference-${referenceId}-${version}${thumb ? '-thumb' : ''}.jpg`,
+      `/builder/references/${referenceId}/image?v=${version}${thumb ? '&size=thumb' : ''}`
+    )
   }
 
   /** Image du cache (`name`), sinon demandée à l'API (`pathname`) puis gardée. */

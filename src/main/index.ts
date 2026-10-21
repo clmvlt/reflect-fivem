@@ -100,8 +100,9 @@ function startApp(): void {
     // Images des packs : pm-media://pack/<id>/<chemin>, limité au dossier de la bibliothèque.
     // Images de la Marketplace : pm-media://market/<pack>/<image>[?size=thumb][&kind=mod], mises en cache sur le disque.
     // Photos des comptes : pm-media://avatar/<compte>/<version>, même cache.
-    // Images des composants de « Créer ton pack » : pm-media://builder/<composant>/<image>[?size=thumb], et des styles
-    // d'ambiance : pm-media://builder-style/<style>/<version>[?size=thumb] ; en cache aussi.
+    // Images des composants de « Créer ton pack » : pm-media://builder/<composant>/<image>[?size=thumb], des styles
+    // d'ambiance : pm-media://builder-style/<style>/<version>[?size=thumb], et images de référence en jeu de l'aperçu :
+    // pm-media://builder-reference/<image>/<version>[?size=thumb] ; en cache aussi.
     protocol.handle('pm-media', (req) => {
       const url = new URL(req.url)
       const parts = url.pathname.split('/').filter(Boolean).map((p) => decodeURIComponent(p))
@@ -117,6 +118,10 @@ function startApp(): void {
       if (url.host === 'builder-style') {
         if (parts.length !== 2) return new Response('Interdit', { status: 403 })
         return service.builder.styleImage(parts[0], parts[1], url.searchParams.get('size') === 'thumb')
+      }
+      if (url.host === 'builder-reference') {
+        if (parts.length !== 2) return new Response('Interdit', { status: 403 })
+        return service.builder.referenceImage(parts[0], parts[1], url.searchParams.get('size') === 'thumb')
       }
       if (url.host === 'avatar') {
         if (parts.length !== 2) return new Response('Interdit', { status: 403 })

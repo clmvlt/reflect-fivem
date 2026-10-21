@@ -25,7 +25,7 @@ vi.mock('../src/main/archive', async () => {
   }
 })
 
-const { Builder, checkManifest, extractBundle, isSafeInstallPath, styleImageVersion, toCatalog } = await import('../src/main/core/builder')
+const { Builder, checkManifest, coverUrl, extractBundle, isSafeInstallPath, styleImageVersion, toCatalog } = await import('../src/main/core/builder')
 const {
   ambianceChoice,
   cleanTools,
@@ -1010,5 +1010,31 @@ describe('création avec des outils d’ambiance', () => {
     // Couverture : l'image du style ReShade choisi.
     expect(pack.cover).toBe(`builder-style-${STYLE_REAL}-3.jpg`)
     expect(s.requests.some((r) => r.url === `${API}/builder/styles/${STYLE_REAL}/image?v=3`)).toBe(true)
+  })
+
+  it('couverture d’un ReShade réglé par moi sans image de style : l’image en jeu par défaut, sinon l’image de base de l’outil', async () => {
+    const s = setup()
+    const reshade = { ...toolOff(), mode: 'custom' as const, style: STYLE_CINEMA }
+    const build = { components: [{ id: ROADS_ID, name: 'Routes HD', category: 'roads', available: true }], tools: { ...noTools(), reshade } }
+    // Catalogue d'une API d'avant les images en jeu : l'image du composant de base de ReShade.
+    s.account.fetchAuthed.mockResolvedValueOnce(json(toolsCatalog()))
+    await s.builder.catalog(true)
+    expect(await s.builder.coverOf(build)).toEqual({ kind: 'component', componentId: REFERENCE_ID, imageId: IMAGE_ID })
+
+    // Avec des images en jeu : celle par défaut (le choix fait pour les aperçus ne compte pas) ; un style avec son
+    // image garde la sienne.
+    s.account.fetchAuthed.mockResolvedValueOnce(json(toolsCatalog({ references: references() })))
+    await s.builder.catalog(true)
+    const cover = await s.builder.coverOf(build)
+    expect(cover).toEqual({ kind: 'reference', referenceId: REF_CITY, version: '2' })
+    expect(coverUrl(cover!, true)).toBe(`pm-media://builder-reference/${REF_CITY}/2?size=thumb`)
+    expect(await s.builder.coverOf({ ...build, tools: { ...build.tools, reshade: { ...reshade, style: STYLE_REAL } } })).toEqual({ kind: 'style', styleId: STYLE_REAL, version: '3' })
+
+    // Installée : l'image en jeu enregistrée dans le dossier du pack.
+    publish(s, { revision: 'rev-1', preset: PRESET_V1 })
+    s.routes.set(`GET /builder/builds/${BUILD}`, { id: BUILD, name: 'Mon pack', components: build.components, tools: { reshade: { mode: 'custom', style: STYLE_CINEMA } }, problems: [] })
+    const result = await s.builder.install(BUILD, vi.fn(), new AbortController().signal, hooks())
+    expect((await s.library.get(result.packId)).cover).toBe(`builder-reference-${REF_CITY}-2.jpg`)
+    expect(s.requests.some((r) => r.url === `${API}/builder/references/${REF_CITY}/image?v=2`)).toBe(true)
   })
 })

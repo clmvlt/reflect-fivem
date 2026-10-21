@@ -374,7 +374,7 @@ export interface DownloadItem {
   name: string
   /** Image de couverture de la fiche (null sans image). */
   coverId: string | null
-  /** Création : adresse pm-media de sa vignette (image d'un composant ou d'un style), à la place de {@link coverId}. */
+  /** Création : adresse pm-media de sa vignette (image d'un composant, d'un style ou image en jeu), à la place de {@link coverId}. */
   coverUrl?: string | null
   /** Pack déjà dans la bibliothèque, téléchargé de nouveau au nom du compte (rien n'est ajouté). */
   claim: boolean

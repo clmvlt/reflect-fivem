@@ -10,7 +10,7 @@ export interface DownloadJob {
   kind: DownloadKind
   name: string
   coverId: string | null
-  /** Création : adresse pm-media de sa vignette (image d'un composant ou d'un style). */
+  /** Création : adresse pm-media de sa vignette (image d'un composant, d'un style ou image en jeu). */
   coverUrl?: string | null
   claim: boolean
   /** Titre de la tâche, pendant l'ajout à la bibliothèque (« Téléchargement de... », « Mise à jour de... »). */

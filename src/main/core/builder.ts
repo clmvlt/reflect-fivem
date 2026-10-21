@@ -38,7 +38,7 @@ import { BUILDER_NOT_ALLOWED, canUseBuilder, SIGNED_OUT } from '@shared/api'
 import { currentLocale } from '@shared/i18n'
 import { formatBytes as displayBytes } from '@shared/intl'
 import { parsePackPerformance } from '@shared/performance'
-import { cleanTools, fromLegacy, isToolKey, isToolMode } from '@shared/ambiance'
+import { cleanTools, fromLegacy, isToolKey, isToolMode, lookImages, styleOf } from '@shared/ambiance'
 import type {
   AccountMe,
   BuilderBase,
@@ -53,6 +53,7 @@ import type {
   BuilderControlValue,
   BuilderEffect,
   BuilderEstimate,
+  BuilderImageRef,
   BuilderLocal,
   BuilderParam,
   BuilderPerformance,
@@ -661,13 +662,15 @@ export interface BuildInstallResult {
   note?: string
 }
 
-/** Image d'un composant ou d'un style (couverture d'un pack construit, vignette de la file des téléchargements). */
-export type CoverRef = { kind: 'component'; componentId: string; imageId: string } | { kind: 'style'; styleId: string; version: string }
-
-/** Adresse pm-media de l'image (servie par Builder.image ou Builder.styleImage). */
-export function coverUrl(ref: CoverRef, thumb: boolean): string {
+/**
+ * Adresse pm-media d'une image (couverture d'un pack construit, vignette de la file des téléchargements), servie par
+ * Builder.image, Builder.styleImage ou Builder.referenceImage.
+ */
+export function coverUrl(ref: BuilderImageRef, thumb: boolean): string {
   const size = thumb ? '?size=thumb' : ''
-  return ref.kind === 'style' ? `pm-media://builder-style/${ref.styleId}/${ref.version}${size}` : `pm-media://builder/${ref.componentId}/${ref.imageId}${size}`
+  if (ref.kind === 'style') return `pm-media://builder-style/${ref.styleId}/${ref.version}${size}`
+  if (ref.kind === 'reference') return `pm-media://builder-reference/${ref.referenceId}/${ref.version}${size}`
+  return `pm-media://builder/${ref.componentId}/${ref.imageId}${size}`
 }
 
 interface CachedCatalog {
@@ -995,17 +998,17 @@ export class Builder {
   }
 
   /**
-   * Image de la création : celle du style ReShade choisi (« Réglé par moi »), sinon l'image de référence de ReShade,
-   * sinon celle de son preset importé, sinon du premier composant qui en a une.
+   * Image de la création. ReShade « Réglé par moi » : celle de son style, sinon l'image de référence en jeu par défaut,
+   * sinon l'image de référence de ReShade (catalogue sans image en jeu). Sinon : celle de son preset importé, sinon du
+   * premier composant qui en a une.
    */
-  async coverOf(build: Pick<BuilderBuild, 'components' | 'tools'>): Promise<CoverRef | null> {
+  async coverOf(build: Pick<BuilderBuild, 'components' | 'tools'>): Promise<BuilderImageRef | null> {
     const catalog = await this.cachedCatalog()
     const reshade = build.tools.reshade
     const tool = catalog?.tools.find((x) => x.key === 'reshade')
     if (reshade.mode === 'custom' && tool) {
-      const style = tool.styles.find((s) => s.id === (reshade.style ?? tool.defaultStyle))
-      if (style?.imageVersion) return { kind: 'style', styleId: style.id, version: style.imageVersion }
-      if (tool.referenceComponent && tool.reference) return { kind: 'component', componentId: tool.referenceComponent, imageId: tool.reference.id }
+      const image = lookImages(tool, styleOf(tool, reshade), catalog?.references ?? [], null)[0]
+      if (image) return image
     }
     const available = build.components.filter((c): c is BuilderBuildComponent & { id: string } => c.available && !!c.id)
     const ordered = [...available.filter((c) => c.category === 'reshade'), ...available.filter((c) => c.category !== 'reshade')]
@@ -1239,7 +1242,7 @@ export class Builder {
   private async buildPack(
     lib: Library,
     manifest: BuildManifest,
-    meta: { buildId: string; name: string; components: { id: string; name: string }[]; cover: CoverRef | null },
+    meta: { buildId: string; name: string; components: { id: string; name: string }[]; cover: BuilderImageRef | null },
     report: Report,
     signal: AbortSignal
   ): Promise<StoredManifest> {
@@ -1293,13 +1296,18 @@ export class Builder {
   }
 
   /**
-   * Image du composant ou du style enregistrée dans le dossier du pack (builder-<image>.jpg) ; null si elle n'a pas pu
-   * l'être.
+   * Image du composant, du style ou image en jeu enregistrée dans le dossier du pack (builder-<image>.jpg) ; null si
+   * elle n'a pas pu l'être.
    */
-  private async saveCover(packDir: string, ref: CoverRef): Promise<string | null> {
-    const name = ref.kind === 'style' ? `style-${ref.styleId}-${ref.version}` : ref.imageId
+  private async saveCover(packDir: string, ref: BuilderImageRef): Promise<string | null> {
+    const name = ref.kind === 'style' ? `style-${ref.styleId}-${ref.version}` : ref.kind === 'reference' ? `reference-${ref.referenceId}-${ref.version}` : ref.imageId
     try {
-      const data = ref.kind === 'style' ? await this.styleImageData(ref.styleId, ref.version, false) : await this.imageData(ref.componentId, ref.imageId, false)
+      const data =
+        ref.kind === 'style'
+          ? await this.styleImageData(ref.styleId, ref.version, false)
+          : ref.kind === 'reference'
+            ? await this.referenceImageData(ref.referenceId, ref.version, false)
+            : await this.imageData(ref.componentId, ref.imageId, false)
       const rel = `builder-${name}.jpg`
       await fs.mkdir(packDir, { recursive: true })
       await fs.writeFile(path.join(packDir, rel), data)

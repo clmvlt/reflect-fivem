@@ -1,9 +1,101 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { num } from '../lib/format'
 
+const YOUTUBE = 'https://www.youtube-nocookie.com'
+
 /** Lecteur YouTube sans cookies, lancé tout de suite (il n'est chargé qu'au clic sur « lecture »). */
-const embedUrl = (id: string): string => `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=1&rel=0`
+const embedUrl = (id: string): string => `${YOUTUBE}/embed/${encodeURIComponent(id)}?autoplay=1&rel=0`
+
+/**
+ * Lecteur de l'aperçu d'une carte : sans le son (lecture automatique permise), sans clavier, et qui dit à la page où en
+ * est la vidéo (enablejsapi). Pas de boucle : elle ajouterait les boutons « précédente » et « suivante » au milieu.
+ */
+const previewUrl = (id: string): string =>
+  `${YOUTUBE}/embed/${encodeURIComponent(id)}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&playsinline=1&enablejsapi=1`
+
+/** Survol d'une carte avant que sa vidéo ne se lance. */
+const PREVIEW_DELAY = 1000
+
+/**
+ * Aperçu vidéo d'une carte : la vidéo à lancer (null tant que la souris n'est pas restée PREVIEW_DELAY ms sur la carte)
+ * et les événements à poser sur la carte. Rien sans vidéo, ni quand Windows demande moins d'animations.
+ */
+export function useVideoPreview(youtubeId: string | null): [string | null, { onMouseEnter: () => void; onMouseLeave: () => void }] {
+  const [active, setActive] = useState(false)
+  const timer = useRef(0)
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+  const onMouseEnter = (): void => {
+    if (!youtubeId || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    window.clearTimeout(timer.current)
+    timer.current = window.setTimeout(() => setActive(true), PREVIEW_DELAY)
+  }
+  const onMouseLeave = (): void => {
+    window.clearTimeout(timer.current)
+    setActive(false)
+  }
+  return [active ? youtubeId : null, { onMouseEnter, onMouseLeave }]
+}
+
+/** Message du lecteur YouTube (texte JSON), null s'il n'en est pas un. */
+function playerMessage(data: unknown): { event?: string; info?: unknown } | null {
+  try {
+    const m: unknown = typeof data === 'string' ? JSON.parse(data) : data
+    return m && typeof m === 'object' ? m : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Vidéo posée sur la couverture d'une carte, montrée seulement pendant la lecture : avant (chargement, vidéo
+ * introuvable ou refusée par YouTube) et après la fin, la couverture reste visible. Les clics passent à travers,
+ * jusqu'à la carte.
+ */
+export function CoverVideo({ id }: { id: string }) {
+  const { t } = useTranslation()
+  const frame = useRef<HTMLIFrameElement>(null)
+  const listen = useRef(0)
+  const [playing, setPlaying] = useState(false)
+
+  useEffect(() => {
+    const onMessage = (e: MessageEvent): void => {
+      if (e.origin !== YOUTUBE || e.source !== frame.current?.contentWindow) return
+      window.clearInterval(listen.current)
+      // État du lecteur (initialDelivery, puis infoDelivery à chaque changement) ; 1 : lecture en cours, 0 : terminée.
+      const info = playerMessage(e.data)?.info as { playerState?: unknown } | null | undefined
+      const state = typeof info === 'object' ? info?.playerState : undefined
+      if (state === 1 || state === 0) setPlaying(state === 1)
+    }
+    window.addEventListener('message', onMessage)
+    return () => {
+      window.removeEventListener('message', onMessage)
+      window.clearInterval(listen.current)
+    }
+  }, [])
+
+  // Le lecteur n'envoie son état qu'à une page qui l'écoute : on le lui dit jusqu'à sa première réponse.
+  const onLoad = (): void => {
+    const hello = (): void => frame.current?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), YOUTUBE)
+    hello()
+    window.clearInterval(listen.current)
+    listen.current = window.setInterval(hello, 250)
+  }
+
+  return (
+    <iframe
+      ref={frame}
+      className={`cover-video ${playing ? 'is-playing' : ''}`}
+      src={previewUrl(id)}
+      title={t('gallery.videoTitle')}
+      allow="autoplay; encrypted-media"
+      referrerPolicy="strict-origin-when-cross-origin"
+      tabIndex={-1}
+      aria-hidden="true"
+      onLoad={onLoad}
+    />
+  )
+}
 
 type Item = { kind: 'image'; key: string; index: number } | { kind: 'video'; id: string }
 

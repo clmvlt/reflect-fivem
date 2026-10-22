@@ -4,7 +4,7 @@ import type { AuthorProfile, AuthorSummary, ItemAccess, MarketCategory, MarketIm
 import { MOD_GONE, PACK_GONE, type MarketQuery } from '@shared/api'
 import { apiError, cleanError, useStore } from '../store'
 import { bytes, longDate as date, marketImageUrl, num, ratingText } from '../lib/format'
-import { Gallery } from './Gallery'
+import { CoverVideo, Gallery, useVideoPreview } from './Gallery'
 import { Markdown } from './Markdown'
 import { Avatar, EmptyState } from './common'
 import { DownloadInline, useDownload } from './Downloads'
@@ -452,12 +452,14 @@ function FeaturedBanner({ items, library, onOpen, onOpenLocal }: Nav & { items: 
 
 function FeaturedCard({ item, library, onOpen, onOpenLocal }: Nav & { item: MarketPack; library: PackManifest[] }) {
   const [failed, setFailed] = useState(false)
+  const [video, hover] = useVideoPreview(item.youtubeId)
   const dl = useDownload(item.id)
   return (
-    <article className="featured-item clickable" onClick={() => onOpen(openItem(item))}>
+    <article className="featured-item clickable" onClick={() => onOpen(openItem(item))} {...hover}>
       {item.cover && !failed && (
         <img className="cover-img" src={marketImageUrl(item.id, item.cover.id, true, item.kind)} alt="" draggable={false} onError={() => setFailed(true)} />
       )}
+      {video && <CoverVideo id={video} />}
       <ItemBadge id={item.id} price={item.price} className="on-cover" />
       <div className="featured-body">
         <div className="featured-name" title={item.name}>
@@ -532,6 +534,7 @@ function MarketCard({
   library: PackManifest[]
 }) {
   const [failed, setFailed] = useState(false)
+  const [video, hover] = useVideoPreview(item.youtubeId)
   const categories = useModCategories()
   const { overview } = useStore()
   const { t } = useTranslation()
@@ -541,8 +544,10 @@ function MarketCard({
   const others = [label, bytes(item.archiveSize), item.protected && t('marketplace.protected')].filter(Boolean).join(' · ')
   const inLibrary = item.kind === 'mod' && overview ? localMod(item.id, overview.mods) : null
   return (
-    <article className={`card clickable ${item.featured ? 'is-featured' : ''}`} onClick={() => onOpen(openItem(item))}>
+    <article className={`card clickable ${item.featured ? 'is-featured' : ''}`} onClick={() => onOpen(openItem(item))} {...hover}>
       <div className="cover">
+        {/* Avant les pastilles, qui restent par-dessus la vidéo. */}
+        {video && <CoverVideo id={video} />}
         {item.featured && <FeaturedBadge kind={item.kind} className="on-cover" />}
         <ItemBadge id={item.id} price={item.price} className="on-cover" />
         {!item.published && <DraftBadge className="on-cover" />}

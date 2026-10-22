@@ -928,6 +928,28 @@ input[type='checkbox'] {
   color: rgba(255, 255, 255, 0.8);
   font-size: 12px;
 }
+/*
+ * Aperçu au survol d'une carte : la vidéo, posée sur la couverture, n'apparaît qu'une fois lancée ; les clics vont à la
+ * carte. YouTube affiche titre et barre du bas quelques secondes au départ, même sans commandes : le lecteur dépasse
+ * de 60 px en haut et en bas, où ils tombent dans les bandes noires que la couverture coupe.
+ */
+.cover-video {
+  position: absolute;
+  top: -60px;
+  left: 0;
+  width: 100%;
+  height: calc(100% + 120px);
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.cover-video.is-playing {
+  opacity: 1;
+}
+.featured-item > .cover-video {
+  z-index: -1;
+}
 .media-actions {
   display: flex;
   gap: 16px;

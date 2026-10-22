@@ -1,5 +1,5 @@
 // Marketplace : packs du moment (champ `featured` et GET /packs/featured), y compris avec une API plus ancienne ;
-// notes dans les cartes, tri par défaut, clé d'un paquet chiffré demandée au nom du compte connecté.
+// notes et vidéo dans les cartes, tri par défaut, clé d'un paquet chiffré demandée au nom du compte connecté.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>()
@@ -86,6 +86,18 @@ describe('notes dans les cartes', () => {
     expect(toMarketPack(remote({ rating: { average: null, count: 0 } }), undefined).rating).toEqual({ average: null, count: 0 })
     const old = toMarketPack(remote(), undefined)
     expect(old).toMatchObject({ rating: { average: null, count: 0 }, commentCount: 0, commentsLocked: false })
+  })
+})
+
+describe('vidéo dans les cartes', () => {
+  it('reprend l’identifiant YouTube de la liste, pour l’aperçu au survol', () => {
+    expect(toMarketPack(remote({ youtubeId: 'dQw4w9WgXcQ' }), undefined).youtubeId).toBe('dQw4w9WgXcQ')
+  })
+
+  it('sans vidéo, identifiant invalide ou API plus ancienne : aucune', () => {
+    expect(toMarketPack(remote({ youtubeId: null }), undefined).youtubeId).toBeNull()
+    expect(toMarketPack(remote({ youtubeId: 'pas/une-video' }), undefined).youtubeId).toBeNull()
+    expect(toMarketPack(remote(), undefined).youtubeId).toBeNull()
   })
 })
 

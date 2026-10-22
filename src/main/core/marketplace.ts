@@ -98,6 +98,8 @@ export interface RemoteSummary {
   price?: number | null
   /** Faux pour un brouillon, servi à l'admin seulement (absent avec une API plus ancienne : publié). */
   published?: boolean
+  /** Absent des listes d'une API plus ancienne (seule la fiche le donnait). */
+  youtubeId?: string | null
 }
 
 interface RemoteAuthorRef {
@@ -126,7 +128,6 @@ interface RemoteAuthorPage {
 interface RemoteDetail extends RemoteSummary {
   description: string
   images: RemoteImage[]
-  youtubeId?: string | null
 }
 
 interface RemotePage {
@@ -194,8 +195,8 @@ const isGone = (err: unknown): boolean => err instanceof ApiError && (err.code =
 const apiFetch = serverFetch((url, init) => net.fetch(url, init))
 const kindOf = (r: { kind?: string }): MarketKind => (r.kind === 'mod' ? 'mod' : 'pack')
 
-/** Vidéo YouTube de la fiche (null si aucune, ou si l'identifiant reçu n'en est pas un). */
-function youtubeId(r: RemoteDetail): string | null {
+/** Vidéo YouTube du pack (null si aucune, ou si l'identifiant reçu n'en est pas un). */
+function youtubeId(r: RemoteSummary): string | null {
   return r.youtubeId && YOUTUBE_ID.test(r.youtubeId) ? r.youtubeId : null
 }
 
@@ -260,6 +261,7 @@ export function toMarketPack(r: RemoteSummary, local: StoredManifest | undefined
     ...('performance' in r ? { performance: parsePackPerformance(r.performance) } : {}),
     price: priceOf(r.price),
     published: r.published !== false,
+    youtubeId: youtubeId(r),
     localId: local?.id ?? null,
     updateAvailable: !!local && local.marketplace!.sha256 !== r.sha256
   }
@@ -429,7 +431,7 @@ export class Marketplace {
 
   async detail(idOrSlug: string, kind: MarketKind = 'pack'): Promise<MarketPackDetail> {
     const [r, index] = await Promise.all([this.remoteDetail(idOrSlug, kind), this.localIndex(kind)])
-    return { ...toMarketPack(r, index.get(r.id)), description: r.description, archiveName: r.archiveName ?? '', images: r.images, youtubeId: youtubeId(r) }
+    return { ...toMarketPack(r, index.get(r.id)), description: r.description, archiveName: r.archiveName ?? '', images: r.images }
   }
 
   /**

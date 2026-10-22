@@ -530,6 +530,8 @@ export interface MarketPack {
   price: number | null
   /** Faux pour un brouillon (pas encore publié), que seul l'admin connecté voit. */
   published: boolean
+  /** Identifiant de la vidéo YouTube de présentation (null si aucune, ou absente des listes d'une API plus ancienne). */
+  youtubeId: string | null
   /** Pack correspondant dans la bibliothèque (null s'il n'a pas été téléchargé). */
   localId: string | null
   /** La version en ligne diffère de celle de la bibliothèque. */
@@ -540,8 +542,6 @@ export interface MarketPackDetail extends MarketPack {
   description: string
   archiveName: string
   images: MarketImage[]
-  /** Identifiant de la vidéo YouTube de présentation (null si aucune). */
-  youtubeId: string | null
 }
 
 export interface MarketRating {

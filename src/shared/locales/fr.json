@@ -13,6 +13,28 @@
       "tooManySeconds_one": "Trop d’essais. Réessayez dans {{count}} s.",
       "tooManySeconds_other": "Trop d’essais. Réessayez dans {{count}} s."
     },
+    "discord": {
+      "cancelled": "Connexion avec Discord annulée.",
+      "discordFailed": "La connexion avec Discord a échoué. Réessayez.",
+      "expired": "Connexion avec Discord expirée : réessayez.",
+      "failed": "Connexion avec Discord impossible : {{error}}",
+      "linkWait": "Choisissez le compte Discord à lier dans votre navigateur…",
+      "noBrowser": "Navigateur introuvable : {{error}}",
+      "page": {
+        "cancelledText": "Vous pouvez fermer cet onglet.",
+        "cancelledTitle": "Connexion avec Discord annulée",
+        "discordFailedText": "Vous pouvez fermer cet onglet et réessayer depuis Reflect FiveM.",
+        "discordFailedTitle": "La connexion avec Discord a échoué",
+        "invalidText": "Relancez la connexion depuis Reflect FiveM.",
+        "invalidTitle": "Requête invalide",
+        "successText": "Vous pouvez fermer cet onglet et revenir à Reflect FiveM.",
+        "successTitle": "Discord a confirmé votre compte",
+        "unavailableText": "La connexion avec Discord n’est pas disponible pour le moment. Vous pouvez fermer cet onglet.",
+        "unavailableTitle": "Discord indisponible"
+      },
+      "unavailable": "La connexion avec Discord n’est pas disponible pour le moment : réessayez plus tard ou connectez-vous autrement.",
+      "wait": "Terminez la connexion dans votre navigateur…"
+    },
     "google": {
       "cancelled": "Connexion annulée.",
       "expired": "Connexion Google expirée : réessayez.",
@@ -43,6 +65,17 @@
       "password": "Mot de passe",
       "passwordHint": "8 caractères au moins."
     },
+    "linked": {
+      "choosePassword": "Choisir un mot de passe",
+      "discordHelp": "Liez votre compte Discord pour vous connecter avec lui.",
+      "link": "Lier mon compte Discord",
+      "linked": "Compte Discord lié.",
+      "title": "Comptes liés",
+      "unlink": "Retirer",
+      "unlinkDetail": "Vous ne pourrez plus vous connecter avec le compte Discord {{name}}. Vous pourrez le lier de nouveau à tout moment.",
+      "unlinkTitle": "Retirer la liaison avec Discord ?",
+      "unlinked": "Compte Discord retiré."
+    },
     "logout": "Se déconnecter",
     "password": {
       "add": "Ajouter un mot de passe",
@@ -51,6 +84,7 @@
       "changed": "Mot de passe modifié. Vos autres appareils sont déconnectés.",
       "confirm": "Confirmation",
       "current": "Mot de passe actuel",
+      "discordOnly": "Compte créé avec Discord : ajoutez un mot de passe pour vous connecter aussi avec votre adresse e-mail.",
       "forced": "Un nouveau mot de passe est demandé pour ce compte. Choisissez-en un pour continuer.",
       "googleOnly": "Compte créé avec Google : ajoutez un mot de passe pour vous connecter aussi avec votre adresse e-mail.",
       "mismatch": "Les deux mots de passe ne correspondent pas.",
@@ -85,6 +119,7 @@
     "signIn": {
       "google": "Continuer avec Google",
       "googleWait": "Terminez la connexion dans votre navigateur…",
+      "discord": "Continuer avec Discord",
       "intro": "Le compte est facultatif : la bibliothèque et la Marketplace fonctionnent sans. Il vous donne une page d’auteur (photo, nom public, description, liens) affichée avec vos packs.",
       "loggingIn": "Connexion…",
       "login": "Se connecter",

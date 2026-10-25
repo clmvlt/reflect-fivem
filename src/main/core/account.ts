@@ -24,6 +24,11 @@
 // un petit serveur http://127.0.0.1:<port>/callback ouvert le temps de la connexion ; le code reçu est échangé par
 // l'API, qui garde le secret du client.
 //
+// Connexion et liaison Discord : même PKCE et même serveur local, mais le navigateur part de l'API
+// (/auth/app/discord), qui échange le code de Discord et renvoie sur le serveur local un ticket « dt_… » à usage
+// unique (2 minutes), échangé à son tour contre une connexion ou une liaison au compte connecté. Une seule connexion
+// par navigateur à la fois, Google ou Discord : un nouvel essai abandonne le précédent.
+//
 // Aucune dépendance à Electron ici (testé avec vitest) : le service fournit fetch, l'ouverture du navigateur et le
 // chiffrement du système.
 
@@ -33,7 +38,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
-import type { AccountMe, AccountProfile, AuthorRef, ProfileInput, ProfileLink } from '@shared/types'
+import type { AccountMe, AccountProfile, AuthorRef, DiscordAccount, ProfileInput, ProfileLink } from '@shared/types'
 import { SIGNED_OUT } from '@shared/api'
 import { t } from 'i18next'
 import { currentLocale } from '@shared/i18n'
@@ -42,7 +47,8 @@ import type { SystemProtection } from './keys'
 import { log } from '../util/log'
 
 const TIMEOUT = 20_000
-const GOOGLE_TIMEOUT = 5 * 60_000
+/** Attente du retour d'une page de connexion ouverte dans le navigateur (Google, Discord). */
+const BROWSER_TIMEOUT = 5 * 60_000
 /** Jeton d'accès renouvelé quand il expire dans moins de 60 s. */
 const RENEW_MARGIN = 60_000
 /** Renouvellement régulier quand l'appli reste ouverte longtemps. */
@@ -75,6 +81,16 @@ export function createPkce(): { verifier: string; challenge: string } {
   return { verifier, challenge: pkceChallenge(verifier) }
 }
 
+/** Connexion dans le navigateur : ses textes (page de retour, erreurs) sont ceux de account.google.* ou account.discord.*. */
+export type LoginProvider = 'google' | 'discord'
+
+/** Adresse de retour sur le serveur local, défi PKCE et state d'une connexion dans le navigateur. */
+export interface BrowserParams {
+  redirectUri: string
+  challenge: string
+  state: string
+}
+
 export interface GoogleConfig {
   clientId: string
   authorizationEndpoint: string
@@ -82,7 +98,7 @@ export interface GoogleConfig {
 }
 
 /** Adresse de la page de connexion Google. */
-export function googleAuthUrl(config: GoogleConfig, p: { redirectUri: string; challenge: string; state: string }): string {
+export function googleAuthUrl(config: GoogleConfig, p: BrowserParams): string {
   const url = new URL(config.authorizationEndpoint)
   if (url.protocol !== 'https:') throw new Error(t('account.google.invalidUrl'))
   url.search = new URLSearchParams({
@@ -95,6 +111,17 @@ export function googleAuthUrl(config: GoogleConfig, p: { redirectUri: string; ch
     state: p.state,
     prompt: 'select_account'
   }).toString()
+  return url.toString()
+}
+
+/**
+ * Adresse de départ de la connexion Discord, ouverte dans le navigateur : l'API envoie chez Discord puis renvoie sur
+ * `redirectUri` (ticket ou erreur). `link` : liaison au compte connecté (Discord redemande l'accord, ce qui montre quel
+ * compte sera lié). L'API de dev est en http : pas d'exigence https ici.
+ */
+export function discordStartUrl(apiUrl: string, p: BrowserParams & { link: boolean }): string {
+  const url = new URL(`${apiUrl}/auth/app/discord`)
+  url.search = new URLSearchParams({ redirectUri: p.redirectUri, codeChallenge: p.challenge, state: p.state, link: String(p.link) }).toString()
   return url.toString()
 }
 
@@ -152,8 +179,19 @@ interface RemoteMe {
   mustChangePassword?: boolean
   hasPassword: boolean
   googleLinked: boolean
+  /** Absents d'une API plus ancienne : pas de liaison. */
+  discordLinked?: boolean
+  discord?: RemoteDiscord | null
   muted?: boolean
   locale?: string | null
+}
+
+interface RemoteDiscord {
+  id: string
+  username: string | null
+  displayName: string | null
+  avatarUrl: string | null
+  linkedAt: string | null
 }
 
 interface RemoteProfile extends RemoteMe {
@@ -186,8 +224,25 @@ function toMe(r: RemoteMe): AccountMe {
     mustChangePassword: !!r.mustChangePassword,
     hasPassword: !!r.hasPassword,
     googleLinked: !!r.googleLinked,
+    discordLinked: !!r.discordLinked,
+    discord: toDiscord(r.discord),
     muted: !!r.muted,
     locale: typeof r.locale === 'string' && r.locale ? r.locale : null
+  }
+}
+
+function toDiscord(r: RemoteDiscord | null | undefined): DiscordAccount | null {
+  if (!r || typeof r.id !== 'string' || !r.id) return null
+  return { id: r.id, username: r.username ?? '', displayName: r.displayName || null, avatarUrl: discordAvatarUrl(r.avatarUrl), linkedAt: r.linkedAt ?? null }
+}
+
+/** Photo d'un compte Discord : https://cdn.discordapp.com/… seulement (seule adresse permise par la CSP), null sinon. */
+export function discordAvatarUrl(url: string | null | undefined): string | null {
+  try {
+    const u = new URL(url ?? '')
+    return u.protocol === 'https:' && u.host === 'cdn.discordapp.com' ? u.toString() : null
+  } catch {
+    return null
   }
 }
 
@@ -338,7 +393,8 @@ export class Account {
   /** Renouvellement (ou conversion) en cours, partagé par toutes les requêtes. */
   private renewing: Promise<void> | null = null
   private keepAlive: NodeJS.Timeout | null = null
-  private google: AbortController | null = null
+  /** Connexion en cours dans le navigateur (Google ou Discord, une seule à la fois). */
+  private browser: { provider: LoginProvider; abort: AbortController } | null = null
   /** Lecture du compte en cours (partagée), et heure de la dernière (voir refreshIfStale). */
   private refreshing: Promise<AccountMe | null> | null = null
   private lastRefresh = 0
@@ -414,27 +470,46 @@ export class Account {
     return this.signIn(await this.request<SessionResponse>('POST', '/auth/app/register', { json: body }))
   }
 
-  /** Connexion Google dans le navigateur (une seule à la fois : un nouvel essai abandonne le précédent). */
+  /** Connexion Google dans le navigateur. */
   async loginWithGoogle(): Promise<AccountMe> {
-    this.google?.abort()
-    const abort = new AbortController()
-    this.google = abort
-    try {
+    const r = await this.browserCode('google', async () => {
       const config = await this.request<GoogleConfig>('GET', '/auth/app/google/config')
-      const { verifier, challenge } = createPkce()
-      const state = randomBytes(24).toString('base64url')
-      const { code, redirectUri } = await waitForLoopback(state, abort.signal, (redirectUri) =>
-        this.deps.openExternal(googleAuthUrl(config, { redirectUri, challenge, state }))
-      )
-      const body = { code, codeVerifier: verifier, redirectUri, deviceName: deviceName() }
-      return this.signIn(await this.request<SessionResponse>('POST', '/auth/app/google', { json: body }))
-    } finally {
-      if (this.google === abort) this.google = null
-    }
+      return (p) => googleAuthUrl(config, p)
+    })
+    const body = { code: r.code, codeVerifier: r.verifier, redirectUri: r.redirectUri, deviceName: deviceName() }
+    return this.signIn(await this.request<SessionResponse>('POST', '/auth/app/google', { json: body }))
   }
 
   cancelGoogle(): void {
-    this.google?.abort()
+    this.cancelBrowser('google')
+  }
+
+  /**
+   * Connexion Discord dans le navigateur. Un compte Discord dont l'adresse est celle d'un compte existant y est lié ;
+   * sans compte, un compte sans mot de passe est créé.
+   */
+  async loginWithDiscord(): Promise<AccountMe> {
+    const r = await this.discordTicket(false)
+    const body = { code: r.code, codeVerifier: r.verifier, deviceName: deviceName() }
+    return this.signIn(await this.request<SessionResponse>('POST', '/auth/app/discord', { json: body }))
+  }
+
+  /** Lie un compte Discord au compte connecté (il remplace celui déjà lié). */
+  async linkDiscord(): Promise<AccountMe> {
+    if (!this.session && !this.legacy) throw signedOut()
+    const r = await this.discordTicket(true)
+    await this.updateMe(toMe(await this.authed<RemoteMe>('POST', '/auth/app/discord/link', { json: { code: r.code, codeVerifier: r.verifier } })))
+    return this.current()!
+  }
+
+  cancelDiscord(): void {
+    this.cancelBrowser('discord')
+  }
+
+  /** Retire la liaison Discord ; refusé (409) si le compte n'a ni mot de passe ni Google. */
+  async unlinkDiscord(): Promise<AccountMe> {
+    await this.updateMe(toMe(await this.authed<RemoteMe>('DELETE', '/me/discord')))
+    return this.current()!
   }
 
   /** Déconnexion : l'appareil est déconnecté sur le serveur (si possible) et la connexion effacée de ce PC dans tous les cas. */
@@ -494,6 +569,42 @@ export class Account {
   }
 
   // ----------------------------------------------------------------
+
+  /**
+   * Ouvre une page de connexion dans le navigateur et attend son retour sur le serveur local : code à usage unique (code
+   * Google, ticket Discord), vérificateur PKCE et adresse de retour. Une seule connexion par navigateur à la fois : un
+   * nouvel essai, Google ou Discord, abandonne le précédent. `start` lit ce qu'il faut pour construire l'adresse de la
+   * page (configuration Google), déjà annulable.
+   */
+  private async browserCode(
+    provider: LoginProvider,
+    start: () => Promise<(p: BrowserParams) => string>
+  ): Promise<{ code: string; verifier: string; redirectUri: string }> {
+    this.browser?.abort.abort()
+    const current = { provider, abort: new AbortController() }
+    this.browser = current
+    try {
+      const authUrl = await start()
+      const { verifier, challenge } = createPkce()
+      const state = randomBytes(24).toString('base64url')
+      const { code, redirectUri } = await waitForLoopback(provider, state, current.abort.signal, (redirectUri) =>
+        this.deps.openExternal(authUrl({ redirectUri, challenge, state }))
+      )
+      return { code, verifier, redirectUri }
+    } finally {
+      if (this.browser === current) this.browser = null
+    }
+  }
+
+  /** Ticket Discord (« dt_… », 2 minutes, usage unique) rendu par l'API au retour de la page Discord. */
+  private discordTicket(link: boolean): Promise<{ code: string; verifier: string }> {
+    return this.browserCode('discord', async () => (p) => discordStartUrl(this.deps.apiUrl, { ...p, link }))
+  }
+
+  /** Abandonne la connexion en cours dans le navigateur, si c'est celle de ce fournisseur. */
+  private cancelBrowser(provider: LoginProvider): void {
+    if (this.browser?.provider === provider) this.browser.abort.abort()
+  }
 
   private async signIn(r: SessionResponse): Promise<AccountMe> {
     const session = toSession(r)
@@ -715,9 +826,9 @@ function problemMessage(status: number, problem: { detail?: unknown; retryAfter?
   return t('account.errors.badStatus', { status })
 }
 
-// ------------------------------------------------------------------ retour de la connexion Google
+// ------------------------------------------------------------------ retour d'une connexion dans le navigateur
 
-/** Page affichée dans le navigateur au retour de Google, dans la langue de l'application. */
+/** Page affichée dans le navigateur au retour de Google ou de Discord, dans la langue de l'application. */
 const PAGE = (title: string, text: string): string =>
   `<!doctype html><html lang="${currentLocale()}"><head><meta charset="utf-8"><title>${title}</title><style>` +
   'html{color-scheme:light dark}body{margin:0;display:grid;place-items:center;height:100vh;font:15px/1.5 "Segoe UI",system-ui,sans-serif;' +
@@ -725,14 +836,28 @@ const PAGE = (title: string, text: string): string =>
   `</head><body><main><h1>${title}</h1><p>${text}</p></main></body></html>`
 
 /**
+ * Page et erreur d'un retour « ?error=… ». Google : toute erreur vaut une annulation. Discord (raisons de l'API) :
+ * `access_denied` (refus sur la page Discord), `unavailable` (Discord pas configuré sur le serveur), sinon échec.
+ */
+function loopbackError(provider: LoginProvider, error: string): { page: string; error: Error } {
+  if (provider === 'discord' && error === 'unavailable')
+    return { page: PAGE(t('account.discord.page.unavailableTitle'), t('account.discord.page.unavailableText')), error: new Error(t('account.discord.unavailable')) }
+  if (provider === 'discord' && error !== 'access_denied')
+    return { page: PAGE(t('account.discord.page.discordFailedTitle'), t('account.discord.page.discordFailedText')), error: new Error(t('account.discord.discordFailed')) }
+  return { page: PAGE(t(`account.${provider}.page.cancelledTitle`), t(`account.${provider}.page.cancelledText`)), error: new Error(t(`account.${provider}.cancelled`)) }
+}
+
+/**
  * Ouvre http://127.0.0.1:<port libre>/callback, appelle `open` avec cette adresse, puis attend la redirection de Google
- * (5 minutes au plus). Le serveur est fermé dans tous les cas.
+ * ou de l'API pour Discord (5 minutes au plus). Le serveur est fermé dans tous les cas. Textes de la page du navigateur
+ * et erreurs : ceux du fournisseur.
  */
 export function waitForLoopback(
+  provider: LoginProvider,
   state: string,
   signal: AbortSignal,
   open: (redirectUri: string) => Promise<void>,
-  timeoutMs = GOOGLE_TIMEOUT
+  timeoutMs = BROWSER_TIMEOUT
 ): Promise<{ code: string; redirectUri: string }> {
   return new Promise((resolve, reject) => {
     let redirectUri = ''
@@ -757,29 +882,38 @@ export function waitForLoopback(
       const result = parseLoopbackCallback(req.url, state)
       switch (result.type) {
         case 'code':
-          reply(res, 200, PAGE(t('account.google.page.successTitle'), t('account.google.page.successText')))
+          reply(res, 200, PAGE(t(`account.${provider}.page.successTitle`), t(`account.${provider}.page.successText`)))
           finish(null, result.code)
           break
-        case 'error':
-          reply(res, 200, PAGE(t('account.google.page.cancelledTitle'), t('account.google.page.cancelledText')))
-          finish(new Error(t('account.google.cancelled')))
+        case 'error': {
+          const { page, error } = loopbackError(provider, result.error)
+          reply(res, 200, page)
+          finish(error)
           break
+        }
         case 'invalid':
-          reply(res, 400, PAGE(t('account.google.page.invalidTitle'), t('account.google.page.invalidText')))
+          reply(res, 400, PAGE(t(`account.${provider}.page.invalidTitle`), t(`account.${provider}.page.invalidText`)))
           break
         default:
           res.writeHead(404, { Connection: 'close' })
           res.end()
       }
     })
-    const onAbort = (): void => finish(new Error(t('account.google.cancelled')))
-    const timer = setTimeout(() => finish(new Error(t('account.google.expired'))), timeoutMs)
+    const onAbort = (): void => finish(new Error(t(`account.${provider}.cancelled`)))
+    const timer = setTimeout(() => finish(new Error(t(`account.${provider}.expired`))), timeoutMs)
     if (signal.aborted) return onAbort()
     signal.addEventListener('abort', onAbort)
-    server.on('error', (err) => finish(new Error(t('account.google.failed', { error: err.message }))))
+    server.on('error', (err) => finish(new Error(t(`account.${provider}.failed`, { error: err.message }))))
     server.listen(0, '127.0.0.1', () => {
       redirectUri = `http://127.0.0.1:${(server.address() as AddressInfo).port}/callback`
-      open(redirectUri).catch((err: unknown) => finish(new Error(t('account.google.noBrowser', { error: (err as Error).message }))))
+      // Adresse de la page impossible à construire (exception avant l'ouverture) : erreur rendue telle quelle.
+      let opened: Promise<void>
+      try {
+        opened = open(redirectUri)
+      } catch (err) {
+        return finish(err as Error)
+      }
+      opened.catch((err: unknown) => finish(new Error(t(`account.${provider}.noBrowser`, { error: (err as Error).message }))))
     })
   })
 }

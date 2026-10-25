@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AccountMe, AccountProfile, ProfileInput, ProfileLink } from '@shared/types'
-import { cleanError, useStore } from '../store'
-import { num } from '../lib/format'
+import { apiError, cleanError, useStore } from '../store'
+import { num, q } from '../lib/format'
 import { Avatar } from './common'
+import { confirmDialog } from './Confirm'
+import { DiscordIcon } from './DiscordView'
 import { PurchaseList } from './Purchase'
 
 const BIO_MAX = 2000
@@ -66,7 +68,7 @@ function SignIn() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
-  const [busy, setBusy] = useState<'form' | 'google' | null>(null)
+  const [busy, setBusy] = useState<'form' | 'google' | 'discord' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const submit = async (e: FormEvent): Promise<void> => {
@@ -80,11 +82,12 @@ function SignIn() {
       setBusy(null)
     }
   }
-  const google = async (): Promise<void> => {
-    setBusy('google')
+  /** Connexion dans le navigateur (Google ou Discord). */
+  const browser = async (provider: 'google' | 'discord'): Promise<void> => {
+    setBusy(provider)
     setError(null)
     try {
-      setAccount(await window.api.accountLoginGoogle())
+      setAccount(await (provider === 'google' ? window.api.accountLoginGoogle() : window.api.accountLoginDiscord()))
     } catch (err) {
       setError(cleanError(err))
       setBusy(null)
@@ -142,19 +145,37 @@ function SignIn() {
 
       <div className="divider">{t('accountView.signIn.or')}</div>
 
-      {busy === 'google' ? (
-        <div className="google-wait">
-          <span>{t('accountView.signIn.googleWait')}</span>
-          <button className="link" onClick={() => void window.api.accountCancelGoogle()}>
-            {t('common.cancel')}
+      <div className="auth-providers">
+        {busy === 'google' ? (
+          <BrowserWait text={t('accountView.signIn.googleWait')} onCancel={() => void window.api.accountCancelGoogle()} />
+        ) : (
+          <button className="wide google" onClick={() => void browser('google')} disabled={!!busy}>
+            <GoogleLogo />
+            {t('accountView.signIn.google')}
           </button>
-        </div>
-      ) : (
-        <button className="wide google" onClick={() => void google()} disabled={!!busy}>
-          <GoogleLogo />
-          {t('accountView.signIn.google')}
-        </button>
-      )}
+        )}
+        {busy === 'discord' ? (
+          <BrowserWait text={t('account.discord.wait')} onCancel={() => void window.api.accountCancelDiscord()} />
+        ) : (
+          <button className="wide discord-brand" onClick={() => void browser('discord')} disabled={!!busy}>
+            <DiscordIcon size={18} />
+            {t('accountView.signIn.discord')}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Attente du retour d'une page ouverte dans le navigateur, avec « Annuler ». */
+function BrowserWait({ text, onCancel }: { text: string; onCancel: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="browser-wait">
+      <span>{text}</span>
+      <button className="link" onClick={onCancel}>
+        {t('common.cancel')}
+      </button>
     </div>
   )
 }
@@ -202,7 +223,9 @@ function PasswordForm({ me, onDone }: { me: AccountMe; onDone?: () => void }) {
 
   return (
     <form className="form-panel" onSubmit={(e) => void submit(e)}>
-      {!me.hasPassword && <p className="muted">{t('accountView.password.googleOnly')}</p>}
+      {!me.hasPassword && (
+        <p className="muted">{!me.googleLinked && me.discordLinked ? t('accountView.password.discordOnly') : t('accountView.password.googleOnly')}</p>
+      )}
       {me.hasPassword && (
         <Field label={t('accountView.password.current')}>
           <input className="input" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
@@ -256,7 +279,8 @@ function AccountHead({ me, actions }: { me: AccountMe; actions?: ReactNode }) {
     me.admin && t('accountView.badges.admin'),
     me.canPublish && t('accountView.badges.author'),
     me.canPublishMods && !me.admin && t('accountView.badges.modAuthor'),
-    me.googleLinked && 'Google'
+    me.googleLinked && 'Google',
+    me.discordLinked && 'Discord'
   ].filter(Boolean) as string[]
   return (
     <div className="profile-head">
@@ -279,7 +303,91 @@ function AccountHead({ me, actions }: { me: AccountMe; actions?: ReactNode }) {
   )
 }
 
-const toInput = (p: AccountProfile): ProfileInput => ({ displayName: p.displayName, bio: p.bio, links: p.links.map((l) => ({ ...l })) })
+/** Comptes liés : Discord (photo, nom, @username), lié dans le navigateur ou retiré. */
+function LinkedAccounts({ me, onChoosePassword }: { me: AccountMe; onChoosePassword: () => void }) {
+  const { t } = useTranslation()
+  const { setMessage } = useStore()
+  const [busy, setBusy] = useState<'link' | 'unlink' | null>(null)
+  /** `noPassword` : retrait refusé (409), le compte n'aurait plus aucun moyen de connexion. */
+  const [error, setError] = useState<{ text: string; noPassword: boolean } | null>(null)
+  const discord = me.discordLinked ? me.discord : null
+  const discordName = discord ? (discord.displayName ?? discord.username) : ''
+
+  const link = async (): Promise<void> => {
+    setBusy('link')
+    setError(null)
+    try {
+      await window.api.accountLinkDiscord()
+      setMessage({ kind: 'info', text: t('accountView.linked.linked') })
+    } catch (err) {
+      setError({ text: cleanError(err), noPassword: false })
+    } finally {
+      setBusy(null)
+    }
+  }
+  const unlink = async (): Promise<void> => {
+    const ok = await confirmDialog(t('accountView.linked.unlinkTitle'), t('accountView.linked.unlinkDetail', { name: q(discordName) }), t('accountView.linked.unlink'))
+    if (!ok) return
+    setBusy('unlink')
+    setError(null)
+    try {
+      await window.api.accountUnlinkDiscord()
+      setMessage({ kind: 'info', text: t('accountView.linked.unlinked') })
+    } catch (err) {
+      const e = apiError(err)
+      setError({ text: e.message, noPassword: e.status === 409 && !me.hasPassword })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="linked">
+      <ul className="list">
+        <li className="row">
+          {discord ? (
+            <Avatar url={discord.avatarUrl} name={discordName} size={32} />
+          ) : (
+            <span className="linked-logo discord-brand">
+              <DiscordIcon size={18} />
+            </span>
+          )}
+          <div className="row-main">
+            <div className="name">{discord ? discordName : 'Discord'}</div>
+            <div className="meta">{discord ? `Discord · @${discord.username}` : t('accountView.linked.discordHelp')}</div>
+          </div>
+          <div className="actions">
+            {busy === 'link' ? (
+              <>
+                <span className="hint">{t('account.discord.linkWait')}</span>
+                <button className="link" onClick={() => void window.api.accountCancelDiscord()}>
+                  {t('common.cancel')}
+                </button>
+              </>
+            ) : discord ? (
+              <button onClick={() => void unlink()} disabled={!!busy}>
+                {t('accountView.linked.unlink')}
+              </button>
+            ) : (
+              <button className="discord-brand" onClick={() => void link()} disabled={!!busy}>
+                <DiscordIcon size={16} />
+                {t('accountView.linked.link')}
+              </button>
+            )}
+          </div>
+        </li>
+      </ul>
+      {error && (
+        <div className="bar bar-error form-error" role="alert">
+          <span className="bar-text">{error.text}</span>
+          {error.noPassword && <button onClick={onChoosePassword}>{t('accountView.linked.choosePassword')}</button>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const toInput = (p: AccountProfile): ProfileInput =>({ displayName: p.displayName, bio: p.bio, links: p.links.map((l) => ({ ...l })) })
 
 function Profile({ me, onOpenAuthor }: { me: AccountMe; onOpenAuthor: (slug: string) => void }) {
   const { t } = useTranslation()
@@ -289,6 +397,13 @@ function Profile({ me, onOpenAuthor }: { me: AccountMe; onOpenAuthor: (slug: str
   const [loadError, setLoadError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<'save' | 'avatar' | null>(null)
+  const passwordRef = useRef<HTMLDivElement>(null)
+
+  /** Retrait de Discord refusé faute d'autre moyen de connexion : vers le formulaire du mot de passe. */
+  const choosePassword = (): void => {
+    passwordRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    passwordRef.current?.nextElementSibling?.querySelector('input')?.focus({ preventScroll: true })
+  }
 
   const load = useCallback(async () => {
     try {
@@ -442,10 +557,15 @@ function Profile({ me, onOpenAuthor }: { me: AccountMe; onOpenAuthor: (slug: str
         </form>
       )}
 
-      <div className="section-head">
+      <div className="section-head" ref={passwordRef}>
         <h2>{t('accountView.fields.password')}</h2>
       </div>
       <PasswordForm me={me} />
+
+      <div className="section-head">
+        <h2>{t('accountView.linked.title')}</h2>
+      </div>
+      <LinkedAccounts me={me} onChoosePassword={choosePassword} />
 
       {/* Tous les achats : packs et mods payants du catalogue, et « Créer ton pack ». */}
       <div className="section-head">

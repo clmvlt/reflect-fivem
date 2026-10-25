@@ -13,6 +13,28 @@
       "tooManySeconds_one": "Too many attempts. Try again in {{count}} second.",
       "tooManySeconds_other": "Too many attempts. Try again in {{count}} seconds."
     },
+    "discord": {
+      "cancelled": "Discord sign-in canceled.",
+      "discordFailed": "Discord sign-in failed. Try again.",
+      "expired": "Discord sign-in timed out: try again.",
+      "failed": "Discord sign-in failed: {{error}}",
+      "linkWait": "Choose the Discord account to link in your browser…",
+      "noBrowser": "Browser not found: {{error}}",
+      "page": {
+        "cancelledText": "You can close this tab.",
+        "cancelledTitle": "Discord sign-in canceled",
+        "discordFailedText": "You can close this tab and try again from Reflect FiveM.",
+        "discordFailedTitle": "Discord sign-in failed",
+        "invalidText": "Start signing in again from Reflect FiveM.",
+        "invalidTitle": "Invalid request",
+        "successText": "You can close this tab and return to Reflect FiveM.",
+        "successTitle": "Discord confirmed your account",
+        "unavailableText": "Discord sign-in is not available right now. You can close this tab.",
+        "unavailableTitle": "Discord unavailable"
+      },
+      "unavailable": "Discord sign-in is not available right now: try again later or sign in another way.",
+      "wait": "Finish signing in in your browser…"
+    },
     "google": {
       "cancelled": "Sign-in canceled.",
       "expired": "Google sign-in timed out: try again.",
@@ -43,6 +65,17 @@
       "password": "Password",
       "passwordHint": "At least 8 characters."
     },
+    "linked": {
+      "choosePassword": "Choose a password",
+      "discordHelp": "Link your Discord account to sign in with it.",
+      "link": "Link my Discord account",
+      "linked": "Discord account linked.",
+      "title": "Linked accounts",
+      "unlink": "Remove",
+      "unlinkDetail": "You will no longer be able to sign in with the Discord account {{name}}. You can link it again at any time.",
+      "unlinkTitle": "Unlink Discord?",
+      "unlinked": "Discord account unlinked."
+    },
     "logout": "Sign out",
     "password": {
       "add": "Add a password",
@@ -51,6 +84,7 @@
       "changed": "Password changed. Your other devices have been signed out.",
       "confirm": "Confirm password",
       "current": "Current password",
+      "discordOnly": "Account created with Discord: add a password to also sign in with your email address.",
       "forced": "A new password is required for this account. Choose one to continue.",
       "googleOnly": "Account created with Google: add a password to also sign in with your email address.",
       "mismatch": "The two passwords don’t match.",
@@ -85,6 +119,7 @@
     "signIn": {
       "google": "Continue with Google",
       "googleWait": "Finish signing in in your browser…",
+      "discord": "Continue with Discord",
       "intro": "An account is optional: the library and the Marketplace work without one. It gives you an author page (photo, display name, description, links) shown with your packs.",
       "loggingIn": "Signing in…",
       "login": "Sign in",

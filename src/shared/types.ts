@@ -707,13 +707,27 @@ export interface AccountMe {
   canBuildPacks: boolean
   /** Mot de passe imposé : à changer avant toute autre action. */
   mustChangePassword: boolean
-  /** Faux pour un compte créé par Google qui n'a pas encore de mot de passe. */
+  /** Faux pour un compte créé par Google ou Discord qui n'a pas encore de mot de passe. */
   hasPassword: boolean
   googleLinked: boolean
+  discordLinked: boolean
+  /** Compte Discord lié, null sans liaison. */
+  discord: DiscordAccount | null
   /** Compte réduit au silence par la modération : ni notes ni commentaires. */
   muted: boolean
   /** Langue enregistrée dans le compte (code de GET /locales), null si aucune n'a été choisie. */
   locale: string | null
+}
+
+/** Compte Discord lié : nom et photo de sa dernière connexion par Discord. */
+export interface DiscordAccount {
+  id: string
+  username: string
+  /** Nom affiché sur Discord, null s'il n'en a pas. */
+  displayName: string | null
+  /** https://cdn.discordapp.com/…, null si l'adresse reçue n'y est pas (le nom seul est alors affiché). */
+  avatarUrl: string | null
+  linkedAt: string | null
 }
 
 /** Profil complet du compte connecté. */

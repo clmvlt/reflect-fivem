@@ -673,6 +673,16 @@ export class Service {
     return new Error(message)
   }
 
+  /** Fenêtre ramenée au premier plan après une page ouverte dans le navigateur (Google, Discord) ; rend `value`. */
+  private toFront<T>(value: T): T {
+    const w = this.getWindow()
+    if (w && !w.isDestroyed()) {
+      if (w.isMinimized()) w.restore()
+      w.focus()
+    }
+    return value
+  }
+
   /** Lance une tâche longue (une seule à la fois) et relaie sa progression à l'interface. */
   private startTask(kind: TaskProgress['kind'], title: string, target: string | null, fn: (report: Report, signal: AbortSignal) => Promise<unknown>): string {
     if (this.running) throw this.toError(t('errors.busy'))
@@ -1501,18 +1511,17 @@ export class Service {
 
     accountRegister: (email: string, password: string, displayName: string) => this.account.register(email, password, displayName),
 
-    accountLoginGoogle: async (): Promise<AccountMe> => {
-      const me = await this.account.loginWithGoogle()
-      // Retour au premier plan après la page Google.
-      const w = this.getWindow()
-      if (w && !w.isDestroyed()) {
-        if (w.isMinimized()) w.restore()
-        w.focus()
-      }
-      return me
-    },
+    accountLoginGoogle: async (): Promise<AccountMe> => this.toFront(await this.account.loginWithGoogle()),
 
     accountCancelGoogle: async () => this.account.cancelGoogle(),
+
+    accountLoginDiscord: async (): Promise<AccountMe> => this.toFront(await this.account.loginWithDiscord()),
+
+    accountLinkDiscord: async (): Promise<AccountMe> => this.toFront(await this.account.linkDiscord()),
+
+    accountCancelDiscord: async () => this.account.cancelDiscord(),
+
+    accountUnlinkDiscord: () => this.account.unlinkDiscord(),
 
     accountLogout: () => this.account.logout(),
 

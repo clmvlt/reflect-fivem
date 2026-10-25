@@ -124,7 +124,7 @@ describe('retour de la connexion Google', () => {
 
   it('attend la redirection sur 127.0.0.1 puis ferme le serveur', async () => {
     let redirect = ''
-    const done = waitForLoopback('etat', new AbortController().signal, async (uri) => {
+    const done = waitForLoopback('google', 'etat', new AbortController().signal, async (uri) => {
       redirect = uri
     })
     await expect.poll(() => redirect).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/callback$/)
@@ -139,7 +139,7 @@ describe('retour de la connexion Google', () => {
 
   it('« Connexion annulée » quand l’utilisateur refuse', async () => {
     let redirect = ''
-    const done = waitForLoopback('etat', new AbortController().signal, async (uri) => {
+    const done = waitForLoopback('google', 'etat', new AbortController().signal, async (uri) => {
       redirect = uri
     })
     const outcome = expect(done).rejects.toThrow('Connexion annulée.')
@@ -151,9 +151,9 @@ describe('retour de la connexion Google', () => {
 
   it('abandon et délai dépassé', async () => {
     const abort = new AbortController()
-    const cancelled = waitForLoopback('etat', abort.signal, async () => abort.abort())
+    const cancelled = waitForLoopback('google', 'etat', abort.signal, async () => abort.abort())
     await expect(cancelled).rejects.toThrow('Connexion annulée.')
-    await expect(waitForLoopback('etat', new AbortController().signal, async () => undefined, 50)).rejects.toThrow('expirée')
+    await expect(waitForLoopback('google', 'etat', new AbortController().signal, async () => undefined, 50)).rejects.toThrow('expirée')
   })
 })
 

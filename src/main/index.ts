@@ -137,14 +137,15 @@ function startApp(): void {
     })
 
     if (app.isPackaged) {
-      // Page de l'application seulement : le lecteur YouTube (dans un cadre) garde ses propres règles.
+      // Page de l'application seulement : le lecteur YouTube (dans un cadre) garde ses propres règles. Photo du compte
+      // Discord lié : cdn.discordapp.com.
       session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
         if (details.resourceType !== 'mainFrame') return cb({})
         cb({
           responseHeaders: {
             ...details.responseHeaders,
             'Content-Security-Policy': [
-              "default-src 'self'; img-src 'self' pm-media: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src https://www.youtube-nocookie.com"
+              "default-src 'self'; img-src 'self' pm-media: data: https://cdn.discordapp.com; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src https://www.youtube-nocookie.com"
             ]
           }
         })

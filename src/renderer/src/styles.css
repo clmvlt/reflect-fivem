@@ -1692,13 +1692,38 @@ textarea.input {
   height: 1px;
   background: var(--border);
 }
-button.google {
+.auth-providers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+button.google,
+button.discord-brand {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
 }
-.google-wait {
+/* Couleurs de la marque Discord, dans les deux thèmes (.discord est la page du serveur Discord). */
+.discord-brand {
+  background: #5865f2;
+  color: #ffffff;
+}
+button.discord-brand {
+  border-color: transparent;
+  font-weight: 600;
+}
+button.discord-brand:hover:not(:disabled) {
+  background: #4752c4;
+}
+button.discord-brand:active:not(:disabled),
+button.discord-brand:disabled {
+  color: rgba(255, 255, 255, 0.8);
+}
+.actions button.discord-brand {
+  gap: 8px;
+}
+.browser-wait {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1746,6 +1771,24 @@ button.google {
 .account > .bar.form-error {
   margin-top: 20px;
   margin-bottom: 16px;
+}
+
+/* Comptes liés (Discord) */
+.linked {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.linked-logo {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+.linked .actions .hint {
+  margin: 0;
 }
 
 /* « par Auteur » sur les cartes et la fiche d'un pack */

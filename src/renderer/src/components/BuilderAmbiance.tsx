@@ -172,6 +172,7 @@ const CHOICE_ICONS: Record<AmbianceChoice, ReactNode> = {
   custom: <path d="M5 6h9M18 6h1M5 12h3M12 12h7M5 18h11M20 18h-1M16 4v4M10 10v4M18 16v4" />
 }
 
+/** Page des outils d'ambiance (son titre et sa présentation sont ceux de la page de l'assistant). */
 export function AmbianceSection({
   catalog,
   index,
@@ -213,10 +214,6 @@ export function AmbianceSection({
   const picker = choice === 'custom' && catalog.references.length > 1 && catalog.tools.some((tool) => tools[tool.key].mode === 'custom')
   return (
     <section className="ambiance">
-      <div className="section-head first">
-        <h2>{t('builder.ambiance.title')}</h2>
-      </div>
-      <p className="hint ambiance-intro">{t('builder.ambiance.intro')}</p>
       <div className="ambiance-choices" role="radiogroup" aria-label={t('builder.ambiance.title')}>
         {CHOICES.map((c) => (
           <button key={c} role="radio" aria-checked={choice === c} className={`ambiance-choice ${choice === c ? 'is-selected' : ''}`} onClick={() => onChoice(c)}>

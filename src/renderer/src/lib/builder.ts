@@ -16,8 +16,6 @@ import type {
   BuilderTools
 } from '@shared/types'
 
-/** Étape finale de l'assistant, après les groupes du catalogue. */
-export const SUMMARY = 'summary'
 export const NAME_MAX = 80
 
 /**

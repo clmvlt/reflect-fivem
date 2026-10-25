@@ -3,8 +3,8 @@
 // ceux de tous les packs de la Marketplace, règle son ambiance (outils ReShade, QuantV, NVE, ENB : un choix rapide, ou
 // chaque outil réglé lui-même avec un style, voir BuilderAmbiance.tsx), enregistre ses créations sur son compte et les
 // installe comme n'importe quel pack de la bibliothèque. Assistant par étapes (les groupes du catalogue,
-// puis le récapitulatif), avec un panneau qui résume la composition, son poids sur ce PC et ses problèmes, revérifiés
-// par l'API 400 ms après chaque changement. Vente (voir BuilderBilling.tsx) : « Mon offre » sur l'accueil, formule de
+// puis le récapitulatif), une catégorie par page pour qu'« Étape suivante » ne saute rien, avec un panneau qui résume
+// la composition, son poids sur ce PC et ses problèmes, revérifiés par l'API 400 ms après chaque changement. Vente (voir BuilderBilling.tsx) : « Mon offre » sur l'accueil, formule de
 // chaque création, et achat proposé quand l'enregistrement le demande (nouvelle création sans pack libre, pack gratuit
 // déjà modifié).
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
@@ -45,7 +45,8 @@ import {
 } from '@shared/ambiance'
 import { apiError, cleanError, useStore } from '../store'
 import { bytes, longDate, num, q } from '../lib/format'
-import { blockersOf, cardIndex, conflictsOf, shownProblems, draftOf, missingBases, NAME_MAX, newDraft, sameComposition, snapshot, SUMMARY, toggle, upgradeDraft, type CardRef, type Draft } from '../lib/builder'
+import { SUMMARY, TOOLS, toolsGroup, wizardPages, wizardSteps, type WizardPage } from '@shared/builderPages'
+import { blockersOf, cardIndex, conflictsOf, shownProblems, draftOf, missingBases, NAME_MAX, newDraft, sameComposition, snapshot, toggle, upgradeDraft, type CardRef, type Draft } from '../lib/builder'
 import { Cover, EmptyState } from './common'
 import { confirmDialog } from './Confirm'
 import { DownloadInline, useDownload } from './Downloads'
@@ -69,8 +70,10 @@ const MAX_BUILDS = 50
 interface WizardState {
   draft: Draft
   saved: string
-  step: string | null
-  tabs: Record<string, string>
+  /** Page ouverte (null : la première). */
+  page: string | null
+  /** Pages déjà ouvertes : cochées dans les étapes. */
+  seen: string[]
   /** Choix rapide de l'ambiance (Personnalisé : un panneau par outil). */
   ambiance: AmbianceChoice
   /** Image en jeu des aperçus des styles (null : celle par défaut), choisie à l'étape de l'ambiance. */
@@ -99,13 +102,6 @@ const catalogs = new Map<string, BuilderCatalog>()
 export function builtPack(library: PackManifest[], buildId: string | null): PackManifest | null {
   if (!buildId) return null
   return library.filter((p) => p.built?.buildId === buildId).sort((a, b) => b.built!.builtAt.localeCompare(a.built!.builtAt))[0] ?? null
-}
-
-/** Étape qui porte les outils d'ambiance : celle de leurs catégories (null sans outil proposé). */
-function toolsGroup(catalog: BuilderCatalog): string | null {
-  if (!catalog.tools.length) return null
-  const tool = catalog.tools[0]
-  return catalog.categories.find((c) => c.tool === tool.key || c.key === tool.category)?.group ?? catalog.groups[0]?.key ?? null
 }
 
 /** Icône de l'entrée de la barre latérale : deux étincelles (créer) sur une pastille de la couleur d'accent. */
@@ -209,7 +205,7 @@ function BuilderPage({ account, request, onOpenLocal }: { account: number; reque
   if (view.kind === 'new') {
     // Une nouvelle création démarre sur « Recommandé ».
     const draft = newDraft(t('builder.newName'), catalog)
-    return <Wizard {...common} start={{ draft, saved: snapshot(draft), step: null, tabs: {}, ambiance: 'recommended', reference: savedReference(), plan: null }} />
+    return <Wizard {...common} start={{ draft, saved: snapshot(draft), page: null, seen: [], ambiance: 'recommended', reference: savedReference(), plan: null }} />
   }
   if (view.kind === 'kept' && resume) {
     const index = cardIndex(catalog)
@@ -501,10 +497,12 @@ function BuildLoader({
       </div>
     )
   const draft = draftOf(build)
+  // Création déjà composée : toutes ses pages comptent comme vues.
+  const seen = wizardPages(rest.catalog).map((p) => p.key)
   return (
     <Wizard
       {...rest}
-      start={{ draft, saved: snapshot(draft), step: SUMMARY, tabs: {}, ambiance: ambianceChoice(draft.tools, rest.catalog), reference: savedReference(), plan: build.plan }}
+      start={{ draft, saved: snapshot(draft), page: SUMMARY, seen, ambiance: ambianceChoice(draft.tools, rest.catalog), reference: savedReference(), plan: build.plan }}
     />
   )
 }
@@ -567,7 +565,6 @@ function Wizard({
   const index = useMemo(() => cardIndex(catalog), [catalog])
   const [draft, setDraft] = useState(start.draft)
   const [saved, setSaved] = useState(start.saved)
-  const [tabs, setTabs] = useState(start.tabs)
   const [ambiance, setAmbiance] = useState(start.ambiance)
   const [reference, setReference] = useState(start.reference)
   const [plan, setPlan] = useState(start.plan)
@@ -575,28 +572,21 @@ function Wizard({
   const [focus, setFocus] = useState<{ tool: ToolKey; at: number } | null>(null)
   const [details, setDetails] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  // Étapes : les groupes qui ont au moins une catégorie non vide hors outils (catégories vides masquées), celui qui porte
-  // les outils d'ambiance, puis le récapitulatif.
+  // Une page par catégorie non vide hors outils (catégories vides masquées), la page des outils d'ambiance en tête de
+  // leur étape, regroupées en étapes, puis le récapitulatif.
   const ambianceGroup = useMemo(() => toolsGroup(catalog), [catalog])
-  const groups = useMemo(
-    () =>
-      catalog.groups
-        .map((group) => ({
-          group,
-          categories: group.categories
-            .map((k) => catalog.categories.find((c) => c.key === k))
-            .filter((c): c is BuilderCategory => !!c && !c.tool && c.components.length > 0),
-          tools: group.key === ambianceGroup
-        }))
-        .filter((g) => g.categories.length > 0 || g.tools),
-    [catalog, ambianceGroup]
-  )
-  const steps = [...groups.map((g) => g.group.key), SUMMARY]
-  const [step, setStep] = useState(start.step && steps.includes(start.step) ? start.step : steps[0])
+  const pages = useMemo(() => wizardPages(catalog), [catalog])
+  const steps = useMemo(() => wizardSteps(pages), [pages])
+  const [page, setPage] = useState(start.page && pages.some((p) => p.key === start.page) ? start.page : pages[0].key)
+  const [seen, setSeen] = useState(() => (start.seen.includes(page) ? start.seen : [...start.seen, page]))
   const pageRef = useRef<HTMLDivElement>(null)
-  /** Autre étape (boutons des étapes, « Précédent », « Étape suivante ») : elle s'ouvre en haut de la page. */
+  const show = (key: string): void => {
+    setPage(key)
+    setSeen((s) => (s.includes(key) ? s : [...s, key]))
+  }
+  /** Autre page (étapes, « Précédent », « Suivant ») : elle s'ouvre en haut. */
   const goTo = (key: string): void => {
-    setStep(key)
+    show(key)
     pageRef.current?.scrollTo({ top: 0 })
   }
   const chosen = draft.components.map((id) => index.get(id)?.card).filter((c): c is BuilderComponentCard => !!c)
@@ -605,8 +595,8 @@ function Wizard({
   const activeTools = catalog.tools.filter((tool) => draft.tools[tool.key].mode !== 'none').length
 
   useEffect(() => {
-    kept = { account, draft, saved, step, tabs, ambiance, reference, plan }
-  }, [account, draft, saved, step, tabs, ambiance, reference, plan])
+    kept = { account, draft, saved, page, seen, ambiance, reference, plan }
+  }, [account, draft, saved, page, seen, ambiance, reference, plan])
 
   /** Formule de la création relue (modification utilisée, pack débloqué) : le bandeau suit. */
   const refreshPlan = async (id = draft.id): Promise<void> => {
@@ -652,7 +642,7 @@ function Wizard({
   }
   /** Panneau d'un outil (lien du récapitulatif, problème à régler) : étape de l'ambiance, en Personnalisé. */
   const openTool = (key: ToolKey): void => {
-    if (ambianceGroup) setStep(ambianceGroup)
+    if (ambianceGroup) show(TOOLS)
     setAmbiance('custom')
     setFocus({ tool: key, at: Date.now() })
   }
@@ -740,11 +730,28 @@ function Wizard({
     void refreshPlan(id)
   }
 
-  const groupOf = (key: string): (typeof groups)[number] | undefined => groups.find((g) => g.group.key === key)
-  const countIn = (g: (typeof groups)[number]): number =>
-    draft.components.filter((id) => g.categories.some((c) => c.key === index.get(id)?.category.key)).length + (g.tools ? activeTools : 0)
-  const current = groupOf(step)
-  const stepIndex = steps.indexOf(step)
+  const current = pages.find((p) => p.key === page) ?? pages[0]
+  const position = pages.indexOf(current)
+  const previous = pages[position - 1]
+  const next = pages[position + 1]
+  const step = steps.find((s) => s.pages.includes(current)) ?? steps[0]
+  /** Choix faits sur une page : éléments de sa catégorie, outils actifs pour la page des outils. */
+  const countOf = (p: WizardPage): number =>
+    p.key === TOOLS ? activeTools : p.category ? draft.components.filter((id) => index.get(id)?.category.key === p.category?.key).length : 0
+  const pageTitle = (p: WizardPage): string => p.category?.label ?? (p.key === TOOLS ? t('builder.ambiance.title') : t('builder.summaryStep'))
+  // « Suivant » nomme ce qui vient : la page suivante de l'étape, sinon l'étape suivante.
+  const nextLabel = !next
+    ? null
+    : next.key === SUMMARY
+      ? t('builder.toSummary')
+      : next.group?.key === current.group?.key
+        ? t('builder.nextPage', { name: pageTitle(next) })
+        : t('builder.nextStep', { name: next.group?.label ?? '' })
+  const pageText = current.category
+    ? t(`builder.categoryHelp.${current.category.key}`, { defaultValue: '' })
+    : current.key === TOOLS
+      ? t('builder.ambiance.intro')
+      : t('builder.summary.intro')
 
   return (
     <div className="page builder-page" ref={pageRef}>
@@ -768,14 +775,20 @@ function Wizard({
       />
 
       <nav className="builder-steps" aria-label={t('builder.stepsLabel')}>
-        {steps.map((key, i) => {
-          const g = groupOf(key)
-          const count = g ? countIn(g) : draft.components.length + activeTools
+        {steps.map((s, i) => {
+          const selected = s === step
+          const count = s.pages.reduce((n, p) => n + countOf(p), 0)
+          const done = !selected && !!s.group && s.pages.every((p) => seen.includes(p.key))
           return (
-            <button key={key} className={`builder-step ${key === step ? 'is-selected' : ''}`} aria-current={key === step ? 'step' : undefined} onClick={() => goTo(key)}>
-              <span className="builder-step-num">{num(i + 1)}</span>
-              <span className="builder-step-label">{g ? g.group.label : t('builder.summaryStep')}</span>
-              {g && count > 0 && <span className="chip-count">{num(count)}</span>}
+            <button
+              key={s.key}
+              className={`builder-step ${selected ? 'is-selected' : done ? 'is-done' : ''}`}
+              aria-current={selected ? 'step' : undefined}
+              onClick={() => goTo(s.pages[0].key)}
+            >
+              <span className="builder-step-num">{done ? <SeenMark /> : num(i + 1)}</span>
+              <span className="builder-step-label">{s.group ? s.group.label : t('builder.summaryStep')}</span>
+              {count > 0 && <span className="chip-count">{num(count)}</span>}
             </button>
           )
         })}
@@ -783,32 +796,54 @@ function Wizard({
 
       <div className="builder-layout">
         <div className="builder-main">
-          {current ? (
-            <GroupStep
-              categories={current.categories}
-              ambiance={
-                current.tools ? (
-                  <AmbianceSection
-                    catalog={catalog}
-                    index={index}
-                    tools={draft.tools}
-                    choice={ambiance}
-                    note={note}
-                    focus={focus}
-                    chosen={chosen}
-                    onChoice={chooseAmbiance}
-                    onTool={onTool}
-                    onMode={onMode}
-                    onBase={enable}
-                    onDetails={setDetails}
-                    baseLabel={baseLabel}
-                    reference={reference}
-                    onReference={chooseReference}
-                  />
-                ) : null
-              }
-              tab={tabs[current.group.key]}
-              onTab={(key) => setTabs((tb) => ({ ...tb, [current.group.key]: key }))}
+          {step.pages.length > 1 && (
+            <ol className="builder-path" aria-label={t('builder.pagesLabel', { step: step.group?.label ?? '' })}>
+              {step.pages.map((p, i) => {
+                const selected = p === current
+                const done = !selected && seen.includes(p.key)
+                const n = countOf(p)
+                return (
+                  <li key={p.key}>
+                    <button
+                      className={`builder-path-item ${selected ? 'is-selected' : done ? 'is-done' : ''}`}
+                      aria-current={selected ? 'step' : undefined}
+                      onClick={() => goTo(p.key)}
+                    >
+                      <span className="builder-path-num">{done ? <SeenMark /> : num(i + 1)}</span>
+                      <span className="builder-path-label">{pageTitle(p)}</span>
+                      {n > 0 && <span className="chip-count">{num(n)}</span>}
+                    </button>
+                  </li>
+                )
+              })}
+            </ol>
+          )}
+          <header className="builder-page-head">
+            <h2>{pageTitle(current)}</h2>
+            {pageText && <p className="builder-page-text">{pageText}</p>}
+            {current.category && <p className="hint">{current.category.single ? t('builder.category.single') : t('builder.category.multiple')}</p>}
+          </header>
+          {current.key === TOOLS ? (
+            <AmbianceSection
+              catalog={catalog}
+              index={index}
+              tools={draft.tools}
+              choice={ambiance}
+              note={note}
+              focus={focus}
+              chosen={chosen}
+              onChoice={chooseAmbiance}
+              onTool={onTool}
+              onMode={onMode}
+              onBase={enable}
+              onDetails={setDetails}
+              baseLabel={baseLabel}
+              reference={reference}
+              onReference={chooseReference}
+            />
+          ) : current.category ? (
+            <CategoryPage
+              category={current.category}
               index={index}
               draft={draft}
               chosen={chosen}
@@ -835,12 +870,13 @@ function Wizard({
               onOpenLocal={onOpenLocal}
             />
           )}
-          <div className="builder-nav">
-            {stepIndex > 0 && <button onClick={() => goTo(steps[stepIndex - 1])}>{t('builder.previous')}</button>}
+          {/* Toujours visible en bas de la fenêtre, sauf sur le récapitulatif qui a ses propres boutons. */}
+          <div className={`builder-nav ${next ? 'is-sticky' : ''}`}>
+            {previous && <button onClick={() => goTo(previous.key)}>{t('builder.previous')}</button>}
             <div className="spacer" />
-            {stepIndex < steps.length - 1 && (
-              <button className="primary" onClick={() => goTo(steps[stepIndex + 1])}>
-                {stepIndex === steps.length - 2 ? t('builder.toSummary') : t('builder.next')}
+            {next && (
+              <button className="primary" onClick={() => goTo(next.key)}>
+                {nextLabel}
               </button>
             )}
           </div>
@@ -855,15 +891,21 @@ function Wizard({
   )
 }
 
+/** Coche d'une étape ou d'une page déjà ouverte, à la place de son numéro. */
+function SeenMark() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="m3.5 8.5 3 3 6-7" />
+    </svg>
+  )
+}
+
 /**
- * Une étape : l'ambiance d'abord (étape des outils), puis une catégorie à la fois (sous-onglets avec le nombre de
- * choix). Les catégories des outils ne sont pas des grilles : leurs éléments sont les choix « Importé d'un pack ».
+ * Page d'une catégorie : ses éléments, avec « Aucun » en tête quand un seul choix est possible. Les catégories des
+ * outils n'ont pas de page : leurs éléments sont les choix « Importé d'un pack ».
  */
-function GroupStep({
-  categories,
-  ambiance,
-  tab,
-  onTab,
+function CategoryPage({
+  category,
   index,
   draft,
   chosen,
@@ -872,10 +914,7 @@ function GroupStep({
   onBase,
   baseLabel
 }: {
-  categories: BuilderCategory[]
-  ambiance: ReactNode
-  tab: string | undefined
-  onTab: (key: string) => void
+  category: BuilderCategory
   index: Map<string, CardRef>
   draft: Draft
   chosen: BuilderComponentCard[]
@@ -885,69 +924,43 @@ function GroupStep({
   baseLabel: (base: string) => string
 }) {
   const { t } = useTranslation()
-  const category = categories.find((c) => c.key === tab) ?? categories[0]
-  const countOf = (key: string): number => draft.components.filter((id) => index.get(id)?.category.key === key).length
+  const none = !draft.components.some((id) => index.get(id)?.category.key === category.key)
   const picked = (id: string): boolean => draft.components.includes(id)
   return (
-    <>
-      {ambiance}
-      {category && (
-        <>
-          {ambiance && (
-            <div className="section-head">
-              <h2>{t('builder.ambiance.more')}</h2>
-            </div>
-          )}
-          <div className="chips builder-tabs" role="tablist">
-            {categories.map((c) => {
-              const n = countOf(c.key)
-              const selected = c.key === category.key
-              return (
-                <button key={c.key} role="tab" aria-selected={selected} className={`chip ${selected ? 'is-selected' : ''}`} onClick={() => onTab(c.key)}>
-                  {c.label}
-                  {n > 0 && <span className="chip-count">{num(n)}</span>}
-                </button>
-              )
-            })}
+    <div className="grid builder-grid">
+      {category.single && (
+        <article
+          className={`card clickable builder-card builder-none ${none ? 'is-selected' : ''}`}
+          role="button"
+          tabIndex={0}
+          aria-pressed={none}
+          onClick={() => onChoose(category, null)}
+          onKeyDown={(e) => activate(e, () => onChoose(category, null))}
+        >
+          <div className="cover">
+            <div className="cover-empty">{t('builder.card.none')}</div>
+            {none && <Check />}
           </div>
-          <p className="hint builder-hint">{category.single ? t('builder.category.single') : t('builder.category.multiple')}</p>
-          <div className="grid builder-grid">
-            {category.single && (
-              <article
-                className={`card clickable builder-card builder-none ${countOf(category.key) ? '' : 'is-selected'}`}
-                role="button"
-                tabIndex={0}
-                aria-pressed={!countOf(category.key)}
-                onClick={() => onChoose(category, null)}
-                onKeyDown={(e) => activate(e, () => onChoose(category, null))}
-              >
-                <div className="cover">
-                  <div className="cover-empty">{t('builder.card.none')}</div>
-                  {!countOf(category.key) && <Check />}
-                </div>
-                <div className="card-body">
-                  <div className="name">{t('builder.card.none')}</div>
-                  <p className="builder-text">{t('builder.card.noneText', { category: q(category.label) })}</p>
-                </div>
-              </article>
-            )}
-            {category.components.map((card) => (
-              <ComponentTile
-                key={card.id}
-                card={card}
-                selected={picked(card.id)}
-                blockers={blockersOf(card, category.single, chosen)}
-                missing={picked(card.id) ? missingBases(card, chosen, draft.tools) : []}
-                baseLabel={baseLabel}
-                onChoose={() => onChoose(category, card.id)}
-                onDetails={() => onDetails(card.id)}
-                onBase={onBase}
-              />
-            ))}
+          <div className="card-body">
+            <div className="name">{t('builder.card.none')}</div>
+            <p className="builder-text">{t('builder.card.noneText', { category: q(category.label) })}</p>
           </div>
-        </>
+        </article>
       )}
-    </>
+      {category.components.map((card) => (
+        <ComponentTile
+          key={card.id}
+          card={card}
+          selected={picked(card.id)}
+          blockers={blockersOf(card, category.single, chosen)}
+          missing={picked(card.id) ? missingBases(card, chosen, draft.tools) : []}
+          baseLabel={baseLabel}
+          onChoose={() => onChoose(category, card.id)}
+          onDetails={() => onDetails(card.id)}
+          onBase={onBase}
+        />
+      ))}
+    </div>
   )
 }
 

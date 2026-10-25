@@ -282,9 +282,11 @@
     "saved": "{{name}} est enregistré sur ton compte.",
     "stepsLabel": "Étapes",
     "summaryStep": "Récapitulatif",
-    "previous": "Étape précédente",
-    "next": "Étape suivante",
-    "toSummary": "Voir le récapitulatif",
+    "pagesLabel": "Pages de l’étape {{step}}",
+    "previous": "‹ Précédent",
+    "nextPage": "Suivant : {{name}} ›",
+    "nextStep": "Étape suivante : {{name}} ›",
+    "toSummary": "Voir le récapitulatif ›",
     "update": "Mettre à jour",
     "leave": {
       "title": "Quitter sans enregistrer ?",
@@ -292,9 +294,8 @@
       "ok": "Quitter"
     },
     "ambiance": {
-      "title": "Ambiance",
+      "title": "Style de l’image",
       "intro": "Les couleurs, la lumière et la météo de ton jeu. Prends un choix tout prêt, ou règle chaque outil toi-même.",
-      "more": "Autres éléments d’ambiance",
       "basic": {
         "title": "Basique",
         "text": "Le jeu d’origine, plus net. Le plus léger pour ton PC."
@@ -339,8 +340,27 @@
       "deleteDetailLocal": "La création est supprimée de ton compte. Le pack déjà dans ta bibliothèque reste utilisable."
     },
     "category": {
-      "single": "Un seul choix possible dans cette catégorie.",
-      "multiple": "Choisis-en autant que tu veux."
+      "single": "Un seul choix possible. « Aucun » garde le jeu d’origine.",
+      "multiple": "Choisis-en autant que tu veux, ou aucun pour garder le jeu d’origine."
+    },
+    "categoryHelp": {
+      "timecycle": "Des retouches de la lumière, des reflets et de la distance de vue, en plus du style de l’image.",
+      "roads": "L’aspect des routes : asphalte, marquages au sol et trottoirs.",
+      "vegetation": "Les arbres, les buissons et l’herbe : plus denses, plus réalistes.",
+      "world": "Les textures du décor : sols, plages, falaises et bâtiments.",
+      "mapping": "Des décors ajoutés à la carte : panneaux lumineux, décorations de saison…",
+      "water": "La mer et l’eau : couleur, transparence, vagues et reflets.",
+      "lights": "Les lampadaires et les lumières de la ville la nuit.",
+      "blood": "Le sang, les impacts de balles et les éclaboussures.",
+      "effects": "Les flammes, la fumée, les explosions et les particules.",
+      "weapons": "L’apparence des armes.",
+      "vehicles": "Les véhicules : pneus, textures et plaques d’immatriculation.",
+      "peds": "Les personnages : tenues, peaux et visages.",
+      "sounds": "Les sons du jeu.",
+      "interface": "Ce qui s’affiche à l’écran : icônes, roue des armes…",
+      "physics": "Le vent et les réactions physiques des personnages.",
+      "performance": "Des éléments qui allègent le jeu pour gagner des images par seconde.",
+      "other": "Les éléments qui n’entrent dans aucune autre catégorie."
     },
     "card": {
       "none": "Aucun",
@@ -436,6 +456,7 @@
       "credits": "Crédits de l’image : {{credits}}"
     },
     "summary": {
+      "intro": "Vérifie ton pack, donne-lui un nom, puis installe-le.",
       "name": "Nom",
       "nameHint": "{{n}} caractères restants",
       "components": "Éléments",

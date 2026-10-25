@@ -282,9 +282,11 @@
     "saved": "{{name}} is saved to your account.",
     "stepsLabel": "Steps",
     "summaryStep": "Summary",
-    "previous": "Previous step",
-    "next": "Next step",
-    "toSummary": "See the summary",
+    "pagesLabel": "{{step}} pages",
+    "previous": "‹ Previous",
+    "nextPage": "Next: {{name}} ›",
+    "nextStep": "Next step: {{name}} ›",
+    "toSummary": "See the summary ›",
     "update": "Update",
     "leave": {
       "title": "Leave without saving?",
@@ -292,9 +294,8 @@
       "ok": "Leave"
     },
     "ambiance": {
-      "title": "Ambiance",
+      "title": "Image style",
       "intro": "The colors, lighting and weather of your game. Take a ready-made choice, or tune each tool yourself.",
-      "more": "Other ambiance elements",
       "basic": {
         "title": "Basic",
         "text": "The original game, sharper. The lightest for your PC."
@@ -339,8 +340,27 @@
       "deleteDetailLocal": "The creation is deleted from your account. The pack already in your library stays usable."
     },
     "category": {
-      "single": "Only one choice in this category.",
-      "multiple": "Pick as many as you like."
+      "single": "Only one choice. “None” keeps the original game.",
+      "multiple": "Pick as many as you like, or none to keep the original game."
+    },
+    "categoryHelp": {
+      "timecycle": "Tweaks to lighting, reflections and view distance, on top of your image style.",
+      "roads": "How the roads look: asphalt, road markings and sidewalks.",
+      "vegetation": "Trees, bushes and grass: denser and more realistic.",
+      "world": "Scenery textures: ground, beaches, cliffs and buildings.",
+      "mapping": "Scenery added to the map: animated billboards, seasonal decorations…",
+      "water": "The sea and water: color, clarity, waves and reflections.",
+      "lights": "Street lights and the city lights at night.",
+      "blood": "Blood, bullet impacts and splatter.",
+      "effects": "Flames, smoke, explosions and particles.",
+      "weapons": "How weapons look.",
+      "vehicles": "Vehicles: tires, textures and license plates.",
+      "peds": "Characters: outfits, skin and faces.",
+      "sounds": "The game’s sounds.",
+      "interface": "What shows on screen: icons, weapon wheel…",
+      "physics": "Wind and how characters react physically.",
+      "performance": "Elements that lighten the game to gain frames per second.",
+      "other": "Elements that don’t fit any other category."
     },
     "card": {
       "none": "None",
@@ -436,6 +456,7 @@
       "credits": "Image credits: {{credits}}"
     },
     "summary": {
+      "intro": "Check your pack, give it a name, then install it.",
       "name": "Name",
       "nameHint": "{{n}} characters left",
       "components": "Elements",

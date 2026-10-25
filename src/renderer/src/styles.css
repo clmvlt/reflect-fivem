@@ -3406,8 +3406,27 @@ button.discord-brand:disabled {
   background: var(--accent);
   color: var(--on-accent);
 }
-.builder-step .chip-count {
+/* Étape ou page déjà vue : une coche à la place du numéro. */
+.builder-step.is-done .builder-step-num,
+.builder-path-item.is-done .builder-path-num {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent-text);
+}
+/* Nombre de choix faits dans l'étape ou la page. */
+.builder-step .chip-count,
+.builder-path-item .chip-count {
+  min-width: 18px;
+  height: 18px;
   margin-left: 0;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--selected);
+  opacity: 1;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
 }
 .builder-layout {
   display: grid;
@@ -3424,18 +3443,96 @@ button.discord-brand:disabled {
   gap: 8px;
   margin-top: 24px;
 }
+/* « Suivant » toujours à portée : la barre reste en bas de la fenêtre pendant qu'on fait défiler les éléments. */
+.builder-nav.is-sticky {
+  position: sticky;
+  bottom: 12px;
+  z-index: 2;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
 @media (max-width: 1180px) {
   .builder-layout {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
-/* Une catégorie à la fois : sous-onglets, puis la grille des éléments. */
-.builder-tabs {
-  margin: 0 0 12px;
+/* Pages de l'étape (une catégorie par page) : numérotées, cochées une fois vues, reliées par un trait. */
+.builder-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 0;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
 }
-.builder-hint {
-  margin: 0 0 12px;
+.builder-path li {
+  display: flex;
+  align-items: center;
+}
+.builder-path li + li::before {
+  content: '';
+  width: 14px;
+  height: 1px;
+  margin: 0 4px;
+  background: var(--border);
+}
+.builder-path-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 10px 0 5px;
+  border-color: transparent;
+  border-radius: 15px;
+  background: none;
+  color: var(--text-2);
+}
+.builder-path-item:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+.builder-path-num {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--btn-border);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+}
+.builder-path-item.is-selected,
+.builder-path-item.is-selected:hover:not(:disabled) {
+  background: var(--selected);
+  color: var(--text);
+  font-weight: 600;
+}
+.builder-path-item.is-selected .builder-path-num {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* En-tête de la page : ce qu'elle change dans le jeu, puis la règle de choix. */
+.builder-page-head {
+  margin-bottom: 16px;
+}
+.builder-page-head h2 {
+  font-size: 20px;
+  line-height: 28px;
+}
+.builder-page-text {
+  max-width: 720px;
+  margin: 4px 0 0;
+  color: var(--text-2);
+}
+.builder-page-head .hint {
+  margin-top: 4px;
 }
 .builder-grid {
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -3838,9 +3935,6 @@ button.discord-brand:disabled {
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-.ambiance-intro {
-  margin: 0;
 }
 .ambiance-choices {
   display: grid;

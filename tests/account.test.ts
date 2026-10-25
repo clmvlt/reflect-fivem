@@ -1,5 +1,6 @@
 // Compte : PKCE de la connexion Google, retour sur le serveur local, connexion et liaison Discord, jetons chiffrés,
-// renouvellement et conversion des connexions des versions précédentes, droits relus (« Peut créer un pack »).
+// renouvellement et conversion des connexions des versions précédentes, droits relus (« Peut créer un pack »), temps
+// avec le tag du serveur Discord.
 import { createHash } from 'node:crypto'
 import { existsSync, promises as fs } from 'node:fs'
 import os from 'node:os'
@@ -16,12 +17,14 @@ import {
   parseLoopbackCallback,
   pkceChallenge,
   TokenFile,
+  toServerTag,
   waitForLoopback,
   type AccountDeps,
   type LegacySession,
   type Session,
   type StoredSession
 } from '../src/main/core/account'
+import { MaintenanceError } from '../src/main/core/http'
 import type { SystemProtection } from '../src/main/core/keys'
 import { log } from '../src/main/util/log'
 import type { AccountMe } from '../src/shared/types'
@@ -243,6 +246,74 @@ describe('photo des comptes', () => {
     expect(discordAvatarUrl('https://cdn.discordapp.com.exemple.test/a.png')).toBeNull()
     expect(discordAvatarUrl('/users/12/avatar?v=1')).toBeNull()
     expect(discordAvatarUrl(null)).toBeNull()
+  })
+})
+
+describe('tag du serveur Discord', () => {
+  const progress = {
+    discordId: '80351110224678912',
+    wearing: true,
+    wearingSince: '2026-10-24T09:12:00Z',
+    seenAt: '2026-10-25T14:57:00Z',
+    totalSeconds: 190000,
+    creditEverySeconds: 345600,
+    nextCreditInSeconds: 155600,
+    creditsEarned: 2,
+    creditsWaiting: 0,
+    maxCredits: 0,
+    linked: true,
+    awarded: 0
+  }
+  const response = { enabled: true, discordLinked: true, serverTime: '2026-10-25T15:00:00Z', progress }
+
+  it('lit la progression du compte Discord lié, sans les champs du bot', () => {
+    expect(toServerTag(response)).toEqual({
+      enabled: true,
+      discordLinked: true,
+      serverTime: '2026-10-25T15:00:00Z',
+      creditEverySeconds: 345600,
+      progress: {
+        wearing: true,
+        wearingSince: '2026-10-24T09:12:00Z',
+        seenAt: '2026-10-25T14:57:00Z',
+        totalSeconds: 190000,
+        creditEverySeconds: 345600,
+        nextCreditInSeconds: 155600,
+        creditsEarned: 2,
+        creditsWaiting: 0,
+        maxCredits: 0
+      }
+    })
+  })
+
+  it('sans compte Discord lié : progression nulle, durée d’un crédit inconnue', () => {
+    expect(toServerTag({ enabled: true, discordLinked: false, serverTime: '2026-10-25T15:00:00Z', progress: null })).toEqual({
+      enabled: true,
+      discordLinked: false,
+      serverTime: '2026-10-25T15:00:00Z',
+      creditEverySeconds: null,
+      progress: null
+    })
+    // Durée donnée à part par une API plus récente : gardée pour la phrase du compte pas lié.
+    expect(toServerTag({ enabled: true, discordLinked: false, serverTime: null, creditEverySeconds: 345600, progress: null }).creditEverySeconds).toBe(345600)
+  })
+
+  it('récompense désactivée, tag retiré, plafond atteint', () => {
+    expect(toServerTag({ ...response, enabled: false }).enabled).toBe(false)
+    const off = toServerTag({ ...response, progress: { ...progress, wearing: false, wearingSince: null, seenAt: null, nextCreditInSeconds: null, creditsEarned: 3, maxCredits: 3 } })
+    expect(off.progress).toMatchObject({ wearing: false, wearingSince: null, seenAt: null, nextCreditInSeconds: null, creditsEarned: 3, maxCredits: 3 })
+  })
+
+  it('champs illisibles : valeurs neutres ; sans durée d’un crédit, réponse refusée', () => {
+    const odd = { enabled: 'oui', discordLinked: 1, serverTime: 'hier', progress: { ...progress, wearing: 'oui', seenAt: 'bientôt', totalSeconds: -5, creditsEarned: '2', nextCreditInSeconds: 999_999 } }
+    expect(toServerTag(odd as never)).toMatchObject({
+      enabled: false,
+      discordLinked: true,
+      serverTime: null,
+      progress: { wearing: false, seenAt: null, totalSeconds: 0, creditsEarned: 0, nextCreditInSeconds: 345600 }
+    })
+    expect(() => toServerTag({ ...response, progress: { ...progress, creditEverySeconds: 0 } })).toThrow('Le serveur ne répond pas correctement.')
+    expect(() => toServerTag(null as never)).toThrow('Le serveur ne répond pas correctement.')
   })
 })
 
@@ -929,6 +1000,30 @@ describe('compte', () => {
     expect(account.current()).toEqual(me)
     expect(changes).toEqual([me])
     expect((await stored())?.me).toMatchObject({ discordLinked: true })
+  })
+
+  it('tag du serveur Discord : GET /me/server-tag au nom du compte ; maintenance transmise, connexion gardée', async () => {
+    let maintenance = false
+    const { account, calls, changes } = await setup('server-tag', (r) => {
+      if (r === '/auth/app/login') return json(200, tokens(1))
+      if (maintenance) return json(503, { code: 'maintenance', detail: 'Maintenance en cours.' }, 'application/problem+json')
+      return json(200, { enabled: true, discordLinked: false, serverTime: '2026-10-25T15:00:00Z', progress: null })
+    })
+    const me = await account.login('joueur@example.com', 'motdepasse')
+    calls.length = 0
+    expect(await account.serverTag()).toEqual({ enabled: true, discordLinked: false, serverTime: '2026-10-25T15:00:00Z', creditEverySeconds: null, progress: null })
+    expect(calls.map((c) => `${c.init.method} ${c.route} ${bearer(c.init)}`)).toEqual(['GET /me/server-tag Bearer at_1'])
+
+    maintenance = true
+    await expect(account.serverTag()).rejects.toBeInstanceOf(MaintenanceError)
+    expect(account.current()).toEqual(me)
+    expect(changes).toEqual([me])
+  })
+
+  it('tag du serveur Discord sans connexion : refusé (401 « signed-out »)', async () => {
+    const { account, calls } = await setup('server-tag-signed-out', () => json(500, null))
+    await expect(account.serverTag()).rejects.toMatchObject({ status: 401, code: 'signed-out' })
+    expect(calls).toEqual([])
   })
 
   it('aucun jeton dans le journal', () => {

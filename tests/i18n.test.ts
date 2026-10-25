@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import i18next from 'i18next'
 import { currentLocale, msg, pickLocale, supportedLocale, tm, withPluralForms } from '@shared/i18n'
-import { formatBytes, formatRelative, quote } from '@shared/intl'
+import { formatBytes, formatDuration, formatRelative, quote } from '@shared/intl'
 import { LOCALES } from '@shared/locales'
 import { withLanguage } from '../src/main/core/http'
 import { accountLanguageAction, fetchLanguages, startupLocale } from '../src/main/core/language'
@@ -122,6 +122,27 @@ describe('textes et formats', () => {
     expect(formatBytes(512)).toBe('512 B')
     expect(quote('Pack')).toBe('“Pack”')
     expect(formatRelative(Date.now() - 3 * 3600_000)).toBe('3 hr. ago')
+  })
+
+  it('durées : secondes, minutes, heures, puis jours et heures à l’heure près', async () => {
+    // Intl sépare le nombre de l'unité par une espace insécable (fine en français).
+    const duration = (s: number, display?: 'short' | 'long'): string => formatDuration(s, display).replace(/\s/g, ' ')
+    expect(duration(45)).toBe('45 s')
+    expect(duration(180)).toBe('3 min')
+    expect(duration(7200)).toBe('2 h')
+    expect(duration(7500)).toBe('2 h 5 min')
+    expect(duration(7170)).toBe('2 h')
+    expect(duration(86_399)).toBe('1 j')
+    expect(duration(190_000)).toBe('2 j 5 h')
+    expect(duration(155_600)).toBe('1 j 19 h')
+    expect(duration(345_600)).toBe('4 j')
+    expect(duration(345_600, 'long')).toBe('4 jours')
+    expect(duration(-5)).toBe('0 s')
+    await i18next.changeLanguage('en')
+    expect(duration(7500)).toBe('2 hr 5 min')
+    expect(duration(190_000)).toBe('2 days 5 hr')
+    expect(duration(86_400)).toBe('1 day')
+    expect(duration(345_600, 'long')).toBe('4 days')
   })
 
   it('traduit un texte gardé sous forme de clé, et rend une ancienne chaîne telle quelle', async () => {

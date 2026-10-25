@@ -124,7 +124,7 @@ npm run release -- --dry-run     # montre ce qui serait fait, sans rien pousser
 npm run release -- --no-watch    # pousse le tag sans attendre la fin
 ```
 
-Le script ne crée aucun commit. Il refuse de partir si des fichiers ne sont pas committés ou si la version est déjà publiée, pousse les commits pas encore envoyés, crée le tag, puis suit le workflow (GitHub CLI `gh`) et vérifie la release GitHub et reflect-fivem.com.
+Le script ne crée aucun commit. Il refuse de partir si des fichiers ne sont pas committés ou si la version est déjà publiée, pousse les commits pas encore envoyés, crée le tag, puis suit le workflow (GitHub CLI `gh`) et vérifie la release GitHub et reflect-fivem.com. Si l'API GitHub ne répond plus pendant le suivi (coupure, DNS), le résultat de l'exécution est relu toutes les 15 secondes avant de conclure ; après 6 lectures de suite sans réponse, le script prévient que le résultat est inconnu et donne le lien de l'exécution, sans parler d'échec : le tag est poussé, il ne faut pas relancer.
 
 Nouveautés affichées sur le site, dans la release et dans la fenêtre « Nouveautés » de l'application : `notes/X.Y.Z.md` s'il existe, sinon la liste des commits depuis le tag précédent (rubrique « Autres changements »). Le fichier suit `notes/modele.md` : le texte avant le premier titre est l'introduction, puis `## Nouveautés`, `## Améliorations`, `## Corrections de bugs` et `## Autres changements`, un point par puce `- `. `deploy/deploy.py` le découpe en rubriques pour l'API (`changelog`) ; `npm run release` vérifie le découpage avant de pousser le tag.
 

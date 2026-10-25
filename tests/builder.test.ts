@@ -4,7 +4,8 @@
 // nouvelle révision proposée comme une mise à jour. Droit « Peut créer un pack » : sans lui, aucune requête. Outils
 // d'ambiance : conversion des créations d'avant les outils, règles QuantV / ReShade, choix rapide (Basique, Recommandé)
 // et aperçu d'un style. Images de référence en jeu : lues dans le catalogue, gardées sur le disque, et image de
-// l'aperçu (celle du style, sinon l'image en jeu choisie, celle par défaut, puis la base de l'outil).
+// l'aperçu (celle du style, sinon l'image en jeu choisie, celle par défaut, puis la base de l'outil). Assistant : une
+// page par catégorie, regroupées en étapes.
 import { createHash } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
@@ -12,6 +13,7 @@ import path from 'node:path'
 import { crc32 } from 'node:zlib'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BUILDER_NOT_ALLOWED, canUseBuilder, SIGNED_OUT } from '@shared/api'
+import { SUMMARY, TOOLS, wizardPages, wizardSteps } from '@shared/builderPages'
 import type { AccountMe } from '@shared/types'
 import type { BuilderAccount } from '../src/main/core/builder'
 import type { InstallHooks } from '../src/main/core/marketplace'
@@ -1057,5 +1059,49 @@ describe('création avec des outils d’ambiance', () => {
     const result = await s.builder.install(BUILD, vi.fn(), new AbortController().signal, hooks())
     expect((await s.library.get(result.packId)).cover).toBe(`builder-reference-${REF_CITY}-2.jpg`)
     expect(s.requests.some((r) => r.url === `${API}/builder/references/${REF_CITY}/image?v=2`)).toBe(true)
+  })
+})
+
+describe('pages de l’assistant', () => {
+  /** Catalogue des outils, avec une étape Monde (l'eau sans élément) et une étape Combat vide. */
+  const catalog = (tools = true) => {
+    const raw = toolsCatalog()
+    const categories = (raw.categories as Record<string, unknown>[]).map((c) => (c.key === 'timecycle' ? { ...c, components: [card('aaaaaaaa-0000-4000-8000-000000000010', 'timecycle')] } : c))
+    return toCatalog(
+      {
+        ...raw,
+        groups: [
+          ...(raw.groups as unknown[]),
+          { key: 'world', label: 'Monde', categories: ['roads', 'vegetation', 'water'] },
+          { key: 'combat', label: 'Combat', categories: ['blood'] }
+        ],
+        categories: [
+          ...categories,
+          { key: 'roads', label: 'Routes', group: 'world', single: true, tool: null, components: [card(ROADS_ID, 'roads')] },
+          { key: 'vegetation', label: 'Végétation', group: 'world', single: false, tool: null, components: [card('aaaaaaaa-0000-4000-8000-000000000011', 'vegetation')] },
+          { key: 'water', label: 'Eau', group: 'world', single: true, tool: null, components: [] },
+          { key: 'blood', label: 'Sang', group: 'combat', single: false, tool: null, components: [] }
+        ],
+        ...(tools ? {} : { tools: [] })
+      },
+      { offline: false, checked: true }
+    )
+  }
+
+  it('une page par catégorie non vide, les outils d’ambiance en tête de leur étape, puis le récapitulatif', () => {
+    const pages = wizardPages(catalog())
+    // Catégories des outils (leurs éléments sont les choix « Importé d'un pack ») et catégories vides : pas de page.
+    expect(pages.map((p) => p.key)).toEqual([TOOLS, 'timecycle', 'roads', 'vegetation', SUMMARY])
+    expect(pages.map((p) => p.category?.label ?? null)).toEqual([null, 'Météo et lumière', 'Routes', 'Végétation', null])
+    // Étape sans page (Combat) : pas proposée.
+    expect(wizardSteps(pages).map((s) => [s.key, s.pages.map((p) => p.key)])).toEqual([
+      ['ambiance', [TOOLS, 'timecycle']],
+      ['world', ['roads', 'vegetation']],
+      [SUMMARY, [SUMMARY]]
+    ])
+  })
+
+  it('sans outil proposé : pas de page des outils', () => {
+    expect(wizardPages(catalog(false)).map((p) => p.key)).toEqual(['timecycle', 'roads', 'vegetation', SUMMARY])
   })
 })

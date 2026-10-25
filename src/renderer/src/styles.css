@@ -2187,12 +2187,6 @@ button.discord-brand:disabled {
 .server-tag-done svg {
   flex: none;
 }
-.server-tag-seen {
-  margin-top: 2px;
-  color: var(--text-2);
-  font-size: 11px;
-  opacity: 0.8;
-}
 
 /* « par Auteur » sur les cartes et la fiche d'un pack */
 .author-link {

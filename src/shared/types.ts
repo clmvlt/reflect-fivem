@@ -732,7 +732,8 @@ export interface DiscordAccount {
 
 /**
  * Temps avec le tag du serveur Discord (GET /me/server-tag) : chaque tranche de `creditEverySeconds` de temps cumulé
- * avec le tag donne un crédit « Créer ton pack ». Le bot du serveur relève les porteurs toutes les quelques minutes.
+ * avec le tag donne un crédit « Créer ton pack », `maxCredits` au plus. Règle actuelle : un seul crédit, puis le temps
+ * est encore compté, seulement pour être affiché. Le bot du serveur relève les porteurs toutes les quelques minutes.
  */
 export interface ServerTagStatus {
   /** Faux : récompense désactivée sur le serveur, rien n'est montré. */
@@ -762,7 +763,7 @@ export interface ServerTagProgress {
   creditsEarned: number
   /** Crédits gagnés pas encore donnés au compte (le temps d'un relevé, pour un compte lié). */
   creditsWaiting: number
-  /** Plafond de crédits, 0 : sans limite. */
+  /** Plafond de crédits, 0 : sans limite (1 aujourd'hui). */
   maxCredits: number
 }
 

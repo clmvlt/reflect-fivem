@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { AccountMe, AccountProfile, ProfileInput, ProfileLink, ServerTagStatus } from '@shared/types'
+import type { AccountMe, AccountProfile, ProfileInput, ProfileLink, ServerTagProgress, ServerTagStatus } from '@shared/types'
 import { formatDuration, formatRelative } from '@shared/intl'
-import { nextCreditProgress } from '@shared/serverTag'
+import { nextCreditProgress, rewardState } from '@shared/serverTag'
 import { apiError, cleanError, useStore } from '../store'
 import { longDate, num, q } from '../lib/format'
 import { Avatar } from './common'
@@ -479,10 +479,19 @@ function ServerTagIcon() {
   )
 }
 
+/** Coche du crédit obtenu. */
+function CheckIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="m3.5 8.5 3 3 6-7" />
+    </svg>
+  )
+}
+
 /**
- * Tag du serveur Reflect, sous la ligne Discord. Compte Discord lié : tag affiché ou non, avancée vers le prochain
- * crédit « Créer ton pack », temps cumulé et crédits gagnés. Pas lié : ce que le tag rapporte. Rien quand la
- * récompense est désactivée ou que l'état n'a pas pu être lu.
+ * Tag du serveur Reflect, sous la ligne Discord. Compte Discord lié : tag affiché ou non, puis le crédit « Créer ton
+ * pack » qu'il rapporte (un seul aujourd'hui, voir OneCredit) et le temps cumulé avec le tag. Pas lié : ce que le tag
+ * rapporte. Rien quand la récompense est désactivée ou que l'état n'a pas pu être lu.
  */
 function ServerTagRow({ status }: { status: ServerTagStatus | null }) {
   const { t } = useTranslation()
@@ -509,13 +518,8 @@ function ServerTagRow({ status }: { status: ServerTagStatus | null }) {
     )
   }
 
-  const progress = nextCreditProgress(p)
   // Dernier relevé daté à l'heure de l'API : l'horloge du PC peut être fausse.
   const now = status.serverTime ? Date.parse(status.serverTime) : NaN
-  const earned =
-    p.maxCredits > 0
-      ? t('accountView.serverTag.earnedOf', { count: p.creditsEarned, n: num(p.creditsEarned), max: num(p.maxCredits) })
-      : t('accountView.serverTag.earned', { count: p.creditsEarned, n: num(p.creditsEarned) })
   const state = !p.wearing
     ? t('accountView.serverTag.notWearing')
     : p.wearingSince
@@ -527,22 +531,7 @@ function ServerTagRow({ status }: { status: ServerTagStatus | null }) {
       <div className="row-main">
         <div className="name">{t('accountView.serverTag.title')}</div>
         <div className={`meta server-tag-state ${p.wearing ? 'is-on' : ''}`}>{state}</div>
-        <div className="server-tag-progress">
-          {progress === null ? (
-            <span className="meta">{t('accountView.serverTag.capped')}</span>
-          ) : (
-            <>
-              <div className="track" role="progressbar" aria-label={t('accountView.serverTag.progress')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)}>
-                <div className="fill" style={{ width: `${progress * 100}%` }} />
-              </div>
-              <span className="meta">{t('accountView.serverTag.next', { duration: formatDuration(p.nextCreditInSeconds ?? 0) })}</span>
-            </>
-          )}
-        </div>
-        <div className="meta">
-          {t('accountView.serverTag.total', { duration: formatDuration(p.totalSeconds) })} · {earned}
-        </div>
-        {p.creditsWaiting > 0 && <div className="meta server-tag-waiting">{t('accountView.serverTag.waiting', { count: p.creditsWaiting, n: num(p.creditsWaiting) })}</div>}
+        {p.maxCredits === 1 ? <OneCredit p={p} /> : <Credits p={p} />}
         {!p.wearing ? (
           <div className="meta meta-wrap">{t('accountView.serverTag.help')}</div>
         ) : (
@@ -555,6 +544,90 @@ function ServerTagRow({ status }: { status: ServerTagStatus | null }) {
         </div>
       )}
     </li>
+  )
+}
+
+/** Barre d'avancée vers le crédit, avec le temps de tag qui manque à côté. */
+function ServerTagBar({ progress, label, remaining }: { progress: number; label: string; remaining: string }) {
+  return (
+    <div className="server-tag-progress">
+      <div className="track" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)}>
+        <div className="fill" style={{ width: `${progress * 100}%` }} />
+      </div>
+      <span className="meta">{remaining}</span>
+    </div>
+  )
+}
+
+/**
+ * Un seul crédit (maxCredits 1, la règle de l'API) : l'objectif et l'avancée tant qu'il n'est pas gagné, puis le
+ * crédit obtenu. Le temps cumulé avec le tag est encore compté, seulement pour être affiché : c'est alors
+ * l'information principale du bloc.
+ */
+function OneCredit({ p }: { p: ServerTagProgress }) {
+  const { t } = useTranslation()
+  const reward = rewardState(p)
+  const total = formatDuration(p.totalSeconds)
+  if (reward === 'earning') {
+    const progress = nextCreditProgress(p)
+    return (
+      <>
+        <div className="meta meta-wrap">{t('accountView.serverTag.goal', { duration: formatDuration(p.creditEverySeconds, 'long') })}</div>
+        {progress !== null && (
+          <ServerTagBar
+            progress={progress}
+            label={t('accountView.serverTag.creditProgress')}
+            remaining={t('accountView.serverTag.remaining', { duration: formatDuration(p.nextCreditInSeconds ?? 0) })}
+          />
+        )}
+        <div className="meta">{t('accountView.serverTag.total', { duration: total })}</div>
+      </>
+    )
+  }
+  return (
+    <>
+      <div className="server-tag-total">
+        <span className="meta">{t('accountView.serverTag.totalWorn')}</span>
+        <span className="server-tag-total-value">{total}</span>
+      </div>
+      {reward === 'done' ? (
+        <div className="meta server-tag-done">
+          <CheckIcon />
+          {t('accountView.serverTag.creditDone')}
+        </div>
+      ) : (
+        <div className="meta server-tag-waiting">{t('accountView.serverTag.creditWaiting')}</div>
+      )}
+    </>
+  )
+}
+
+/** Plusieurs crédits (maxCredits plus de 1) ou sans limite (0) : avancée vers le prochain, crédits gagnés. */
+function Credits({ p }: { p: ServerTagProgress }) {
+  const { t } = useTranslation()
+  const progress = nextCreditProgress(p)
+  const earned =
+    p.maxCredits > 0
+      ? t('accountView.serverTag.earnedOf', { count: p.creditsEarned, n: num(p.creditsEarned), max: num(p.maxCredits) })
+      : t('accountView.serverTag.earned', { count: p.creditsEarned, n: num(p.creditsEarned) })
+  return (
+    <>
+      {progress === null ? (
+        <div className="server-tag-progress">
+          <span className="meta">{t('accountView.serverTag.capped')}</span>
+        </div>
+      ) : (
+        <ServerTagBar
+          progress={progress}
+          label={t('accountView.serverTag.progress')}
+          remaining={t('accountView.serverTag.next', { duration: formatDuration(p.nextCreditInSeconds ?? 0) })}
+        />
+      )}
+      <div className="meta">
+        {t('accountView.serverTag.total', { duration: formatDuration(p.totalSeconds) })} · {earned}
+      </div>
+      {p.creditsWaiting > 0 && <div className="meta server-tag-waiting">{t('accountView.serverTag.waiting', { count: p.creditsWaiting, n: num(p.creditsWaiting) })}</div>}
+    </>
   )
 }
 

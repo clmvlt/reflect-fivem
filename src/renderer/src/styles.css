@@ -2165,6 +2165,28 @@ button.discord-brand:disabled {
 .server-tag-waiting {
   color: var(--accent-text);
 }
+/* Crédit gagné : le temps cumulé avec le tag devient l'information principale du bloc. */
+.server-tag-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+  margin: 6px 0 2px;
+}
+.server-tag-total-value {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+}
+.server-tag-done {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ok-text);
+}
+.server-tag-done svg {
+  flex: none;
+}
 .server-tag-seen {
   margin-top: 2px;
   color: var(--text-2);

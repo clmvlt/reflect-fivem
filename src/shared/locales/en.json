@@ -14,12 +14,15 @@
       "tooManySeconds_other": "Too many attempts. Try again in {{count}} seconds."
     },
     "discord": {
+      "appLinkWait": "Authorize the link in the Discord app…",
+      "appWait": "Authorize Reflect FiveM in the Discord app…",
       "cancelled": "Discord sign-in canceled.",
       "discordFailed": "Discord sign-in failed. Try again.",
       "expired": "Discord sign-in timed out: try again.",
       "failed": "Discord sign-in failed: {{error}}",
       "linkWait": "Choose the Discord account to link in your browser…",
       "noBrowser": "Browser not found: {{error}}",
+      "openInBrowser": "Open in browser",
       "page": {
         "cancelledText": "You can close this tab.",
         "cancelledTitle": "Discord sign-in canceled",

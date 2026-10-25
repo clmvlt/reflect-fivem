@@ -315,14 +315,19 @@ export interface PackManagerApi {
   /** Abandonne la connexion Google en attente. */
   accountCancelGoogle(): Promise<void>
   /**
-   * Ouvre la connexion Discord dans le navigateur (en passant par l'API) et attend son retour (5 minutes au plus). Crée
-   * un compte sans mot de passe si aucun compte n'a l'adresse du compte Discord.
+   * Ouvre la connexion Discord (en passant par l'API), dans l'application Discord si elle est ouverte, sinon dans le
+   * navigateur, et attend son retour (5 minutes au plus). Crée un compte sans mot de passe si aucun compte n'a l'adresse
+   * du compte Discord.
    */
   accountLoginDiscord(): Promise<AccountMe>
-  /** Lie un compte Discord au compte connecté, choisi dans le navigateur ; il remplace celui déjà lié. */
+  /** Lie un compte Discord au compte connecté, choisi comme pour la connexion ; il remplace celui déjà lié. */
   accountLinkDiscord(): Promise<AccountMe>
   /** Abandonne la connexion ou la liaison Discord en attente. */
   accountCancelDiscord(): Promise<void>
+  /** Application Discord ouverte sur ce PC : la connexion et la liaison Discord s'y affichent au lieu du navigateur. */
+  accountDiscordApp(): Promise<boolean>
+  /** Ouvre dans le navigateur la page Discord en attente (affichée dans l'application Discord). */
+  accountDiscordInBrowser(): Promise<void>
   /** Retire la liaison Discord : 409 si le compte n'a ni mot de passe ni Google. */
   accountUnlinkDiscord(): Promise<AccountMe>
   accountLogout(): Promise<void>

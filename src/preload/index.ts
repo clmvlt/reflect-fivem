@@ -138,6 +138,8 @@ const methods = [
   'accountLoginDiscord',
   'accountLinkDiscord',
   'accountCancelDiscord',
+  'accountDiscordApp',
+  'accountDiscordInBrowser',
   'accountUnlinkDiscord',
   'accountLogout',
   'accountProfile',

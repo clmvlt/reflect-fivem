@@ -34,7 +34,7 @@ import { Builder, coverUrl } from './core/builder'
 import { Purchases } from './core/purchases'
 import { DownloadQueue, type DownloadContext, type DownloadJob } from './core/downloads'
 import { AppUpdater } from './core/updater'
-import { killProcesses, launchDetached, readVideoAdapters, runningGameProcesses } from './util/win'
+import { discordRunning, killProcesses, launchDetached, readVideoAdapters, runningGameProcesses } from './util/win'
 import type { GraphicsTarget } from '@shared/graphics'
 import type { HardwareOverride, MachineProfile } from '@shared/performance'
 import { fileDestination } from './core/analyzer'
@@ -52,6 +52,32 @@ const modsDir = (libraryDir: string): string => path.join(libraryDir, '.mods')
 const GAME_WATCH = 4000
 /** Requêtes vers l'API, avec la langue affichée (Accept-Language) ; 503 « maintenance » levé en MaintenanceError. */
 const apiFetch = serverFetch((url, init) => net.fetch(url, init))
+
+/**
+ * Adresse vers laquelle renvoie `url` (réponse 3xx), sans suivre le renvoi ; null pour une autre réponse. net.fetch
+ * refuse `redirect: 'manual'` (« Redirect was cancelled ») : net.request le permet.
+ */
+function redirectOf(url: string): Promise<string | null> {
+  return new Promise((resolve, reject) => {
+    const req = net.request({ url, redirect: 'manual' })
+    const timer = setTimeout(() => {
+      req.abort()
+      reject(new Error(t('errors.network')))
+    }, 20_000)
+    const done = (location: string | null): void => {
+      clearTimeout(timer)
+      resolve(location)
+      req.abort()
+    }
+    req.on('redirect', (_status, _method, location) => done(location))
+    req.on('response', () => done(null))
+    req.on('error', (err) => {
+      clearTimeout(timer)
+      reject(err)
+    })
+    req.end()
+  })
+}
 
 /** Dernière détection des jeux, enregistrée pour le démarrage suivant. */
 interface SavedGames {
@@ -143,6 +169,10 @@ export class Service {
       store: new TokenFile(path.join(dataDir, 'account.dat'), systemProtection),
       fetch: apiFetch,
       openExternal: (url) => shell.openExternal(url),
+      discordApp: {
+        running: async () => !!app.getApplicationNameForProtocol('discord://') && (await discordRunning()),
+        redirectOf
+      },
       onChange: (me) => {
         this.emit(IPC.account, me)
         this.accountLanguage(me)
@@ -1520,6 +1550,10 @@ export class Service {
     accountLinkDiscord: async (): Promise<AccountMe> => this.toFront(await this.account.linkDiscord()),
 
     accountCancelDiscord: async () => this.account.cancelDiscord(),
+
+    accountDiscordApp: () => this.account.discordAppOpen(),
+
+    accountDiscordInBrowser: () => this.account.discordInBrowser(),
 
     accountUnlinkDiscord: () => this.account.unlinkDiscord(),
 

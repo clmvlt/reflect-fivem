@@ -27,10 +27,12 @@
 // Connexion et liaison Discord : même PKCE et même serveur local, mais le navigateur part de l'API
 // (/auth/app/discord), qui échange le code de Discord et renvoie sur le serveur local un ticket « dt_… » à usage
 // unique (2 minutes), échangé à son tour contre une connexion ou une liaison au compte connecté. Une seule connexion
-// par navigateur à la fois, Google ou Discord : un nouvel essai abandonne le précédent.
+// par navigateur à la fois, Google ou Discord : un nouvel essai abandonne le précédent. Quand l'application Discord est
+// ouverte sur le PC, la page d'autorisation s'y affiche au lieu du navigateur (lien discord://, voir openDiscord) ;
+// « Ouvrir dans le navigateur » reste possible pendant l'attente.
 //
-// Aucune dépendance à Electron ici (testé avec vitest) : le service fournit fetch, l'ouverture du navigateur et le
-// chiffrement du système.
+// Aucune dépendance à Electron ici (testé avec vitest) : le service fournit fetch, l'ouverture du navigateur, l'accès
+// à l'application Discord et le chiffrement du système.
 
 import { createHash, randomBytes } from 'node:crypto'
 import { promises as fs } from 'node:fs'
@@ -123,6 +125,21 @@ export function discordStartUrl(apiUrl: string, p: BrowserParams & { link: boole
   const url = new URL(`${apiUrl}/auth/app/discord`)
   url.search = new URLSearchParams({ redirectUri: p.redirectUri, codeChallenge: p.challenge, state: p.state, link: String(p.link) }).toString()
   return url.toString()
+}
+
+/**
+ * Lien qui ouvre la page d'autorisation Discord dans l'application Discord : https://discord.com/oauth2/authorize?… →
+ * discord://-/oauth2/authorize?… (lien que Discord ne documente pas, mais que son application reconnaît, sans numéro
+ * de version de l'API dans le chemin). Null pour une autre adresse.
+ */
+export function discordAppUrl(url: string): string | null {
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'https:' || u.host !== 'discord.com' || !/^(?:\/api)?\/oauth2\/authorize\/?$/.test(u.pathname)) return null
+    return `discord://-/oauth2/authorize${u.search}`
+  } catch {
+    return null
+  }
 }
 
 export type LoopbackResult =
@@ -366,10 +383,23 @@ export interface AccountDeps {
   apiUrl: string
   store: TokenFile
   fetch: (url: string, init: RequestInit) => Promise<Response>
-  /** Ouvre une adresse dans le navigateur. */
+  /** Ouvre une adresse dans le navigateur (ou un lien discord:// dans l'application Discord). */
   openExternal: (url: string) => Promise<void>
   /** Connexion, déconnexion, profil modifié, connexion expirée. */
   onChange: (me: AccountMe | null) => void
+  /**
+   * Application Discord du PC (facultatif : sans elle, la page Discord s'ouvre toujours dans le navigateur). `running` :
+   * ouverte, avec les liens discord:// enregistrés ; `redirectOf` : adresse vers laquelle renvoie une page (3xx), sans
+   * suivre le renvoi, null pour une autre réponse.
+   */
+  discordApp?: { running: () => Promise<boolean>; redirectOf: (url: string) => Promise<string | null> }
+}
+
+/** Connexion en cours dans le navigateur. `start` : adresse de départ de Discord, pour « Ouvrir dans le navigateur ». */
+interface BrowserFlow {
+  provider: LoginProvider
+  abort: AbortController
+  start?: string
 }
 
 interface RequestOptions {
@@ -394,7 +424,7 @@ export class Account {
   private renewing: Promise<void> | null = null
   private keepAlive: NodeJS.Timeout | null = null
   /** Connexion en cours dans le navigateur (Google ou Discord, une seule à la fois). */
-  private browser: { provider: LoginProvider; abort: AbortController } | null = null
+  private browser: BrowserFlow | null = null
   /** Lecture du compte en cours (partagée), et heure de la dernière (voir refreshIfStale). */
   private refreshing: Promise<AccountMe | null> | null = null
   private lastRefresh = 0
@@ -485,8 +515,8 @@ export class Account {
   }
 
   /**
-   * Connexion Discord dans le navigateur. Un compte Discord dont l'adresse est celle d'un compte existant y est lié ;
-   * sans compte, un compte sans mot de passe est créé.
+   * Connexion Discord, dans l'application Discord si elle est ouverte, sinon dans le navigateur. Un compte Discord dont
+   * l'adresse est celle d'un compte existant y est lié ; sans compte, un compte sans mot de passe est créé.
    */
   async loginWithDiscord(): Promise<AccountMe> {
     const r = await this.discordTicket(false)
@@ -504,6 +534,17 @@ export class Account {
 
   cancelDiscord(): void {
     this.cancelBrowser('discord')
+  }
+
+  /** Application Discord ouverte sur ce PC : la page d'autorisation de Discord s'y affichera. */
+  discordAppOpen(): Promise<boolean> {
+    return this.deps.discordApp?.running().catch(() => false) ?? Promise.resolve(false)
+  }
+
+  /** « Ouvrir dans le navigateur » : la page Discord en attente est ouverte dans le navigateur, même attente. */
+  async discordInBrowser(): Promise<void> {
+    const flow = this.browser
+    if (flow?.provider === 'discord' && flow.start && !flow.abort.signal.aborted) await this.deps.openExternal(flow.start)
   }
 
   /** Retire la liaison Discord ; refusé (409) si le compte n'a ni mot de passe ni Google. */
@@ -574,21 +615,22 @@ export class Account {
    * Ouvre une page de connexion dans le navigateur et attend son retour sur le serveur local : code à usage unique (code
    * Google, ticket Discord), vérificateur PKCE et adresse de retour. Une seule connexion par navigateur à la fois : un
    * nouvel essai, Google ou Discord, abandonne le précédent. `start` lit ce qu'il faut pour construire l'adresse de la
-   * page (configuration Google), déjà annulable.
+   * page (configuration Google), déjà annulable ; `open` ouvre cette adresse (le navigateur par défaut).
    */
   private async browserCode(
     provider: LoginProvider,
-    start: () => Promise<(p: BrowserParams) => string>
+    start: () => Promise<(p: BrowserParams) => string>,
+    open: (url: string, flow: BrowserFlow) => Promise<void> = (url) => this.deps.openExternal(url)
   ): Promise<{ code: string; verifier: string; redirectUri: string }> {
     this.browser?.abort.abort()
-    const current = { provider, abort: new AbortController() }
+    const current: BrowserFlow = { provider, abort: new AbortController() }
     this.browser = current
     try {
       const authUrl = await start()
       const { verifier, challenge } = createPkce()
       const state = randomBytes(24).toString('base64url')
       const { code, redirectUri } = await waitForLoopback(provider, state, current.abort.signal, (redirectUri) =>
-        this.deps.openExternal(authUrl({ redirectUri, challenge, state }))
+        open(authUrl({ redirectUri, challenge, state }), current)
       )
       return { code, verifier, redirectUri }
     } finally {
@@ -598,7 +640,40 @@ export class Account {
 
   /** Ticket Discord (« dt_… », 2 minutes, usage unique) rendu par l'API au retour de la page Discord. */
   private discordTicket(link: boolean): Promise<{ code: string; verifier: string }> {
-    return this.browserCode('discord', async () => (p) => discordStartUrl(this.deps.apiUrl, { ...p, link }))
+    return this.browserCode(
+      'discord',
+      async () => (p) => discordStartUrl(this.deps.apiUrl, { ...p, link }),
+      (start, flow) => this.openDiscord(start, flow)
+    )
+  }
+
+  /**
+   * Page d'autorisation Discord : dans l'application Discord quand elle est ouverte, sinon dans le navigateur. Son
+   * adresse est le renvoi de l'API (/auth/app/discord), lu sans le suivre ; un autre renvoi (Discord indisponible...)
+   * ou une erreur : navigateur, qui montre la même chose. Après « Autoriser », l'application Discord ouvre l'adresse de
+   * retour de l'API dans le navigateur, qui revient sur le serveur local comme depuis la page web.
+   */
+  private async openDiscord(start: string, flow: BrowserFlow): Promise<void> {
+    flow.start = start
+    const app = this.deps.discordApp
+    if (app && (await this.discordAppOpen())) {
+      const location = await app.redirectOf(start).catch((err: unknown) => {
+        log.info(`Discord : page d'autorisation non lue sur l'API (${(err as Error).message})`)
+        return null
+      })
+      const deepLink = location ? discordAppUrl(location) : null
+      if (flow.abort.signal.aborted) return
+      if (deepLink) {
+        try {
+          await this.deps.openExternal(deepLink)
+          log.info("Discord : page d'autorisation ouverte dans l'application Discord")
+          return
+        } catch (err) {
+          log.info(`Discord : application Discord injoignable, navigateur (${(err as Error).message})`)
+        }
+      }
+    }
+    if (!flow.abort.signal.aborted) await this.deps.openExternal(start)
   }
 
   /** Abandonne la connexion en cours dans le navigateur, si c'est celle de ce fournisseur. */

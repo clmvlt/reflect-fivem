@@ -177,6 +177,13 @@ export async function runningGameProcesses(): Promise<string[]> {
   return (await listProcesses()).filter((n) => GAME_PROCESS.test(n))
 }
 
+const DISCORD_PROCESS = /^discord(ptb|canary|development)?\.exe$/i
+
+/** Application Discord ouverte (stable, PTB ou Canary). */
+export async function discordRunning(): Promise<boolean> {
+  return (await listProcesses()).some((n) => DISCORD_PROCESS.test(n))
+}
+
 /** Demande la fermeture de processus (taskkill), avec leurs processus enfants ; `force` : arrêt immédiat. */
 export function killProcesses(names: string[], force: boolean): Promise<void> {
   return new Promise((resolve) => {

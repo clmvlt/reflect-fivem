@@ -70,6 +70,7 @@ function SignIn() {
   const [displayName, setDisplayName] = useState('')
   const [busy, setBusy] = useState<'form' | 'google' | 'discord' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const discordApp = useDiscordApp()
 
   const submit = async (e: FormEvent): Promise<void> => {
     e.preventDefault()
@@ -82,10 +83,11 @@ function SignIn() {
       setBusy(null)
     }
   }
-  /** Connexion dans le navigateur (Google ou Discord). */
+  /** Connexion dans le navigateur (Google ou Discord, ou l'application Discord). */
   const browser = async (provider: 'google' | 'discord'): Promise<void> => {
     setBusy(provider)
     setError(null)
+    if (provider === 'discord') discordApp.check()
     try {
       setAccount(await (provider === 'google' ? window.api.accountLoginGoogle() : window.api.accountLoginDiscord()))
     } catch (err) {
@@ -155,7 +157,11 @@ function SignIn() {
           </button>
         )}
         {busy === 'discord' ? (
-          <BrowserWait text={t('account.discord.wait')} onCancel={() => void window.api.accountCancelDiscord()} />
+          <BrowserWait
+            text={discordApp.inApp ? t('account.discord.appWait') : t('account.discord.wait')}
+            onCancel={() => void window.api.accountCancelDiscord()}
+            onBrowser={discordApp.inApp ? discordApp.toBrowser : undefined}
+          />
         ) : (
           <button className="wide discord-brand" onClick={() => void browser('discord')} disabled={!!busy}>
             <DiscordIcon size={18} />
@@ -167,17 +173,41 @@ function SignIn() {
   )
 }
 
-/** Attente du retour d'une page ouverte dans le navigateur, avec « Annuler ». */
-function BrowserWait({ text, onCancel }: { text: string; onCancel: () => void }) {
+/** Attente du retour d'une page ouverte dans le navigateur (ou l'application Discord : `onBrowser`), avec « Annuler ». */
+function BrowserWait({ text, onCancel, onBrowser }: { text: string; onCancel: () => void; onBrowser?: () => void }) {
   const { t } = useTranslation()
   return (
     <div className="browser-wait">
       <span>{text}</span>
-      <button className="link" onClick={onCancel}>
-        {t('common.cancel')}
-      </button>
+      <span className="browser-wait-actions">
+        {onBrowser && (
+          <button className="link" onClick={onBrowser}>
+            {t('account.discord.openInBrowser')}
+          </button>
+        )}
+        <button className="link" onClick={onCancel}>
+          {t('common.cancel')}
+        </button>
+      </span>
     </div>
   )
+}
+
+/**
+ * Application Discord ouverte sur ce PC : la page d'autorisation Discord s'y affiche au lieu du navigateur. Lu à
+ * l'affichage et à chaque essai (`check`) ; `toBrowser` rouvre la page en attente dans le navigateur.
+ */
+function useDiscordApp(): { inApp: boolean; check: () => void; toBrowser: () => void } {
+  const [inApp, setInApp] = useState(false)
+  const check = useCallback((): void => {
+    window.api.accountDiscordApp().then(setInApp, () => setInApp(false))
+  }, [])
+  useEffect(check, [check])
+  const toBrowser = (): void => {
+    setInApp(false)
+    void window.api.accountDiscordInBrowser()
+  }
+  return { inApp, check, toBrowser }
 }
 
 function GoogleLogo() {
@@ -303,19 +333,21 @@ function AccountHead({ me, actions }: { me: AccountMe; actions?: ReactNode }) {
   )
 }
 
-/** Comptes liés : Discord (photo, nom, @username), lié dans le navigateur ou retiré. */
+/** Comptes liés : Discord (photo, nom, @username), lié dans le navigateur (ou l'application Discord) ou retiré. */
 function LinkedAccounts({ me, onChoosePassword }: { me: AccountMe; onChoosePassword: () => void }) {
   const { t } = useTranslation()
   const { setMessage } = useStore()
   const [busy, setBusy] = useState<'link' | 'unlink' | null>(null)
   /** `noPassword` : retrait refusé (409), le compte n'aurait plus aucun moyen de connexion. */
   const [error, setError] = useState<{ text: string; noPassword: boolean } | null>(null)
+  const discordApp = useDiscordApp()
   const discord = me.discordLinked ? me.discord : null
   const discordName = discord ? (discord.displayName ?? discord.username) : ''
 
   const link = async (): Promise<void> => {
     setBusy('link')
     setError(null)
+    discordApp.check()
     try {
       await window.api.accountLinkDiscord()
       setMessage({ kind: 'info', text: t('accountView.linked.linked') })
@@ -354,12 +386,24 @@ function LinkedAccounts({ me, onChoosePassword }: { me: AccountMe; onChoosePassw
           )}
           <div className="row-main">
             <div className="name">{discord ? discordName : 'Discord'}</div>
-            <div className="meta">{discord ? `Discord · @${discord.username}` : t('accountView.linked.discordHelp')}</div>
+            <div className="meta">
+              {busy === 'link'
+                ? discordApp.inApp
+                  ? t('account.discord.appLinkWait')
+                  : t('account.discord.linkWait')
+                : discord
+                  ? `Discord · @${discord.username}`
+                  : t('accountView.linked.discordHelp')}
+            </div>
           </div>
           <div className="actions">
             {busy === 'link' ? (
               <>
-                <span className="hint">{t('account.discord.linkWait')}</span>
+                {discordApp.inApp && (
+                  <button className="link" onClick={discordApp.toBrowser}>
+                    {t('account.discord.openInBrowser')}
+                  </button>
+                )}
                 <button className="link" onClick={() => void window.api.accountCancelDiscord()}>
                   {t('common.cancel')}
                 </button>

@@ -14,12 +14,15 @@
       "tooManySeconds_other": "Trop d’essais. Réessayez dans {{count}} s."
     },
     "discord": {
+      "appLinkWait": "Autorisez la liaison dans l’application Discord…",
+      "appWait": "Autorisez Reflect FiveM dans l’application Discord…",
       "cancelled": "Connexion avec Discord annulée.",
       "discordFailed": "La connexion avec Discord a échoué. Réessayez.",
       "expired": "Connexion avec Discord expirée : réessayez.",
       "failed": "Connexion avec Discord impossible : {{error}}",
       "linkWait": "Choisissez le compte Discord à lier dans votre navigateur…",
       "noBrowser": "Navigateur introuvable : {{error}}",
+      "openInBrowser": "Ouvrir dans le navigateur",
       "page": {
         "cancelledText": "Vous pouvez fermer cet onglet.",
         "cancelledTitle": "Connexion avec Discord annulée",

@@ -1723,13 +1723,24 @@ button.discord-brand:disabled {
 .actions button.discord-brand {
   gap: 8px;
 }
+/* Texte, puis les liens à droite ; ils passent dessous quand la place manque. */
+.browser-wait > span:first-child {
+  flex: 1 1 220px;
+}
+.browser-wait-actions {
+  display: flex;
+  flex: none;
+  gap: 12px;
+  margin-left: auto;
+}
 .browser-wait {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 4px 12px;
   min-height: 40px;
-  padding: 0 12px;
+  padding: 6px 12px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--info-bg);
@@ -1786,9 +1797,6 @@ button.discord-brand:disabled {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-}
-.linked .actions .hint {
-  margin: 0;
 }
 
 /* « par Auteur » sur les cartes et la fiche d'un pack */

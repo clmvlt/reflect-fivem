@@ -9,6 +9,7 @@ import {
   Account,
   avatarMediaUrl,
   createPkce,
+  discordAppUrl,
   discordAvatarUrl,
   discordStartUrl,
   googleAuthUrl,
@@ -16,6 +17,7 @@ import {
   pkceChallenge,
   TokenFile,
   waitForLoopback,
+  type AccountDeps,
   type LegacySession,
   type Session,
   type StoredSession
@@ -206,6 +208,18 @@ describe('retour de la connexion Discord', () => {
     await expect(waitForLoopback('discord', 'etat', new AbortController().signal, async () => undefined, 50)).rejects.toThrow('Connexion avec Discord expirée')
   })
 
+  it('lien discord:// de la page d’autorisation, pour l’application Discord', () => {
+    const query = '?client_id=1556984973926342676&response_type=code&redirect_uri=https%3A%2F%2Freflect-fivem.com%2Fapi%2Fauth%2Fdiscord%2Fcallback&scope=identify%20email&state=abc&prompt=none'
+    expect(discordAppUrl(`https://discord.com/oauth2/authorize${query}`)).toBe(`discord://-/oauth2/authorize${query}`)
+    expect(discordAppUrl(`https://discord.com/api/oauth2/authorize${query}`)).toBe(`discord://-/oauth2/authorize${query}`)
+    // Avec un numéro de version, l'application Discord ne reconnaît pas le lien.
+    expect(discordAppUrl(`https://discord.com/api/v10/oauth2/authorize${query}`)).toBeNull()
+    expect(discordAppUrl(`http://discord.com/oauth2/authorize${query}`)).toBeNull()
+    expect(discordAppUrl(`https://discord.com.exemple.test/oauth2/authorize${query}`)).toBeNull()
+    expect(discordAppUrl('http://127.0.0.1:51234/callback?error=unavailable&state=abc')).toBeNull()
+    expect(discordAppUrl('pas une adresse')).toBeNull()
+  })
+
   it('adresse de la page impossible à construire : erreur rendue telle quelle, serveur fermé', async () => {
     const done = waitForLoopback('discord', 'etat', new AbortController().signal, () => {
       throw new Error('adresse invalide')
@@ -313,13 +327,14 @@ describe('compte', () => {
 
   /**
    * Compte branché sur une fausse API (`handler` reçoit le chemin sans /api), avec éventuellement une connexion
-   * enregistrée et un faux navigateur (`openExternal`).
+   * enregistrée, un faux navigateur (`openExternal`) et une fausse application Discord (`discordApp`).
    */
   const setup = async (
     name: string,
     handler: (route: string, init: RequestInit) => Response | Promise<Response>,
     saved?: StoredSession,
-    openExternal: (url: string) => Promise<void> = async () => undefined
+    openExternal: (url: string) => Promise<void> = async () => undefined,
+    discordApp?: AccountDeps['discordApp']
   ): Promise<{ account: Account; file: string; changes: (AccountMe | null)[]; calls: Call[]; stored: () => Promise<StoredSession | null> }> => {
     const file = path.join(dir, `${name}.dat`)
     if (saved) await new TokenFile(file, fakeSystem()).save(saved)
@@ -334,6 +349,7 @@ describe('compte', () => {
         return handler(route, init)
       },
       openExternal,
+      discordApp,
       onChange: (me) => changes.push(me)
     })
     await account.init()
@@ -780,6 +796,118 @@ describe('compte', () => {
     await expect(account.linkDiscord()).rejects.toMatchObject({ message: detail, status: 409, code: 'discord-already-linked' })
     expect(account.current()).toEqual(me)
     expect(changes).toEqual([me])
+  })
+
+  /**
+   * Fausse application Discord : l'API renvoie vers `location(start)` (la page Discord par défaut) ; un lien discord://
+   * ouvert revient sur le serveur local avec `query`, comme le navigateur après « Autoriser » dans l'application.
+   */
+  const discordAppBack = (opened: string[], query: string, opts: { running?: boolean; location?: (start: string) => string | null } = {}) => {
+    const starts: string[] = []
+    const discordApp: AccountDeps['discordApp'] = {
+      running: async () => opts.running ?? true,
+      redirectOf: async (start) => {
+        starts.push(start)
+        return opts.location ? opts.location(start) : 'https://discord.com/oauth2/authorize?client_id=1&response_type=code&scope=identify+email&state=flux-api&prompt=none'
+      }
+    }
+    const openExternal = async (url: string): Promise<void> => {
+      opened.push(url)
+      if (!url.startsWith('discord://')) return
+      const start = new URL(starts.at(-1)!)
+      void fetch(`${start.searchParams.get('redirectUri')}?${query}&state=${start.searchParams.get('state')}`).catch(() => undefined)
+    }
+    return { discordApp, openExternal, starts }
+  }
+
+  it('application Discord ouverte : page d’autorisation ouverte dans l’application, ticket reçu comme depuis le navigateur', async () => {
+    const opened: string[] = []
+    const fake = discordAppBack(opened, 'code=dt_appli')
+    const { account, calls } = await setup('discord-app', () => json(200, tokens(1)), undefined, fake.openExternal, fake.discordApp)
+    expect(await account.discordAppOpen()).toBe(true)
+    const me = await account.loginWithDiscord()
+    expect(me.id).toBe(12)
+    expect(fake.starts).toHaveLength(1)
+    expect(new URL(fake.starts[0]).pathname).toBe('/api/auth/app/discord')
+    expect(opened).toEqual(['discord://-/oauth2/authorize?client_id=1&response_type=code&scope=identify+email&state=flux-api&prompt=none'])
+    expect(calls.map((c) => c.route)).toEqual(['/auth/app/discord'])
+    expect(body(calls[0].init)).toMatchObject({ code: 'dt_appli' })
+  })
+
+  it.each([
+    ['application Discord fermée', 'closed', { running: false }],
+    ['Discord indisponible sur le serveur (renvoi vers le serveur local)', 'unavailable', { location: (start: string) => `${new URL(start).searchParams.get('redirectUri')}?error=unavailable` }],
+    ['pas de renvoi', 'no-redirect', { location: () => null }]
+  ])('%s : page ouverte dans le navigateur', async (_case, id, opts) => {
+    const opened: string[] = []
+    const fake = discordAppBack(opened, 'code=dt_x', opts)
+    const { account } = await setup(`discord-app-${id}`, () => json(200, tokens(1)), undefined, fake.openExternal, fake.discordApp)
+    const pending = account.loginWithDiscord().catch((err: unknown) => err)
+    await expect.poll(() => opened.length).toBe(1)
+    expect(opened[0]).toMatch(/^https:\/\/api\.test\/api\/auth\/app\/discord\?/)
+    account.cancelDiscord()
+    expect(await pending).toBeInstanceOf(Error)
+    expect(opened).toHaveLength(1)
+  })
+
+  it('application Discord : renvoi illisible ou lien refusé par Windows → navigateur', async () => {
+    const opened: string[] = []
+    const failing: AccountDeps['discordApp'] = { running: async () => true, redirectOf: async () => Promise.reject(new Error('hors ligne')) }
+    const { account } = await setup('discord-app-redirect-error', () => json(200, tokens(1)), undefined, async (url) => void opened.push(url), failing)
+    const first = account.loginWithDiscord().catch((err: unknown) => err)
+    await expect.poll(() => opened.length).toBe(1)
+    expect(opened[0]).toMatch(/^https:\/\/api\.test\/api\/auth\/app\/discord\?/)
+    account.cancelDiscord()
+    await first
+
+    const tried: string[] = []
+    const fake = discordAppBack([], 'code=dt_x')
+    const refused = await setup(
+      'discord-app-deeplink-refused',
+      () => json(200, tokens(1)),
+      undefined,
+      async (url) => {
+        tried.push(url)
+        if (url.startsWith('discord://')) throw new Error('aucune application')
+      },
+      fake.discordApp
+    )
+    const second = refused.account.loginWithDiscord().catch((err: unknown) => err)
+    await expect.poll(() => tried.length).toBe(2)
+    expect(tried[0]).toMatch(/^discord:\/\//)
+    expect(tried[1]).toMatch(/^https:\/\/api\.test\/api\/auth\/app\/discord\?/)
+    refused.account.cancelDiscord()
+    await second
+  })
+
+  it('« Ouvrir dans le navigateur » pendant l’attente : même page de départ, même attente', async () => {
+    const opened: string[] = []
+    const fake = discordAppBack(opened, 'code=dt_x', {})
+    // L'application Discord ne répond pas : rien ne revient du lien discord://.
+    const openExternal = async (url: string): Promise<void> => {
+      opened.push(url)
+      if (url.startsWith('discord://')) return
+      const start = new URL(url)
+      void fetch(`${start.searchParams.get('redirectUri')}?code=dt_navigateur&state=${start.searchParams.get('state')}`).catch(() => undefined)
+    }
+    const { account, calls } = await setup('discord-app-to-browser', () => json(200, tokens(1)), undefined, openExternal, fake.discordApp)
+    await account.discordInBrowser()
+    expect(opened).toEqual([])
+    const pending = account.loginWithDiscord()
+    await expect.poll(() => opened.length).toBe(1)
+    expect(opened[0]).toMatch(/^discord:\/\//)
+    await account.discordInBrowser()
+    await pending
+    expect(opened[1]).toBe(fake.starts[0])
+    expect(body(calls[0].init)).toMatchObject({ code: 'dt_navigateur' })
+    // Plus rien en attente : « Ouvrir dans le navigateur » ne fait plus rien.
+    await account.discordInBrowser()
+    expect(opened).toHaveLength(2)
+  })
+
+  it('sans application Discord fournie : jamais ouverte', async () => {
+    const { account } = await setup('discord-app-none', () => json(200, tokens(1)))
+    expect(await account.discordAppOpen()).toBe(false)
   })
 
   it('liaison Discord sans connexion : refusée sans ouvrir le navigateur', async () => {

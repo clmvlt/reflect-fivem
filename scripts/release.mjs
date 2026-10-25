@@ -51,6 +51,30 @@ function live(cmd, cmdArgs) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+/** Lectures de suite sans réponse de l'API GitHub avant d'abandonner le suivi. */
+const RUN_RETRIES = 6
+
+/**
+ * Conclusion d'une exécution GitHub Actions ('success', 'failure'...), en attendant sa fin si elle tourne encore. null
+ * quand l'API GitHub ne répond plus (coupure, DNS) pendant RUN_RETRIES lectures de suite.
+ */
+async function runConclusion(repo, runId) {
+  for (let misses = 0; misses < RUN_RETRIES; ) {
+    const out = run('gh', ['run', 'view', String(runId), '--repo', repo, '--json', 'status,conclusion'], { quiet: true })
+    if (out) {
+      misses = 0
+      const { status, conclusion } = JSON.parse(out)
+      if (status === 'completed') return conclusion
+      info(`publication en cours (${status}), nouvelle lecture dans 15 s`)
+    } else {
+      misses++
+      if (misses < RUN_RETRIES) info(`GitHub ne répond pas, nouvel essai dans 15 s (${misses}/${RUN_RETRIES})`)
+    }
+    if (misses < RUN_RETRIES) await sleep(15_000)
+  }
+  return null
+}
+
 // Rubriques des nouveautés : même découpage que deploy/deploy.py (split_changelog), qui envoie les notes à l'API.
 const SECTION_NAMES = { features: 'Nouveautés', improvements: 'Améliorations', fixes: 'Corrections de bugs', other: 'Autres changements' }
 const SECTION_TITLES = {
@@ -209,8 +233,9 @@ async function main() {
   let runId = null
   for (let i = 0; i < 30 && !runId; i++) {
     await sleep(3000)
+    // Sans réponse de GitHub, nouvel essai : le tag est déjà poussé, ce n'est pas un échec de la publication.
     const runs = JSON.parse(run('gh', ['run', 'list', '--repo', repo, '--workflow', 'release.yml', '--limit', '10',
-      '--json', 'databaseId,headBranch,headSha']) || '[]')
+      '--json', 'databaseId,headBranch,headSha'], { quiet: true }) || '[]')
     runId = runs.find((r) => r.headBranch === tag || r.headSha === head)?.databaseId ?? null
   }
   if (!runId) {
@@ -218,9 +243,20 @@ async function main() {
     info(actionsUrl)
     return
   }
-  info(`https://github.com/${repo}/actions/runs/${runId}`)
-  const status = live('gh', ['run', 'watch', String(runId), '--repo', repo, '--exit-status', '--interval', '15'])
-  if (status !== 0) throw fail(`publication en échec : https://github.com/${repo}/actions/runs/${runId}`)
+  const runUrl = `https://github.com/${repo}/actions/runs/${runId}`
+  info(runUrl)
+  // gh run watch sort aussi en erreur quand l'API GitHub ne répond plus : le résultat est relu avant de conclure.
+  if (live('gh', ['run', 'watch', String(runId), '--repo', repo, '--exit-status', '--interval', '15']) !== 0) {
+    const conclusion = await runConclusion(repo, runId)
+    if (conclusion === null) {
+      warn('GitHub ne répond plus : résultat de la publication inconnu, vérifiez-le sur GitHub (ne relancez pas, le tag est poussé)')
+      info(runUrl)
+      discordReminder()
+      return
+    }
+    if (conclusion !== 'success') throw fail(`publication en échec (${conclusion}) : ${runUrl}`)
+    ok('publication réussie')
+  }
 
   step('Vérification')
   const release = run('gh', ['release', 'view', tag, '--repo', repo, '--json', 'url', '-q', '.url'], { quiet: true })

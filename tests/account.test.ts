@@ -1,5 +1,5 @@
-// Compte : PKCE de la connexion Google, retour sur le serveur local, jetons chiffrés, renouvellement et conversion des
-// connexions des versions précédentes, droits relus (« Peut créer un pack »).
+// Compte : PKCE de la connexion Google, retour sur le serveur local, connexion et liaison Discord, jetons chiffrés,
+// renouvellement et conversion des connexions des versions précédentes, droits relus (« Peut créer un pack »).
 import { createHash } from 'node:crypto'
 import { existsSync, promises as fs } from 'node:fs'
 import os from 'node:os'
@@ -9,6 +9,8 @@ import {
   Account,
   avatarMediaUrl,
   createPkce,
+  discordAvatarUrl,
+  discordStartUrl,
   googleAuthUrl,
   parseLoopbackCallback,
   pkceChallenge,
@@ -157,12 +159,76 @@ describe('retour de la connexion Google', () => {
   })
 })
 
+describe('retour de la connexion Discord', () => {
+  it('construit l’adresse de départ sur l’API, liaison comprise (http accepté en dev)', () => {
+    const p = { redirectUri: 'http://127.0.0.1:51234/callback', challenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM', state: 'etat-0123456789abcdef' }
+    const login = new URL(discordStartUrl('http://localhost:8080/api', { ...p, link: false }))
+    expect(login.origin + login.pathname).toBe('http://localhost:8080/api/auth/app/discord')
+    expect(Object.fromEntries(login.searchParams)).toEqual({ redirectUri: p.redirectUri, codeChallenge: p.challenge, state: p.state, link: 'false' })
+    const link = new URL(discordStartUrl('https://reflect-fivem.com/api', { ...p, link: true }))
+    expect(link.origin + link.pathname).toBe('https://reflect-fivem.com/api/auth/app/discord')
+    expect(link.searchParams.get('link')).toBe('true')
+  })
+
+  /** Attente du retour de l'API, le navigateur revenant avec `query` : page affichée et issue de l'attente. */
+  const roundTrip = async (query: string): Promise<{ status: number; page: string; outcome: unknown }> => {
+    let redirect = ''
+    const outcome = waitForLoopback('discord', 'etat', new AbortController().signal, async (uri) => {
+      redirect = uri
+    }).catch((err: unknown) => err)
+    await expect.poll(() => redirect).not.toBe('')
+    const response = await fetch(`${redirect}?${query}&state=etat`)
+    return { status: response.status, page: await response.text(), outcome: await outcome }
+  }
+
+  it('lit le ticket de l’API', async () => {
+    const { status, page, outcome } = await roundTrip('code=dt_ticket')
+    expect(status).toBe(200)
+    expect(page).toContain('Discord a confirmé votre compte')
+    expect(outcome).toMatchObject({ code: 'dt_ticket' })
+  })
+
+  it.each([
+    ['access_denied', 'Connexion avec Discord annulée', 'Connexion avec Discord annulée.'],
+    ['unavailable', 'Discord indisponible', 'La connexion avec Discord n’est pas disponible pour le moment'],
+    ['discord_failed', 'La connexion avec Discord a échoué', 'La connexion avec Discord a échoué. Réessayez.'],
+    ['raison_inconnue', 'La connexion avec Discord a échoué', 'La connexion avec Discord a échoué. Réessayez.']
+  ])('erreur « %s » : page et message propres', async (reason, title, message) => {
+    const { page, outcome } = await roundTrip(`error=${reason}`)
+    expect(page).toContain(`<h1>${title}</h1>`)
+    expect(outcome).toBeInstanceOf(Error)
+    expect((outcome as Error).message).toContain(message)
+  })
+
+  it('abandon et délai dépassé : textes de Discord', async () => {
+    const abort = new AbortController()
+    await expect(waitForLoopback('discord', 'etat', abort.signal, async () => abort.abort())).rejects.toThrow('Connexion avec Discord annulée.')
+    await expect(waitForLoopback('discord', 'etat', new AbortController().signal, async () => undefined, 50)).rejects.toThrow('Connexion avec Discord expirée')
+  })
+
+  it('adresse de la page impossible à construire : erreur rendue telle quelle, serveur fermé', async () => {
+    const done = waitForLoopback('discord', 'etat', new AbortController().signal, () => {
+      throw new Error('adresse invalide')
+    })
+    await expect(done).rejects.toThrow(/^adresse invalide$/)
+  })
+})
+
 describe('photo des comptes', () => {
   it('sert la photo par pm-media', () => {
     expect(avatarMediaUrl('/users/12/avatar?v=3f2a-9c')).toBe('pm-media://avatar/12/3f2a-9c')
     expect(avatarMediaUrl(null)).toBeNull()
     expect(avatarMediaUrl('https://exemple.test/a.jpg')).toBeNull()
     expect(avatarMediaUrl('/users/12/avatar?v=../../x')).toBeNull()
+  })
+
+  it('photo Discord : https://cdn.discordapp.com seulement', () => {
+    expect(discordAvatarUrl('https://cdn.discordapp.com/avatars/80351110224678912/a_1b2c.png')).toBe('https://cdn.discordapp.com/avatars/80351110224678912/a_1b2c.png')
+    expect(discordAvatarUrl('https://cdn.discordapp.com/embed/avatars/3.png')).toBe('https://cdn.discordapp.com/embed/avatars/3.png')
+    expect(discordAvatarUrl('http://cdn.discordapp.com/embed/avatars/3.png')).toBeNull()
+    expect(discordAvatarUrl('https://cdn.discordapp.com.exemple.test/a.png')).toBeNull()
+    expect(discordAvatarUrl('/users/12/avatar?v=1')).toBeNull()
+    expect(discordAvatarUrl(null)).toBeNull()
   })
 })
 
@@ -245,11 +311,15 @@ describe('compte', () => {
   const accounts: Account[] = []
   afterAll(() => accounts.forEach((a) => a.dispose()))
 
-  /** Compte branché sur une fausse API (`handler` reçoit le chemin sans /api), avec éventuellement une connexion enregistrée. */
+  /**
+   * Compte branché sur une fausse API (`handler` reçoit le chemin sans /api), avec éventuellement une connexion
+   * enregistrée et un faux navigateur (`openExternal`).
+   */
   const setup = async (
     name: string,
     handler: (route: string, init: RequestInit) => Response | Promise<Response>,
-    saved?: StoredSession
+    saved?: StoredSession,
+    openExternal: (url: string) => Promise<void> = async () => undefined
   ): Promise<{ account: Account; file: string; changes: (AccountMe | null)[]; calls: Call[]; stored: () => Promise<StoredSession | null> }> => {
     const file = path.join(dir, `${name}.dat`)
     if (saved) await new TokenFile(file, fakeSystem()).save(saved)
@@ -263,7 +333,7 @@ describe('compte', () => {
         calls.push({ route, init })
         return handler(route, init)
       },
-      openExternal: async () => undefined,
+      openExternal,
       onChange: (me) => changes.push(me)
     })
     await account.init()
@@ -573,9 +643,169 @@ describe('compte', () => {
     }
   })
 
+  /** Faux navigateur : garde l'adresse ouverte et revient sur le serveur local avec `query` (ticket ou erreur) et le state reçu. */
+  const browserBack =
+    (opened: URL[], query: string) =>
+    async (url: string): Promise<void> => {
+      const start = new URL(url)
+      opened.push(start)
+      void fetch(`${start.searchParams.get('redirectUri')}?${query}&state=${start.searchParams.get('state')}`).catch(() => undefined)
+    }
+  const discord = {
+    id: '80351110224678912',
+    username: 'joueur',
+    displayName: 'Le Joueur',
+    avatarUrl: 'https://cdn.discordapp.com/avatars/80351110224678912/1b2c.png',
+    linkedAt: '2026-10-25T10:00:00Z'
+  }
+
+  it('connexion Discord : départ sur l’API, ticket reçu sur le serveur local, échangé avec le vérificateur PKCE', async () => {
+    const opened: URL[] = []
+    const { account, calls, changes, stored } = await setup(
+      'discord-login',
+      () => json(200, { ...tokens(1), me: { ...remoteMe, discordLinked: true, discord } }),
+      undefined,
+      browserBack(opened, 'code=dt_ticket')
+    )
+    const me = await account.loginWithDiscord()
+    expect(opened).toHaveLength(1)
+    const start = opened[0]
+    expect(start.origin + start.pathname).toBe('https://api.test/api/auth/app/discord')
+    expect(start.searchParams.get('redirectUri')).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/callback$/)
+    expect(start.searchParams.get('codeChallenge')).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect(start.searchParams.get('state')).toMatch(/^[A-Za-z0-9_-]{32}$/)
+    expect(start.searchParams.get('link')).toBe('false')
+
+    expect(calls.map((c) => `${c.init.method} ${c.route}`)).toEqual(['POST /auth/app/discord'])
+    expect(bearer(calls[0].init)).toBeUndefined()
+    const sent = body(calls[0].init)
+    expect(sent).toEqual({ code: 'dt_ticket', codeVerifier: expect.any(String), deviceName: expect.stringMatching(/^Reflect FiveM - /) })
+    expect(pkceChallenge(sent.codeVerifier as string)).toBe(start.searchParams.get('codeChallenge'))
+
+    expect(me).toMatchObject({ id: 12, discordLinked: true, discord })
+    expect(changes).toEqual([me])
+    expect(await stored()).toMatchObject({ accessToken: 'at_1', refreshToken: 'rt_1', me: { discordLinked: true } })
+  })
+
+  it.each([
+    [401, undefined, 'La connexion avec Discord a expiré ou a déjà servi. Recommencez.'],
+    [403, undefined, 'Votre compte Discord n’a pas d’adresse e-mail vérifiée.'],
+    [409, 'discord-other-account', 'Un compte existe déjà avec cette adresse et il est lié à un autre compte Discord.'],
+    [403, 'account-disabled', 'Ce compte est désactivé.']
+  ])('connexion Discord refusée par l’API (%i %s) : `detail` affiché, rien n’est enregistré', async (status, code, detail) => {
+    const { account, changes, stored } = await setup(
+      `discord-refused-${status}-${code}`,
+      () => json(status, { detail, code }, 'application/problem+json'),
+      undefined,
+      browserBack([], 'code=dt_ticket')
+    )
+    await expect(account.loginWithDiscord()).rejects.toMatchObject({ message: detail, status, code })
+    expect(account.current()).toBeNull()
+    expect(changes).toEqual([])
+    expect(await stored()).toBeNull()
+  })
+
+  it('connexion Discord : erreur au retour (« unavailable ») → message, rien n’est demandé à l’API', async () => {
+    const { account, calls } = await setup('discord-unavailable', () => json(200, tokens(1)), undefined, browserBack([], 'error=unavailable'))
+    await expect(account.loginWithDiscord()).rejects.toThrow('La connexion avec Discord n’est pas disponible pour le moment')
+    expect(calls).toEqual([])
+    expect(account.current()).toBeNull()
+  })
+
+  it('connexion Discord : « Annuler », un nouvel essai abandonne le précédent, cancelGoogle n’y touche pas', async () => {
+    const opened: URL[] = []
+    const { account, calls } = await setup('discord-cancel', () => json(200, tokens(1)), undefined, async (url) => {
+      opened.push(new URL(url))
+    })
+    let firstSettled = false
+    const first = account.loginWithDiscord().finally(() => (firstSettled = true))
+    const firstOutcome = expect(first).rejects.toThrow('Connexion avec Discord annulée.')
+    await expect.poll(() => opened.length).toBe(1)
+    account.cancelGoogle()
+    await tick(20)
+    expect(firstSettled).toBe(false)
+
+    const second = account.loginWithDiscord()
+    await firstOutcome
+    await expect.poll(() => opened.length).toBe(2)
+    account.cancelDiscord()
+    await expect(second).rejects.toThrow('Connexion avec Discord annulée.')
+    expect(calls).toEqual([])
+  })
+
+  it('liaison Discord puis retrait : ticket envoyé avec le jeton, compte mis à jour et enregistré', async () => {
+    const opened: URL[] = []
+    const { account, calls, changes, stored } = await setup(
+      'discord-link',
+      (r) => {
+        if (r === '/auth/app/login') return json(200, tokens(1))
+        if (r === '/auth/app/discord/link') return json(200, { ...remoteMe, discordLinked: true, discord })
+        return json(200, { ...remoteMe, discordLinked: false, discord: null })
+      },
+      undefined,
+      browserBack(opened, 'code=dt_lien')
+    )
+    await account.login('joueur@example.com', 'motdepasse')
+    expect(account.current()).toMatchObject({ discordLinked: false, discord: null })
+
+    calls.length = 0
+    const linked = await account.linkDiscord()
+    expect(opened[0].searchParams.get('link')).toBe('true')
+    expect(calls.map((c) => `${c.init.method} ${c.route} ${bearer(c.init)}`)).toEqual(['POST /auth/app/discord/link Bearer at_1'])
+    const sent = body(calls[0].init)
+    expect(sent).toEqual({ code: 'dt_lien', codeVerifier: expect.any(String) })
+    expect(pkceChallenge(sent.codeVerifier as string)).toBe(opened[0].searchParams.get('codeChallenge'))
+    expect(linked).toMatchObject({ discordLinked: true, discord })
+    expect(account.current()).toEqual(linked)
+    expect(changes.at(-1)).toEqual(linked)
+    expect((await stored())?.me).toMatchObject({ discordLinked: true, discord: { username: 'joueur' } })
+
+    calls.length = 0
+    const unlinked = await account.unlinkDiscord()
+    expect(calls.map((c) => `${c.init.method} ${c.route} ${bearer(c.init)}`)).toEqual(['DELETE /me/discord Bearer at_1'])
+    expect(unlinked).toMatchObject({ discordLinked: false, discord: null })
+    expect(changes.at(-1)).toEqual(unlinked)
+    expect((await stored())?.me).toMatchObject({ discordLinked: false, discord: null })
+  })
+
+  it('liaison Discord : 409 « discord-already-linked » affiché, compte inchangé', async () => {
+    const detail = 'Ce compte Discord est déjà lié à un autre compte Reflect.'
+    const { account, changes } = await setup(
+      'discord-already-linked',
+      (r) => (r === '/auth/app/login' ? json(200, tokens(1)) : json(409, { detail, code: 'discord-already-linked' }, 'application/problem+json')),
+      undefined,
+      browserBack([], 'code=dt_lien')
+    )
+    const me = await account.login('joueur@example.com', 'motdepasse')
+    await expect(account.linkDiscord()).rejects.toMatchObject({ message: detail, status: 409, code: 'discord-already-linked' })
+    expect(account.current()).toEqual(me)
+    expect(changes).toEqual([me])
+  })
+
+  it('liaison Discord sans connexion : refusée sans ouvrir le navigateur', async () => {
+    const opened: URL[] = []
+    const { account } = await setup('discord-link-signed-out', () => json(500, null), undefined, browserBack(opened, 'code=dt_lien'))
+    await expect(account.linkDiscord()).rejects.toMatchObject({ code: 'signed-out' })
+    expect(opened).toEqual([])
+  })
+
+  it('retrait de Discord refusé (409, ni mot de passe ni Google) : `detail` affiché, compte inchangé', async () => {
+    const detail = 'Choisissez d’abord un mot de passe : sans Discord, ce compte n’aurait plus aucun moyen de connexion.'
+    const { account, changes, stored } = await setup('discord-unlink-409', (r) =>
+      r === '/auth/app/login'
+        ? json(200, { ...tokens(1), me: { ...remoteMe, hasPassword: false, discordLinked: true, discord } })
+        : json(409, { detail }, 'application/problem+json')
+    )
+    const me = await account.login('joueur@example.com', 'motdepasse')
+    await expect(account.unlinkDiscord()).rejects.toMatchObject({ message: detail, status: 409 })
+    expect(account.current()).toEqual(me)
+    expect(changes).toEqual([me])
+    expect((await stored())?.me).toMatchObject({ discordLinked: true })
+  })
+
   it('aucun jeton dans le journal', () => {
     const lines = log.recent().map((l) => l.message)
     expect(lines.length).toBeGreaterThan(0)
-    for (const line of lines) expect(line).not.toMatch(/\b(at|rt|pm)_\w|secret|Bearer/)
+    for (const line of lines) expect(line).not.toMatch(/\b(at|rt|pm|dt)_\w|secret|Bearer/)
   })
 })

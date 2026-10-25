@@ -7,7 +7,7 @@ export type ThemeToken = 'bg' | 'layer' | 'surface' | 'surface-hover' | 'media' 
 
 export const THEME_TOKENS: readonly ThemeToken[] = ['bg', 'layer', 'surface', 'surface-hover', 'media', 'border', 'btn', 'btn-hover', 'info-bg', 'accent', 'text', 'text-2']
 
-export const THEME_IDS = ['light', 'dark', 'aurora', 'gray', 'midnight', 'violet', 'forest', 'ocean', 'ember', 'raspberry', 'pink', 'lavender', 'sky', 'mint', 'sand'] as const
+export const THEME_IDS = ['light', 'dark', 'aurora', 'night', 'gray', 'midnight', 'violet', 'forest', 'ocean', 'ember', 'raspberry', 'pink', 'lavender', 'sky', 'mint', 'sand'] as const
 export type ThemeId = (typeof THEME_IDS)[number]
 /** Choix des réglages : « system » suit le thème clair ou sombre de Windows. */
 export type ThemeChoice = 'system' | ThemeId
@@ -24,6 +24,12 @@ export const THEMES: readonly Theme[] = [
   { id: 'dark', base: 'dark', colors: {} },
   // Noir, avec un ciel étoilé et une aurore boréale en fond (AuroraSky dans l'interface).
   { id: 'aurora', base: 'dark', colors: {} },
+  // Paysage de nuit dessiné en fond (NightScene dans l'interface) : bleu nuit, accent couleur du feu de camp.
+  {
+    id: 'night',
+    base: 'dark',
+    colors: { bg: '#070b1c', layer: '#0b1126', surface: '#121a33', 'surface-hover': '#18213f', media: '#0b1024', border: 'rgba(170, 190, 255, 0.12)', btn: '#18203d', 'btn-hover': '#202a4c', 'info-bg': '#121a35', accent: '#e8892f' }
+  },
   {
     id: 'gray',
     base: 'dark',

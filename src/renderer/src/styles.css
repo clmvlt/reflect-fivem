@@ -335,6 +335,198 @@ h2 {
   }
 }
 
+/* Thème Nuit : le paysage du fond (.night-scene) se voit derrière la page, et un peu à travers les cartes et les
+   listes. */
+:root[data-theme='night'] .layer {
+  background: transparent;
+}
+:root[data-theme='night'] :is(.card:not(.add-card), .list, .empty-panel) {
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+}
+:root[data-theme='night'] .card:not(.add-card):hover {
+  background: color-mix(in srgb, var(--surface-hover) 88%, transparent);
+}
+
+/* Paysage du thème Nuit (composant NightScene), derrière toute la fenêtre : scène de 1600 × 900 agrandie par
+   NightScene, plans posés les uns sur les autres. */
+.night-scene {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background: linear-gradient(to bottom, #03050d, #070c1f 40%, #111a3a 68%, #1d2753);
+}
+.night-scene.is-paused * {
+  animation-play-state: paused;
+}
+.night-stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1600px;
+  height: 900px;
+  transform-origin: 0 0;
+}
+.night-layer {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+.night-layer > svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+}
+.night-layer > span {
+  position: absolute;
+}
+.night-twinkle {
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 4px 1px rgba(200, 215, 255, 0.5);
+  opacity: 0.2;
+  animation: night-twinkle 6s ease-in-out infinite;
+}
+@keyframes night-twinkle {
+  50% {
+    opacity: 0.9;
+  }
+}
+/* Nuages effilés qui passent lentement, l'un devant la lune. */
+.night-cloud {
+  background:
+    radial-gradient(closest-side, rgba(120, 135, 190, 0.22), transparent) 0 40% / 55% 70% no-repeat,
+    radial-gradient(closest-side, rgba(120, 135, 190, 0.18), transparent) 40% 20% / 50% 80% no-repeat,
+    radial-gradient(closest-side, rgba(120, 135, 190, 0.2), transparent) 100% 60% / 60% 60% no-repeat;
+  animation: night-cloud 150s ease-in-out infinite alternate;
+}
+.night-cloud-2 {
+  opacity: 0.7;
+  animation-duration: 190s;
+  animation-delay: -60s;
+}
+@keyframes night-cloud {
+  to {
+    transform: translateX(320px);
+  }
+}
+/* Brume au pied des montagnes, qui dérive. */
+.night-mist {
+  background:
+    radial-gradient(closest-side, rgba(150, 170, 235, 0.13), transparent) 10% 50% / 40% 100% no-repeat,
+    radial-gradient(closest-side, rgba(150, 170, 235, 0.1), transparent) 50% 60% / 45% 90% no-repeat,
+    radial-gradient(closest-side, rgba(150, 170, 235, 0.12), transparent) 90% 40% / 40% 100% no-repeat;
+  animation: night-mist 90s ease-in-out infinite alternate;
+}
+.night-mist-2 {
+  opacity: 0.8;
+  animation-duration: 120s;
+  animation-direction: alternate-reverse;
+}
+@keyframes night-mist {
+  from {
+    transform: translateX(-120px);
+  }
+  to {
+    transform: translateX(120px);
+  }
+}
+/* Feu de camp : lueur qui vacille sur l'herbe et la tente, flammes qui dansent, étincelles qui montent. */
+.night-glow {
+  background: radial-gradient(closest-side at 50% 70%, rgba(255, 140, 50, 0.32), rgba(255, 110, 40, 0.12) 45%, transparent);
+  animation: night-glow 2.6s ease-in-out infinite;
+}
+@keyframes night-glow {
+  20% {
+    opacity: 0.82;
+  }
+  35% {
+    opacity: 0.95;
+  }
+  55% {
+    opacity: 0.86;
+  }
+  75% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 0.8;
+  }
+}
+.night-fire {
+  filter: drop-shadow(0 0 6px rgba(255, 150, 60, 0.6));
+}
+.night-flame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 100%;
+  animation: night-flame 0.45s ease-in-out infinite alternate;
+}
+.night-flame-alt {
+  animation:
+    night-flame 0.6s ease-in-out -0.2s infinite alternate-reverse,
+    night-flame-swap 0.9s ease-in-out infinite alternate;
+}
+@keyframes night-flame {
+  from {
+    transform: scale(0.96, 0.92) skewX(-3deg);
+  }
+  to {
+    transform: scale(1.03, 1.06) skewX(3deg);
+  }
+}
+@keyframes night-flame-swap {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.night-spark {
+  border-radius: 50%;
+  background: #ffc06a;
+  box-shadow: 0 0 4px 1px rgba(255, 150, 60, 0.7);
+  opacity: 0;
+  animation: night-spark 3s ease-out infinite;
+}
+@keyframes night-spark {
+  10% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translate(var(--dx), var(--rise)) scale(0.5);
+  }
+}
+.night-firefly {
+  border-radius: 50%;
+  background: #e8ff9a;
+  box-shadow: 0 0 6px 2px rgba(210, 255, 120, 0.45);
+  opacity: 0;
+  animation: night-firefly 9s ease-in-out infinite;
+}
+@keyframes night-firefly {
+  20% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.2;
+    transform: translate(var(--dx), var(--dy));
+  }
+  70% {
+    opacity: 0.8;
+  }
+  to {
+    opacity: 0;
+    transform: translate(calc(var(--dx) * -0.5), calc(var(--dy) * 1.5));
+  }
+}
+
 .page {
   flex: 1;
   overflow-y: auto;
@@ -368,7 +560,8 @@ h2 {
 @media (prefers-reduced-motion: reduce) {
   .page,
   .loading,
-  .aurora-sky * {
+  .aurora-sky *,
+  .night-scene * {
     animation: none;
   }
 }
@@ -3196,6 +3389,15 @@ button.discord-brand:disabled {
     radial-gradient(1px 1px at 30% 92%, rgba(255, 255, 255, 0.5), transparent),
     radial-gradient(70% 45% at 45% 8%, oklch(0.68 0.17 255 / 0.45), transparent),
     radial-gradient(90% 30% at 35% 22%, oklch(0.8 0.17 160 / 0.4), transparent);
+}
+/* Thème Nuit : lune, montagnes, prairie et feu de camp ; la carte laisse deviner le paysage. */
+.theme-mini[data-theme='night'] {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 60' preserveAspectRatio='xMidYMax slice'%3E%3Ccircle cx='14' cy='11' r='4.5' fill='%23f4f1e0'/%3E%3Cpath d='M0,38L18,22L34,32L54,14L76,34L96,24L120,36V60H0Z' fill='%2326315e'/%3E%3Cpath d='M0,50Q30,44 60,49T120,47V60H0Z' fill='%23070b18'/%3E%3Ccircle cx='22' cy='51' r='2.2' fill='%23ff9a3a'/%3E%3C/svg%3E");
+  background-size: cover;
+  background-position: bottom;
+}
+.theme-mini[data-theme='night'] .theme-mini-card {
+  opacity: 0.85;
 }
 .theme-mini-side {
   display: flex;

@@ -48,7 +48,7 @@ export function ThemeSelect() {
   )
 }
 
-/** Fenêtre miniature aux couleurs du thème : barre latérale, carte, bouton d'accent. */
+/** Fenêtre miniature aux couleurs du thème : barre latérale, carte, bouton d'accent (et le fond dessiné des thèmes Aurore et Nuit). */
 function Preview({ theme }: { theme: Theme }) {
   const dark = theme.base === 'dark'
   const c = theme.colors

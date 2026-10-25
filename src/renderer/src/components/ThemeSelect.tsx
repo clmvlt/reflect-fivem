@@ -57,7 +57,7 @@ function Preview({ theme }: { theme: Theme }) {
   const accent = c.accent ?? 'var(--system-accent, #7c40fd)'
   const border = c.border ?? (dark ? 'rgba(255, 255, 255, 0.12)' : '#e5e5e5')
   return (
-    <span className="theme-mini" style={{ background: themeBackground(theme) }}>
+    <span className="theme-mini" data-theme={theme.id} style={{ backgroundColor: themeBackground(theme) }}>
       <span className="theme-mini-side">
         <span style={{ background: text }} />
         <span style={{ background: text }} />

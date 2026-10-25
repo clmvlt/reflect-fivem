@@ -7,7 +7,7 @@ export type ThemeToken = 'bg' | 'layer' | 'surface' | 'surface-hover' | 'media' 
 
 export const THEME_TOKENS: readonly ThemeToken[] = ['bg', 'layer', 'surface', 'surface-hover', 'media', 'border', 'btn', 'btn-hover', 'info-bg', 'accent', 'text', 'text-2']
 
-export const THEME_IDS = ['light', 'dark', 'gray', 'midnight', 'violet', 'forest', 'ocean', 'ember', 'raspberry', 'pink', 'lavender', 'sky', 'mint', 'sand'] as const
+export const THEME_IDS = ['light', 'dark', 'aurora', 'gray', 'midnight', 'violet', 'forest', 'ocean', 'ember', 'raspberry', 'pink', 'lavender', 'sky', 'mint', 'sand'] as const
 export type ThemeId = (typeof THEME_IDS)[number]
 /** Choix des réglages : « system » suit le thème clair ou sombre de Windows. */
 export type ThemeChoice = 'system' | ThemeId
@@ -22,6 +22,8 @@ export interface Theme {
 export const THEMES: readonly Theme[] = [
   { id: 'light', base: 'light', colors: {} },
   { id: 'dark', base: 'dark', colors: {} },
+  // Noir, avec un ciel étoilé et une aurore boréale en fond (AuroraSky dans l'interface).
+  { id: 'aurora', base: 'dark', colors: {} },
   {
     id: 'gray',
     base: 'dark',

@@ -2034,6 +2034,7 @@
     "theme": {
       "help": "Couleurs de l’application. « Système » suit le thème clair ou sombre de Windows.",
       "names": {
+        "aurora": "Aurore",
         "dark": "Noir",
         "ember": "Braise",
         "forest": "Forêt",

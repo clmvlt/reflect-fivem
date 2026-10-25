@@ -2034,6 +2034,7 @@
     "theme": {
       "help": "App colors. “System” follows the Windows light or dark theme.",
       "names": {
+        "aurora": "Aurora",
         "dark": "Black",
         "ember": "Ember",
         "forest": "Forest",

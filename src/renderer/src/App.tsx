@@ -23,6 +23,7 @@ import { DownloadBar } from './components/Downloads'
 import { ConfirmHost } from './components/Confirm'
 import { MenuHost } from './components/Menu'
 import { PageBoundary } from './components/PageBoundary'
+import { AuroraSky } from './components/AuroraSky'
 import icon from './assets/icon.png'
 
 /** instances : page des instances FiveM, ouverte depuis les réglages. */
@@ -224,6 +225,8 @@ export function App() {
 
   return (
     <div className="app">
+      {/* Fonds dessinés de certains thèmes. */}
+      {overview?.settings.theme === 'aurora' && <AuroraSky />}
       <aside className="sidebar">
         <div className="brand">
           <img src={icon} alt="" />

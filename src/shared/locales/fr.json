@@ -114,6 +114,27 @@
       "title": "Profil public",
       "uploading": "Envoi…"
     },
+    "serverTag": {
+      "capped": "Plafond de crédits atteint",
+      "earnedOf_one": "{{n}} crédit gagné sur {{max}}",
+      "earnedOf_other": "{{n}} crédits gagnés sur {{max}}",
+      "earned_one": "{{n}} crédit gagné",
+      "earned_other": "{{n}} crédits gagnés",
+      "help": "Affichez le tag Reflect sur votre profil Discord pour cumuler du temps.",
+      "lastSeen": "Dernier relevé {{when}}",
+      "next": "Prochain crédit dans {{duration}} de tag",
+      "notWearing": "Tag non affiché",
+      "openServer": "Ouvrir le serveur Discord",
+      "progress": "Avancée vers le prochain crédit",
+      "title": "Tag du serveur Reflect",
+      "total": "Temps cumulé : {{duration}}",
+      "unlinked": "Affichez le tag Reflect sur votre profil Discord : le temps cumulé avec le tag rapporte des crédits « Créer ton pack ». Le temps déjà passé avec le tag est compté et vous sera crédité dès la liaison.",
+      "unlinkedEvery": "Affichez le tag Reflect sur votre profil Discord pour gagner un crédit « Créer ton pack » par tranche de {{duration}} de temps cumulé avec le tag. Le temps déjà passé avec le tag est compté et vous sera crédité dès la liaison.",
+      "waiting_one": "{{n}} crédit en cours d’attribution",
+      "waiting_other": "{{n}} crédits en cours d’attribution",
+      "wearing": "Tag affiché",
+      "wearingSince": "Tag affiché depuis le {{date}}"
+    },
     "session": {
       "device": "Connecté sur cet appareil",
       "deviceHelp": "La connexion est gardée chiffrée sur ce PC et expire après 180 jours sans utilisation.",

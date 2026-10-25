@@ -141,6 +141,7 @@ const methods = [
   'accountDiscordApp',
   'accountDiscordInBrowser',
   'accountUnlinkDiscord',
+  'accountServerTag',
   'accountLogout',
   'accountProfile',
   'accountSaveProfile',

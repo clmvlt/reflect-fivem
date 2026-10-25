@@ -114,6 +114,27 @@
       "title": "Public profile",
       "uploading": "Uploading…"
     },
+    "serverTag": {
+      "capped": "Credit limit reached",
+      "earnedOf_one": "{{n}} of {{max}} credits earned",
+      "earnedOf_other": "{{n}} of {{max}} credits earned",
+      "earned_one": "{{n}} credit earned",
+      "earned_other": "{{n}} credits earned",
+      "help": "Show the Reflect tag on your Discord profile to build up time.",
+      "lastSeen": "Last checked {{when}}",
+      "next": "Next credit in {{duration}} with the tag",
+      "notWearing": "Tag not shown",
+      "openServer": "Open the Discord server",
+      "progress": "Progress toward the next credit",
+      "title": "Reflect server tag",
+      "total": "Total time: {{duration}}",
+      "unlinked": "Show the Reflect tag on your Discord profile: total time with the tag earns “Create your pack” credits. Time you have already spent with the tag is counted and will be credited when you link your account.",
+      "unlinkedEvery": "Show the Reflect tag on your Discord profile to earn one “Create your pack” credit for every {{duration}} of total time with the tag. Time you have already spent with the tag is counted and will be credited when you link your account.",
+      "waiting_one": "{{n}} credit being added to your account",
+      "waiting_other": "{{n}} credits being added to your account",
+      "wearing": "Tag shown",
+      "wearingSince": "Tag shown since {{date}}"
+    },
     "session": {
       "device": "Signed in on this device",
       "deviceHelp": "Your sign-in is stored encrypted on this PC and expires after 180 days without use.",

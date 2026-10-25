@@ -730,6 +730,42 @@ export interface DiscordAccount {
   linkedAt: string | null
 }
 
+/**
+ * Temps avec le tag du serveur Discord (GET /me/server-tag) : chaque tranche de `creditEverySeconds` de temps cumulé
+ * avec le tag donne un crédit « Créer ton pack ». Le bot du serveur relève les porteurs toutes les quelques minutes.
+ */
+export interface ServerTagStatus {
+  /** Faux : récompense désactivée sur le serveur, rien n'est montré. */
+  enabled: boolean
+  discordLinked: boolean
+  /** Heure de l'API à la réponse (ISO), pour dater `seenAt` sans l'horloge du PC ; null si illisible. */
+  serverTime: string | null
+  /** Temps cumulé qui donne un crédit : celui de la progression, null sans compte Discord lié (l'API ne le donne pas). */
+  creditEverySeconds: number | null
+  /** Progression du compte Discord lié, null sans liaison. */
+  progress: ServerTagProgress | null
+}
+
+/** Progression d'un compte Discord au dernier relevé du bot. */
+export interface ServerTagProgress {
+  /** Le membre affichait le tag au dernier relevé. */
+  wearing: boolean
+  /** Début du port en cours (ISO), null sans le tag. */
+  wearingSince: string | null
+  /** Dernier relevé où le membre portait le tag (ISO), null sans le tag : le temps n'avance qu'à chaque relevé. */
+  seenAt: string | null
+  /** Temps cumulé avec le tag, jamais remis à zéro quand il est retiré. */
+  totalSeconds: number
+  creditEverySeconds: number
+  /** Temps avec le tag avant le prochain crédit, null quand le plafond est atteint. */
+  nextCreditInSeconds: number | null
+  creditsEarned: number
+  /** Crédits gagnés pas encore donnés au compte (le temps d'un relevé, pour un compte lié). */
+  creditsWaiting: number
+  /** Plafond de crédits, 0 : sans limite. */
+  maxCredits: number
+}
+
 /** Profil complet du compte connecté. */
 export interface AccountProfile extends Omit<AccountMe, 'mustChangePassword'> {
   bio: string

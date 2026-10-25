@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { AccountMe, AccountProfile, ProfileInput, ProfileLink } from '@shared/types'
+import type { AccountMe, AccountProfile, ProfileInput, ProfileLink, ServerTagStatus } from '@shared/types'
+import { formatDuration, formatRelative } from '@shared/intl'
+import { nextCreditProgress } from '@shared/serverTag'
 import { apiError, cleanError, useStore } from '../store'
-import { num, q } from '../lib/format'
+import { longDate, num, q } from '../lib/format'
 import { Avatar } from './common'
 import { confirmDialog } from './Confirm'
 import { DiscordIcon } from './DiscordView'
-import { PurchaseList } from './Purchase'
+import { notifyBilling, PurchaseList } from './Purchase'
 
 const BIO_MAX = 2000
 const LINKS_MAX = 8
+/** Temps avec le tag du serveur Discord relu chaque minute tant que la fenêtre est visible. */
+const SERVER_TAG_REFRESH = 60_000
 
 /** Compte reflect-fivem.com : connexion, puis profil public, mot de passe et déconnexion. */
 export function AccountView({ onOpenAuthor, onBack }: { onOpenAuthor: (slug: string) => void; onBack?: () => void }) {
@@ -210,6 +214,34 @@ function useDiscordApp(): { inApp: boolean; check: () => void; toBrowser: () => 
   return { inApp, check, toBrowser }
 }
 
+/**
+ * Temps avec le tag du serveur Discord : lu à l'affichage, chaque minute tant que la fenêtre est visible, et par
+ * `reload` (liaison ou retrait). Échec (hors ligne, maintenance...) : null, le bloc est masqué sans erreur.
+ */
+function useServerTag(): { status: ServerTagStatus | null; reload: () => void } {
+  const [status, setStatus] = useState<ServerTagStatus | null>(null)
+  const [attempt, setAttempt] = useState(0)
+  const reload = useCallback(() => setAttempt((a) => a + 1), [])
+  useEffect(() => {
+    let live = true
+    const read = (): void => {
+      window.api.accountServerTag().then(
+        (s) => live && setStatus(s),
+        () => live && setStatus(null)
+      )
+    }
+    read()
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') read()
+    }, SERVER_TAG_REFRESH)
+    return () => {
+      live = false
+      clearInterval(timer)
+    }
+  }, [attempt])
+  return { status, reload }
+}
+
 function GoogleLogo() {
   return (
     <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden>
@@ -341,6 +373,7 @@ function LinkedAccounts({ me, onChoosePassword }: { me: AccountMe; onChoosePassw
   /** `noPassword` : retrait refusé (409), le compte n'aurait plus aucun moyen de connexion. */
   const [error, setError] = useState<{ text: string; noPassword: boolean } | null>(null)
   const discordApp = useDiscordApp()
+  const serverTag = useServerTag()
   const discord = me.discordLinked ? me.discord : null
   const discordName = discord ? (discord.displayName ?? discord.username) : ''
 
@@ -351,6 +384,9 @@ function LinkedAccounts({ me, onChoosePassword }: { me: AccountMe; onChoosePassw
     try {
       await window.api.accountLinkDiscord()
       setMessage({ kind: 'info', text: t('accountView.linked.linked') })
+      // Crédits déjà gagnés avec le tag donnés à la liaison : temps et crédits « Créer ton pack » relus.
+      serverTag.reload()
+      notifyBilling()
     } catch (err) {
       setError({ text: cleanError(err), noPassword: false })
     } finally {
@@ -365,6 +401,7 @@ function LinkedAccounts({ me, onChoosePassword }: { me: AccountMe; onChoosePassw
     try {
       await window.api.accountUnlinkDiscord()
       setMessage({ kind: 'info', text: t('accountView.linked.unlinked') })
+      serverTag.reload()
     } catch (err) {
       const e = apiError(err)
       setError({ text: e.message, noPassword: e.status === 409 && !me.hasPassword })
@@ -420,6 +457,7 @@ function LinkedAccounts({ me, onChoosePassword }: { me: AccountMe; onChoosePassw
             )}
           </div>
         </li>
+        <ServerTagRow status={serverTag.status} />
       </ul>
       {error && (
         <div className="bar bar-error form-error" role="alert">
@@ -428,6 +466,95 @@ function LinkedAccounts({ me, onChoosePassword }: { me: AccountMe; onChoosePassw
         </div>
       )}
     </div>
+  )
+}
+
+/** Badge du tag de serveur, affiché à côté du nom sur Discord. */
+function ServerTagIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 4v6.6a2 2 0 0 0 .6 1.4l8 8a2 2 0 0 0 2.8 0l5.6-5.6a2 2 0 0 0 0-2.8l-8-8A2 2 0 0 0 10.6 3H4a1 1 0 0 0-1 1Z" />
+      <circle cx="7.5" cy="7.5" r="1.5" />
+    </svg>
+  )
+}
+
+/**
+ * Tag du serveur Reflect, sous la ligne Discord. Compte Discord lié : tag affiché ou non, avancée vers le prochain
+ * crédit « Créer ton pack », temps cumulé et crédits gagnés. Pas lié : ce que le tag rapporte. Rien quand la
+ * récompense est désactivée ou que l'état n'a pas pu être lu.
+ */
+function ServerTagRow({ status }: { status: ServerTagStatus | null }) {
+  const { t } = useTranslation()
+  const { links, openLink } = useStore()
+  if (!status?.enabled) return null
+  const logo = (
+    <span className="linked-logo server-tag-logo">
+      <ServerTagIcon />
+    </span>
+  )
+  const p = status.progress
+  if (!p) {
+    const every = status.creditEverySeconds
+    return (
+      <li className="row top server-tag">
+        {logo}
+        <div className="row-main">
+          <div className="name">{t('accountView.serverTag.title')}</div>
+          <div className="meta meta-wrap">
+            {every ? t('accountView.serverTag.unlinkedEvery', { duration: formatDuration(every, 'long') }) : t('accountView.serverTag.unlinked')}
+          </div>
+        </div>
+      </li>
+    )
+  }
+
+  const progress = nextCreditProgress(p)
+  // Dernier relevé daté à l'heure de l'API : l'horloge du PC peut être fausse.
+  const now = status.serverTime ? Date.parse(status.serverTime) : NaN
+  const earned =
+    p.maxCredits > 0
+      ? t('accountView.serverTag.earnedOf', { count: p.creditsEarned, n: num(p.creditsEarned), max: num(p.maxCredits) })
+      : t('accountView.serverTag.earned', { count: p.creditsEarned, n: num(p.creditsEarned) })
+  const state = !p.wearing
+    ? t('accountView.serverTag.notWearing')
+    : p.wearingSince
+      ? t('accountView.serverTag.wearingSince', { date: longDate(p.wearingSince) })
+      : t('accountView.serverTag.wearing')
+  return (
+    <li className="row top server-tag">
+      {logo}
+      <div className="row-main">
+        <div className="name">{t('accountView.serverTag.title')}</div>
+        <div className={`meta server-tag-state ${p.wearing ? 'is-on' : ''}`}>{state}</div>
+        <div className="server-tag-progress">
+          {progress === null ? (
+            <span className="meta">{t('accountView.serverTag.capped')}</span>
+          ) : (
+            <>
+              <div className="track" role="progressbar" aria-label={t('accountView.serverTag.progress')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress * 100)}>
+                <div className="fill" style={{ width: `${progress * 100}%` }} />
+              </div>
+              <span className="meta">{t('accountView.serverTag.next', { duration: formatDuration(p.nextCreditInSeconds ?? 0) })}</span>
+            </>
+          )}
+        </div>
+        <div className="meta">
+          {t('accountView.serverTag.total', { duration: formatDuration(p.totalSeconds) })} · {earned}
+        </div>
+        {p.creditsWaiting > 0 && <div className="meta server-tag-waiting">{t('accountView.serverTag.waiting', { count: p.creditsWaiting, n: num(p.creditsWaiting) })}</div>}
+        {!p.wearing ? (
+          <div className="meta meta-wrap">{t('accountView.serverTag.help')}</div>
+        ) : (
+          p.seenAt && Number.isFinite(now) && <div className="server-tag-seen">{t('accountView.serverTag.lastSeen', { when: formatRelative(p.seenAt, now) })}</div>
+        )}
+      </div>
+      {!p.wearing && links.discord && (
+        <div className="actions">
+          <button onClick={() => openLink('discord')}>{t('accountView.serverTag.openServer')}</button>
+        </div>
+      )}
+    </li>
   )
 }
 

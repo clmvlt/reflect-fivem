@@ -30,6 +30,8 @@
 // par navigateur à la fois, Google ou Discord : un nouvel essai abandonne le précédent. Quand l'application Discord est
 // ouverte sur le PC, la page d'autorisation s'y affiche au lieu du navigateur (lien discord://, voir openDiscord) ;
 // « Ouvrir dans le navigateur » reste possible pendant l'attente.
+// Tag du serveur Discord (serverTag, GET /me/server-tag) : temps cumulé avec le tag par le compte Discord lié, et
+// crédits « Créer ton pack » qu'il rapporte.
 //
 // Aucune dépendance à Electron ici (testé avec vitest) : le service fournit fetch, l'ouverture du navigateur, l'accès
 // à l'application Discord et le chiffrement du système.
@@ -40,7 +42,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
-import type { AccountMe, AccountProfile, AuthorRef, DiscordAccount, ProfileInput, ProfileLink } from '@shared/types'
+import type { AccountMe, AccountProfile, AuthorRef, DiscordAccount, ProfileInput, ProfileLink, ServerTagProgress, ServerTagStatus } from '@shared/types'
 import { SIGNED_OUT } from '@shared/api'
 import { t } from 'i18next'
 import { currentLocale } from '@shared/i18n'
@@ -217,6 +219,29 @@ interface RemoteProfile extends RemoteMe {
   createdAt: string | null
 }
 
+/** GET /me/server-tag. `progress` : null sans compte Discord lié. */
+interface RemoteServerTag {
+  enabled: boolean
+  discordLinked: boolean
+  serverTime: string | null
+  /** Absent de l'API actuelle : sans compte Discord lié, la durée d'un crédit est inconnue. */
+  creditEverySeconds?: number | null
+  progress: RemoteServerTagProgress | null
+}
+
+/** Progression d'un compte Discord ; `discordId`, `linked` et `awarded` ne servent pas ici. */
+interface RemoteServerTagProgress {
+  wearing: boolean
+  wearingSince: string | null
+  seenAt: string | null
+  totalSeconds: number
+  creditEverySeconds: number
+  nextCreditInSeconds: number | null
+  creditsEarned: number
+  creditsWaiting: number
+  maxCredits: number
+}
+
 interface SessionResponse {
   accessToken: string
   accessTokenExpiresAt: string
@@ -266,6 +291,44 @@ export function discordAvatarUrl(url: string | null | undefined): string | null 
 function toProfile(r: RemoteProfile): AccountProfile {
   const { mustChangePassword: _ignored, ...me } = toMe(r)
   return { ...me, bio: r.bio ?? '', links: (r.links ?? []).map((l) => ({ label: l.label, url: l.url })), createdAt: r.createdAt ?? null }
+}
+
+/** Nombre entier positif ou nul (durée en secondes, crédits) ; 0 pour une valeur illisible. */
+const count = (n: unknown): number => (typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : 0)
+
+/** Date ISO lisible, null sinon. */
+const isoDate = (s: unknown): string | null => (typeof s === 'string' && Number.isFinite(Date.parse(s)) ? s : null)
+
+/** Temps avec le tag du serveur Discord ; réponse illisible : erreur (l'interface masque alors le bloc). */
+export function toServerTag(r: RemoteServerTag): ServerTagStatus {
+  if (!r || typeof r !== 'object') throw new Error(t('account.errors.badResponse'))
+  const progress = toServerTagProgress(r.progress)
+  return {
+    enabled: r.enabled === true,
+    discordLinked: !!r.discordLinked,
+    serverTime: isoDate(r.serverTime),
+    creditEverySeconds: progress?.creditEverySeconds ?? (count(r.creditEverySeconds) || null),
+    progress
+  }
+}
+
+function toServerTagProgress(r: RemoteServerTagProgress | null | undefined): ServerTagProgress | null {
+  if (!r || typeof r !== 'object') return null
+  // Sans la durée d'un crédit, ni l'avancée ni le temps restant n'ont de sens.
+  const every = count(r.creditEverySeconds)
+  if (!every) throw new Error(t('account.errors.badResponse'))
+  return {
+    wearing: r.wearing === true,
+    wearingSince: isoDate(r.wearingSince),
+    seenAt: isoDate(r.seenAt),
+    totalSeconds: count(r.totalSeconds),
+    creditEverySeconds: every,
+    // null (ou absent) : plafond atteint.
+    nextCreditInSeconds: typeof r.nextCreditInSeconds === 'number' ? Math.min(every, count(r.nextCreditInSeconds)) : null,
+    creditsEarned: count(r.creditsEarned),
+    creditsWaiting: count(r.creditsWaiting),
+    maxCredits: count(r.maxCredits)
+  }
 }
 
 /** Auteur d'un pack ou d'une liste d'auteurs, avec sa photo servie par pm-media. */
@@ -551,6 +614,14 @@ export class Account {
   async unlinkDiscord(): Promise<AccountMe> {
     await this.updateMe(toMe(await this.authed<RemoteMe>('DELETE', '/me/discord')))
     return this.current()!
+  }
+
+  /**
+   * Temps avec le tag du serveur Discord du compte Discord lié, compté par l'API même avant la liaison (les crédits déjà
+   * gagnés sont donnés à la liaison).
+   */
+  async serverTag(): Promise<ServerTagStatus> {
+    return toServerTag(await this.authed<RemoteServerTag>('GET', '/me/server-tag'))
   }
 
   /** Déconnexion : l'appareil est déconnecté sur le serveur (si possible) et la connexion effacée de ce PC dans tous les cas. */

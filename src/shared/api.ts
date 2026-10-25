@@ -44,6 +44,7 @@ import type {
   ReplyPage,
   RootId,
   SaleInfo,
+  ServerTagStatus,
   TaskProgress,
   ToolKey,
   UpdateState
@@ -330,6 +331,8 @@ export interface PackManagerApi {
   accountDiscordInBrowser(): Promise<void>
   /** Retire la liaison Discord : 409 si le compte n'a ni mot de passe ni Google. */
   accountUnlinkDiscord(): Promise<AccountMe>
+  /** Temps avec le tag du serveur Discord du compte Discord lié, et crédits « Créer ton pack » qu'il a rapportés. */
+  accountServerTag(): Promise<ServerTagStatus>
   accountLogout(): Promise<void>
   accountProfile(): Promise<AccountProfile>
   accountSaveProfile(input: ProfileInput): Promise<AccountProfile>

@@ -1799,6 +1799,56 @@ button.discord-brand:disabled {
   border-radius: 50%;
 }
 
+/* Tag du serveur Reflect, sous la ligne Discord */
+.server-tag-logo {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-text);
+}
+.server-tag-state::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--text-2);
+  opacity: 0.5;
+  vertical-align: 1px;
+}
+.server-tag-state.is-on {
+  color: var(--ok-text);
+}
+.server-tag-state.is-on::before {
+  background: var(--ok-text);
+  opacity: 1;
+}
+/* Fenêtre étroite : le temps restant passe sous la barre. */
+.server-tag-progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  margin: 6px 0 4px;
+}
+.server-tag-progress .track {
+  flex: 0 1 240px;
+  height: 6px;
+  border-radius: 3px;
+}
+.server-tag-progress .meta {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.server-tag-waiting {
+  color: var(--accent-text);
+}
+.server-tag-seen {
+  margin-top: 2px;
+  color: var(--text-2);
+  font-size: 11px;
+  opacity: 0.8;
+}
+
 /* « par Auteur » sur les cartes et la fiche d'un pack */
 .author-link {
   display: inline-flex;

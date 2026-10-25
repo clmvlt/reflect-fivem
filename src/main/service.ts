@@ -1557,6 +1557,8 @@ export class Service {
 
     accountUnlinkDiscord: () => this.account.unlinkDiscord(),
 
+    accountServerTag: () => this.account.serverTag(),
+
     accountLogout: () => this.account.logout(),
 
     accountProfile: () => this.account.profile(),

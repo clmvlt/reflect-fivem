@@ -31,15 +31,21 @@ export function formatMegabytes(mb: number): string {
   return formatBytes(mb * 1024 * 1024)
 }
 
-/** Durée : « 45 s », « 3 min », « 2 h 05 min ». */
-export function formatDuration(seconds: number): string {
-  const unit = (value: number, u: 'second' | 'minute' | 'hour'): string => formatNumber(value, { style: 'unit', unit: u, unitDisplay: 'short' })
+/**
+ * Durée : « 45 s », « 3 min », « 2 h 5 min », puis jours et heures à l'heure près : « 2 j 5 h » (« 2 days 5 hr »).
+ * `long` pour une phrase : « 4 jours », « 2 heures 5 minutes ».
+ */
+export function formatDuration(seconds: number, display: 'short' | 'long' = 'short'): string {
+  const unit = (value: number, u: 'second' | 'minute' | 'hour' | 'day'): string => formatNumber(value, { style: 'unit', unit: u, unitDisplay: display })
+  const pair = (a: number, ua: 'hour' | 'day', b: number, ub: 'minute' | 'hour'): string => (b ? `${unit(a, ua)} ${unit(b, ub)}` : unit(a, ua))
   const s = Math.max(0, Math.round(seconds))
   if (s < 60) return unit(s, 'second')
-  if (s < 3600) return unit(Math.round(s / 60), 'minute')
-  const h = Math.floor(s / 3600)
-  const m = Math.round((s % 3600) / 60)
-  return m ? `${unit(h, 'hour')} ${unit(m, 'minute')}` : unit(h, 'hour')
+  // Arrondi à la minute avant le découpage : jamais « 1 h 60 min ».
+  const minutes = Math.round(s / 60)
+  if (minutes < 60) return unit(minutes, 'minute')
+  if (minutes < 24 * 60) return pair(Math.floor(minutes / 60), 'hour', minutes % 60, 'minute')
+  const hours = Math.round(s / 3600)
+  return pair(Math.floor(hours / 24), 'day', hours % 24, 'hour')
 }
 
 const toDate = (iso: string | number | Date | null | undefined): Date | null => {

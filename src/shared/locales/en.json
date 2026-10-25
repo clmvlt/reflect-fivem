@@ -2032,6 +2032,7 @@
     "pickGta": "GTA V folder",
     "removeActiveFirst": "Uninstall the installed pack first.",
     "theme": {
+      "adminOnly": "Admin only for now: other accounts don’t see it.",
       "help": "App colors. “System” follows the Windows light or dark theme.",
       "names": {
         "aurora": "Aurora",

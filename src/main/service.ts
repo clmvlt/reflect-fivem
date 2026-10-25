@@ -28,7 +28,7 @@ import { LinksWatch } from './core/links'
 import { WhatsNewWatch } from './core/changelog'
 import { httpsUrl } from '@shared/links'
 import { isCheckoutUrl } from '@shared/billing'
-import { isThemeChoice, resolveTheme, themeBackground, type ThemeChoice } from '@shared/themes'
+import { effectiveTheme, isThemeChoice, resolveTheme, themeAllowed, themeBackground, type ThemeChoice } from '@shared/themes'
 import { Marketplace } from './core/marketplace'
 import { Builder, coverUrl } from './core/builder'
 import { Purchases } from './core/purchases'
@@ -153,6 +153,8 @@ export class Service {
   private relaunchHint = false
   /** Compte connecté au dernier changement (une connexion se reconnaît à un compte différent). */
   private accountId: number | null = null
+  /** Thème appliqué en dernier (voir theme()). */
+  private appliedTheme: ThemeChoice = 'system'
   /** Compte dont les créations de « Créer ton pack » ont été vérifiées (null : pas de compte, ou sans le droit). */
   private builderAccount: number | null = null
   /** État des instances autres que l'instance active, lu à la demande (il ne change pas tant qu'on ne les reprend pas). */
@@ -190,6 +192,8 @@ export class Service {
               .catch((err: unknown) => log.info(`Créations non vérifiées : ${(err as Error).message}`))
           else this.changed()
         }
+        // Thème réservé à l'admin : celui du système à sa déconnexion, le sien de retour à sa connexion.
+        if (this.theme() !== this.appliedTheme) this.themeChanged()
       }
     })
     this.settings = new JsonStore(path.join(dataDir, 'settings.json'), defaultSettings(dataDir))
@@ -394,18 +398,30 @@ export class Service {
     }
   }
 
+  /** Thème choisi, sauf un thème réservé à l'admin sans l'admin connecté : celui du système (voir effectiveTheme). */
+  private theme(): ThemeChoice {
+    return effectiveTheme(this.settings.get().theme, this.account.isAdmin())
+  }
+
   /**
-   * Thème choisi : menus et boîtes de Windows, et thème clair ou sombre vu par l'interface (prefers-color-scheme),
+   * Thème appliqué : menus et boîtes de Windows, et thème clair ou sombre vu par l'interface (prefers-color-scheme),
    * suivent sa base ; « system » laisse Windows décider.
    */
   private applyNativeTheme(): void {
-    const choice = this.settings.get().theme
-    nativeTheme.themeSource = !choice || choice === 'system' ? 'system' : resolveTheme(choice, false).base
+    const choice = (this.appliedTheme = this.theme())
+    nativeTheme.themeSource = choice === 'system' ? 'system' : resolveTheme(choice, false).base
+  }
+
+  /** Thème changé (choix, ou connexion de l'admin) : Windows, fond de la fenêtre et interface. */
+  private themeChanged(): void {
+    this.applyNativeTheme()
+    this.getWindow()?.setBackgroundColor(this.windowBackground())
+    this.changed()
   }
 
   /** Fond de la fenêtre, le même que celui de l'interface (pas d'éclair d'une autre couleur à l'ouverture). */
   windowBackground(): string {
-    return themeBackground(resolveTheme(this.settings.get().theme, nativeTheme.shouldUseDarkColors))
+    return themeBackground(resolveTheme(this.theme(), nativeTheme.shouldUseDarkColors))
   }
 
   /** Instance enregistrée (l'instance active ne change pas) ; le dossier FiveM de l'instance active est fixé. */
@@ -897,7 +913,8 @@ export class Service {
       const builds = await this.builder.status().catch(() => ({ updates: [], gone: [] }))
       const foreign = await pendingForeign
       return {
-        settings: this.settings.get(),
+        // Thème appliqué, pas forcément celui enregistré (thème réservé à l'admin).
+        settings: { ...this.settings.get(), theme: this.theme() },
         games,
         state: this.state.get(),
         library: library.map(toPublic),
@@ -1588,14 +1605,12 @@ export class Service {
 
     getLanguage: async () => currentLocale(),
 
-    getTheme: async () => this.settings.get().theme ?? 'system',
+    getTheme: async () => this.theme(),
 
     setTheme: async (theme: ThemeChoice) => {
-      if (!isThemeChoice(theme)) throw this.toError(t('service.errors.invalidTheme'))
+      if (!isThemeChoice(theme) || !themeAllowed(theme, this.account.isAdmin())) throw this.toError(t('service.errors.invalidTheme'))
       await this.settings.patch({ theme })
-      this.applyNativeTheme()
-      this.getWindow()?.setBackgroundColor(this.windowBackground())
-      this.changed()
+      this.themeChanged()
     },
 
     setLanguage: async (code: string) => {

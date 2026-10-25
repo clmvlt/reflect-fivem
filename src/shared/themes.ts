@@ -17,18 +17,21 @@ export interface Theme {
   base: 'light' | 'dark'
   /** Couleurs remplacées ; sans accent, celui de Windows. */
   colors: Partial<Record<ThemeToken, string>>
+  /** Réservé pour l'instant à l'admin connecté : pas proposé aux autres. */
+  adminOnly?: boolean
 }
 
 export const THEMES: readonly Theme[] = [
   { id: 'light', base: 'light', colors: {} },
   { id: 'dark', base: 'dark', colors: {} },
   // Noir, avec un ciel étoilé et une aurore boréale en fond (AuroraSky dans l'interface).
-  { id: 'aurora', base: 'dark', colors: {} },
+  { id: 'aurora', base: 'dark', colors: {}, adminOnly: true },
   // Paysage de nuit dessiné en fond (NightScene dans l'interface) : bleu nuit, accent couleur du feu de camp.
   {
     id: 'night',
     base: 'dark',
-    colors: { bg: '#070b1c', layer: '#0b1126', surface: '#121a33', 'surface-hover': '#18213f', media: '#0b1024', border: 'rgba(170, 190, 255, 0.12)', btn: '#18203d', 'btn-hover': '#202a4c', 'info-bg': '#121a35', accent: '#e8892f' }
+    colors: { bg: '#070b1c', layer: '#0b1126', surface: '#121a33', 'surface-hover': '#18213f', media: '#0b1024', border: 'rgba(170, 190, 255, 0.12)', btn: '#18203d', 'btn-hover': '#202a4c', 'info-bg': '#121a35', accent: '#e8892f' },
+    adminOnly: true
   },
   {
     id: 'gray',
@@ -107,6 +110,19 @@ export const THEMES: readonly Theme[] = [
 
 export function isThemeChoice(v: unknown): v is ThemeChoice {
   return v === 'system' || (THEME_IDS as readonly unknown[]).includes(v)
+}
+
+/** Choix proposé à ce compte : les thèmes réservés à l'admin, seulement à l'admin connecté. */
+export function themeAllowed(choice: ThemeChoice, admin: boolean): boolean {
+  return admin || !THEMES.find((t) => t.id === choice)?.adminOnly
+}
+
+/**
+ * Choix appliqué : un thème réservé à l'admin laisse la place à celui du système sans l'admin connecté (déconnecté,
+ * autre compte). Le choix reste enregistré et revient à sa connexion.
+ */
+export function effectiveTheme(choice: ThemeChoice | undefined, admin: boolean): ThemeChoice {
+  return choice && themeAllowed(choice, admin) ? choice : 'system'
 }
 
 /** Thème affiché pour un choix des réglages (absent ou inconnu : celui du système). */

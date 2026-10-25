@@ -2032,6 +2032,7 @@
     "pickGta": "Dossier de GTA V",
     "removeActiveFirst": "Retirez d’abord le pack installé.",
     "theme": {
+      "adminOnly": "Réservé à l’admin pour le moment : les autres comptes ne le voient pas.",
       "help": "Couleurs de l’application. « Système » suit le thème clair ou sombre de Windows.",
       "names": {
         "aurora": "Aurore",

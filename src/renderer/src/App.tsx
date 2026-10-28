@@ -9,6 +9,7 @@ import { Cleanup } from './components/Cleanup'
 import { SettingsView } from './components/SettingsView'
 import { InstancesView } from './components/InstancesView'
 import { Graphics } from './components/Graphics'
+import { Optimizations } from './components/Optimizations'
 import { Marketplace, type MarketView } from './components/Marketplace'
 import { Builder, BuilderNavIcon, type BuilderRequest } from './components/Builder'
 import { PurchaseHost, usePurchases } from './components/Purchase'
@@ -28,7 +29,7 @@ import { NightScene } from './components/NightScene'
 import icon from './assets/icon.png'
 
 /** instances : page des instances FiveM, ouverte depuis les réglages. */
-type Page = 'library' | 'market' | 'builder' | 'graphics' | 'cleanup' | 'discord' | 'account' | 'settings' | 'instances'
+type Page = 'library' | 'market' | 'builder' | 'graphics' | 'optimizations' | 'cleanup' | 'discord' | 'account' | 'settings' | 'instances'
 
 /** Bibliothèque et Marketplace s'ouvrent sur les packs ; Packs et Mods sont toujours affichés en dessous. */
 const SUB_NAV: { kind: MarketKind; label: 'packs' | 'mods' }[] = [
@@ -37,7 +38,7 @@ const SUB_NAV: { kind: MarketKind; label: 'packs' | 'mods' }[] = [
 ]
 
 /** « Créer ton pack » en dernier (seulement pour les comptes qui ont le droit). */
-const NAV: Exclude<Page, 'instances'>[] = ['library', 'market', 'graphics', 'cleanup', 'settings', 'builder']
+const NAV: Exclude<Page, 'instances'>[] = ['library', 'market', 'graphics', 'optimizations', 'cleanup', 'settings', 'builder']
 
 export function App() {
   const { t } = useTranslation()
@@ -349,6 +350,7 @@ export function App() {
             )}
             {page === 'builder' && <Builder key={builderRequest?.at ?? 'page'} request={builderRequest} onOpenLocal={openLocal} />}
             {page === 'graphics' && <Graphics />}
+            {page === 'optimizations' && <Optimizations onOpenPage={go} />}
             {page === 'cleanup' && <Cleanup />}
             {page === 'discord' && <DiscordView />}
             {page === 'account' && <AccountView onOpenAuthor={openAuthor} onBack={

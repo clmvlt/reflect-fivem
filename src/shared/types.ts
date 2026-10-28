@@ -201,7 +201,7 @@ export interface InstalledMod {
 
 export interface HistoryEntry {
   at: string
-  action: 'apply' | 'remove' | 'capture' | 'clean' | 'restore' | 'import' | 'delete' | 'cache' | 'graphics' | 'download' | 'mod'
+  action: 'apply' | 'remove' | 'capture' | 'clean' | 'restore' | 'import' | 'delete' | 'cache' | 'graphics' | 'download' | 'mod' | 'optimize'
   packName?: string
   /** Texte de la version qui l'a écrit (repli quand `msg` est absent). */
   summary: string

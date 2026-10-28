@@ -1730,6 +1730,102 @@ input[type='checkbox'] {
   align-self: center;
 }
 
+/* ------------------------------------------------------------ Optimisations */
+
+.opt-intro {
+  max-width: 760px;
+  margin: -8px 0 16px;
+  color: var(--text-2);
+}
+/* « Tout appliquer » : carte en tête de page. */
+.opt-all {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 12px 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.opt-row {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.opt-row .meta + .meta {
+  margin-top: 4px;
+}
+.opt-row.is-na .name,
+.opt-row.is-na .meta {
+  opacity: 0.6;
+}
+.opt-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.opt-head .name {
+  margin-right: 4px;
+}
+.opt-gain.g-high {
+  background: color-mix(in srgb, var(--ok-text) 16%, transparent);
+  color: var(--ok-text);
+}
+.opt-gain.g-medium {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-text);
+}
+.opt-tradeoff {
+  font-style: italic;
+}
+.opt-status {
+  margin-top: 6px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.opt-status.s-on,
+.opt-status.s-native {
+  color: var(--ok-text);
+}
+.opt-status.s-partial {
+  color: var(--warn-text);
+}
+.opt-control {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  padding-top: 2px;
+}
+.switch.opt-switch {
+  width: auto;
+}
+/* Niveau d'une vérification : un point de couleur et un mot. */
+.opt-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.opt-level::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.opt-level.l-ok {
+  color: var(--ok-text);
+}
+.opt-level.l-warn {
+  color: var(--warn-text);
+}
+.opt-checks-intro {
+  margin: -4px 0 10px;
+}
+
 /* ------------------------------------------------------------ Marketplace */
 
 .chips {

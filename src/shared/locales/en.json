@@ -246,6 +246,7 @@
       "library": "Library",
       "market": "Marketplace",
       "mods": "Mods",
+      "optimizations": "Optimizations",
       "packs": "Packs",
       "settings": "Settings"
     },
@@ -1058,6 +1059,10 @@
     "modAdded_one": "Mod added ({{n}} file)",
     "modAdded_other": "Mod added ({{n}} files)",
     "modDeleted": "Mod deleted",
+    "optimizationsApplied_one": "{{n}} optimization applied",
+    "optimizationsApplied_other": "{{n}} optimizations applied",
+    "optimizationsReverted_one": "{{n}} optimization undone",
+    "optimizationsReverted_other": "{{n}} optimizations undone",
     "removed": "Removed",
     "screenshotsMoved_one": "{{n}} screenshot moved",
     "screenshotsMoved_other": "{{n}} screenshots moved",
@@ -1627,6 +1632,220 @@
     },
     "update": "Update"
   },
+  "optimizations": {
+    "title": "Optimizations",
+    "intro": "Get more frames per second on a modest PC. Each optimization is one click to apply and can be undone at any time: the app keeps your previous settings and puts them back exactly.",
+    "loading": "Checking your PC…",
+    "summary": "{{on}} of {{total}} in place",
+    "applyAll": "Apply all",
+    "applyAllNone": "All recommended optimizations are in place.",
+    "applyAllHint": "Applies the recommended optimizations. Those marked “Optional” change the image, security or a Windows behavior: turn them on one by one if you want them.",
+    "revertAll": "Undo all",
+    "revertConfirm": {
+      "title": "Undo all optimizations?",
+      "message": "Your previous settings are put back, except those you changed yourself since.",
+      "confirm": "Undo all"
+    },
+    "closeGame": "Close FiveM to change the game settings: it rewrites them when it exits.",
+    "adminNote": "Windows will ask for administrator permission only once for all those that need it.",
+    "groups": {
+      "game": "Game",
+      "windows": "Windows"
+    },
+    "gain": {
+      "high": "High gain",
+      "medium": "Medium gain",
+      "low": "Low gain"
+    },
+    "badge": {
+      "optional": "Optional",
+      "admin": "Administrator",
+      "reboot": "PC restart"
+    },
+    "status": {
+      "on": "On",
+      "native": "Already in place on this PC",
+      "partial": "Partly in place",
+      "off": "Off",
+      "na": "Doesn’t apply to this PC"
+    },
+    "undo": "Undo",
+    "complete": "Complete",
+    "result": {
+      "applied_one": "{{count}} optimization applied.",
+      "applied_other": "{{count}} optimizations applied.",
+      "reverted_one": "{{count}} optimization undone.",
+      "reverted_other": "{{count}} optimizations undone.",
+      "already": "Already in place.",
+      "nextLaunch": "They take effect the next time you launch FiveM.",
+      "reboot": "Restart your PC to finish.",
+      "failed": "{{name}}: {{error}}"
+    },
+    "errors": {
+      "closeGame": "Close FiveM: the game rewrites its settings when it exits.",
+      "failed": "The change couldn’t be made."
+    },
+    "na": {
+      "noSettings": "Game settings file not found: launch FiveM once.",
+      "noCfg": "FiveM settings not found: launch FiveM once.",
+      "noFiveM": "FiveM not found.",
+      "budgetFine": "Your PC has enough memory for the extended texture budget: nothing to change.",
+      "singleGpu": "Only one graphics card in this PC: nothing to choose.",
+      "windows11": "Windows 11 only.",
+      "unknown": "Couldn’t read the state on this PC.",
+      "powerPlan": "This PC only offers the Balanced plan: choose “Best performance” in the Windows power settings.",
+      "otherAntivirus": "{{name}} protects this PC: add the FiveM folder to the exclusions in its settings.",
+      "noDefender": "Microsoft Defender isn’t active on this PC."
+    },
+    "notes": {
+      "keptForPack": "Shaders and post FX stay at “Very high” for the {{pack}} pack.",
+      "scaling": "Image rendered at {{percent}}% of the screen resolution.",
+      "customPlan": "The {{name}} plan is selected on this PC: it is kept.",
+      "powerMode": "Windows 11 “Best performance” mode, when plugged in.",
+      "pagefileSmall": "Virtual memory limited to {{size}}.",
+      "pagefileNone": "Virtual memory turned off."
+    },
+    "items": {
+      "graphics": {
+        "title": "Lighter graphics",
+        "text": "Turns down the most expensive settings: grass, shadows, reflections, water, particles, post FX, ambient occlusion, MSAA, depth of field. Textures at “High” if the card has enough video memory, otherwise “Normal”.",
+        "tradeoff": "Less detailed image. The DirectX version and display mode don’t change."
+      },
+      "distance": {
+        "title": "Shorter draw distance",
+        "text": "Draw distance and extended distance at minimum (the heaviest setting in the game), less detail far away, less varied population: less work for the processor and less video memory.",
+        "tradeoff": "Distant objects appear later."
+      },
+      "scaling": {
+        "title": "Lower render resolution",
+        "text": "The game renders a smaller image and stretches it to the screen (“Render Resolution” in the FiveM settings): the biggest gain when the graphics card struggles.",
+        "tradeoff": "Blurrier image."
+      },
+      "vehicle-textures": {
+        "title": "Capped vehicle textures",
+        "text": "Caps vehicle textures at 512 pixels instead of 1,024: less memory used on servers with many added vehicles, fewer textures disappearing.",
+        "tradeoff": "Slightly less sharp paint jobs and plates."
+      },
+      "texture-budget": {
+        "title": "Normal texture budget",
+        "text": "Resets FiveM’s “Extended Texture Budget” to zero: beyond what the graphics card can hold, it causes stutters and crashes.",
+        "tradeoff": "On a PC with plenty of memory, some textures load a little later."
+      },
+      "nui-gpu": {
+        "title": "Smooth server interfaces",
+        "text": "Restores the FiveM option that draws server interfaces (phone, inventory, HUD) with the game’s graphics card: fixes interface lag when the card is under heavy load. It’s FiveM’s default setting.",
+        "tradeoff": "ReShade versions older than 5.9.1 are no longer loaded."
+      },
+      "power": {
+        "title": "High performance power",
+        "text": "“High performance” plan (or the Windows 11 “Best performance” mode, when plugged in): the processor no longer lowers its speed mid-game, frames are more even.",
+        "tradeoff": "Slightly more power use, heat and noise; on a laptop, battery life drops."
+      },
+      "gpu": {
+        "title": "Dedicated graphics card for FiveM",
+        "text": "On a PC with two graphics cards (often a laptop), Windows runs FiveM, the game and its interfaces on the most powerful card, never on the integrated one. New game versions are added automatically.",
+        "tradeoff": "On battery, battery life drops."
+      },
+      "game-dvr": {
+        "title": "Xbox Game Bar recording off",
+        "text": "Turns off Xbox Game Bar background recording, which films the game continuously and takes processor and graphics card time.",
+        "tradeoff": "Game Bar captures (Win+Alt+R) don’t work until you undo it."
+      },
+      "game-mode": {
+        "title": "Windows Game Mode",
+        "text": "Turns Game Mode back on (on by default): Windows gives the game priority and holds back updates and their restarts while you play.",
+        "tradeoff": "No known downside."
+      },
+      "pagefile": {
+        "title": "Virtual memory managed by Windows",
+        "text": "With virtual memory turned off or too small, FiveM crashes as soon as RAM runs out (often with 8 GB). Windows takes back control of its size.",
+        "tradeoff": "Takes some space on the system drive. Takes effect after a PC restart."
+      },
+      "windowed": {
+        "title": "Optimizations for windowed games",
+        "text": "Windows 11 option for DirectX 11 games in a window or borderless fullscreen (FiveM’s default mode): the image is shown more directly, with less latency.",
+        "tradeoff": "FiveM avoids this display mode, which sometimes misbehaves when switching modes (Alt+Enter, Alt+Tab): undo it if the image jumps or goes black."
+      },
+      "priority": {
+        "title": "Higher game priority",
+        "text": "At every launch, the game gets “Above normal” priority: background programs take less processor time from it. The app does this while it is open (including in the notification area).",
+        "tradeoff": "Low gain; on a 4-core processor, Discord and sound may suffer."
+      },
+      "defender": {
+        "title": "Antivirus exclusion for FiveM",
+        "text": "Microsoft Defender no longer scans the FiveM folder: faster loading, fewer stutters when the game reads its cache, no more launch errors caused by the antivirus.",
+        "tradeoff": "Files downloaded from servers into this folder are no longer scanned."
+      }
+    },
+    "checks": {
+      "title": "To check on this PC",
+      "intro": "What the app can’t change on its own, with a way to do it.",
+      "level": {
+        "ok": "OK",
+        "warn": "To fix",
+        "info": "Tip"
+      },
+      "pack": {
+        "title": "Installed graphics pack",
+        "none": "No pack installed: the game is as light as it gets.",
+        "smooth": "{{pack}} runs well on this PC.",
+        "playable": "{{pack}} is playable on this PC, but a lighter pack will give more frames per second.",
+        "heavy": "{{pack}} is too heavy for this PC: it costs more frames per second than anything else. Choose a lighter pack, or remove it.",
+        "unknown": "{{pack}}: performance cost unknown. ReShade and ENB cost the most frames per second.",
+        "remove": "Remove the pack",
+        "browse": "Browse packs"
+      },
+      "power-source": {
+        "title": "Laptop power",
+        "battery": "The laptop is on battery: Windows throttles the processor and graphics card. Plug it in to play.",
+        "plugged": "Plugged in."
+      },
+      "ram": {
+        "title": "Memory",
+        "low": "{{gb}} GB: close your browser and heavy apps before playing, FiveM needs all the memory.",
+        "ok": "{{gb}} GB: enough."
+      },
+      "single-channel": {
+        "title": "Only one memory stick",
+        "text": "The integrated graphics card uses the PC’s memory: with a single stick, it runs much slower. Adding a second identical stick is the most cost-effective upgrade."
+      },
+      "driver": {
+        "title": "Graphics driver",
+        "old": "{{name}}: driver from {{date}}, more than a year old. Install the latest one: it often fixes stutters and crashes.",
+        "recent": "{{name}}: driver from {{date}}."
+      },
+      "disk": {
+        "title": "Game drive",
+        "hdd": "{{what}} on a hard drive: long loading and scenery that appears late. An SSD changes everything.",
+        "ssd": "Game on an SSD.",
+        "gta": "GTA V",
+        "fivem": "FiveM"
+      },
+      "memory-integrity": {
+        "title": "Memory integrity",
+        "on": "On. This Windows protection can cost 5 to 10% of frames per second, more on processors from before 2017. Turning it off lowers the PC’s security: your call, in Windows Security.",
+        "off": "Off."
+      },
+      "overlays": {
+        "title": "Overlays",
+        "text": "Discord, Steam, NVIDIA and Xbox Game Bar overlays draw on top of the game. Turn off the ones you don’t use, in each program’s settings."
+      },
+      "startup": {
+        "title": "Startup programs",
+        "text": "Every program that starts with Windows takes memory and processor time while you play. Turn off the ones you don’t need."
+      },
+      "links": {
+        "startup-apps": "Startup apps",
+        "core-isolation": "Open Windows Security",
+        "driver-nvidia": "Download the driver",
+        "driver-amd": "Download the driver",
+        "driver-intel": "Download the driver",
+        "driver-update": "Optional updates",
+        "power-settings": "Power settings",
+        "game-bar": "Game Bar settings"
+      }
+    }
+  },
   "packDetail": {
     "back": "‹ Library",
     "byAuthor": "by {{author}}",
@@ -2026,6 +2245,7 @@
         "graphics": "Graphics",
         "import": "Add",
         "mod": "Mods",
+        "optimize": "Optimizations",
         "remove": "Uninstall",
         "restore": "Restore"
       },

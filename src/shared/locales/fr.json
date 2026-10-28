@@ -246,6 +246,7 @@
       "library": "Bibliothèque",
       "market": "Marketplace",
       "mods": "Mods",
+      "optimizations": "Optimisations",
       "packs": "Packs",
       "settings": "Réglages"
     },
@@ -1058,6 +1059,10 @@
     "modAdded_one": "Mod ajouté ({{n}} fichier)",
     "modAdded_other": "Mod ajouté ({{n}} fichiers)",
     "modDeleted": "Mod supprimé",
+    "optimizationsApplied_one": "{{n}} optimisation appliquée",
+    "optimizationsApplied_other": "{{n}} optimisations appliquées",
+    "optimizationsReverted_one": "{{n}} optimisation annulée",
+    "optimizationsReverted_other": "{{n}} optimisations annulées",
     "removed": "Retiré",
     "screenshotsMoved_one": "{{n}} capture d'écran déplacée",
     "screenshotsMoved_other": "{{n}} captures d'écran déplacées",
@@ -1627,6 +1632,220 @@
     },
     "update": "Mettre à jour"
   },
+  "optimizations": {
+    "title": "Optimisations",
+    "intro": "Pour gagner des images par seconde sur un PC modeste. Chaque optimisation s’applique en un clic et s’annule à tout moment : l’application note vos réglages d’avant et les remet tels quels.",
+    "loading": "Analyse du PC…",
+    "summary": "{{on}} sur {{total}} en place",
+    "applyAll": "Tout appliquer",
+    "applyAllNone": "Toutes les optimisations recommandées sont en place.",
+    "applyAllHint": "Applique les optimisations recommandées. Celles marquées « Au choix » changent l’image, la sécurité ou un comportement de Windows : activez-les une par une si vous le souhaitez.",
+    "revertAll": "Tout annuler",
+    "revertConfirm": {
+      "title": "Annuler toutes les optimisations ?",
+      "message": "Vos réglages d’avant sont remis, sauf ceux que vous avez changés vous-même depuis.",
+      "confirm": "Tout annuler"
+    },
+    "closeGame": "Fermez FiveM pour changer les réglages du jeu : il les réécrit en quittant.",
+    "adminNote": "Windows demandera l’autorisation administrateur une seule fois pour toutes celles qui en ont besoin.",
+    "groups": {
+      "game": "Jeu",
+      "windows": "Windows"
+    },
+    "gain": {
+      "high": "Gain fort",
+      "medium": "Gain moyen",
+      "low": "Gain faible"
+    },
+    "badge": {
+      "optional": "Au choix",
+      "admin": "Administrateur",
+      "reboot": "Redémarrage du PC"
+    },
+    "status": {
+      "on": "Activée",
+      "native": "Déjà en place sur ce PC",
+      "partial": "En partie en place",
+      "off": "Désactivée",
+      "na": "Ne s’applique pas à ce PC"
+    },
+    "undo": "Annuler",
+    "complete": "Compléter",
+    "result": {
+      "applied_one": "{{count}} optimisation appliquée.",
+      "applied_other": "{{count}} optimisations appliquées.",
+      "reverted_one": "{{count}} optimisation annulée.",
+      "reverted_other": "{{count}} optimisations annulées.",
+      "already": "Déjà en place.",
+      "nextLaunch": "Elles prennent effet au prochain lancement de FiveM.",
+      "reboot": "Redémarrez le PC pour terminer.",
+      "failed": "{{name}} : {{error}}"
+    },
+    "errors": {
+      "closeGame": "Fermez FiveM : le jeu réécrit ses réglages en quittant.",
+      "failed": "La modification n’a pas pu être faite."
+    },
+    "na": {
+      "noSettings": "Fichier de réglages du jeu introuvable : lancez FiveM une fois.",
+      "noCfg": "Réglages de FiveM introuvables : lancez FiveM une fois.",
+      "noFiveM": "FiveM introuvable.",
+      "budgetFine": "Votre PC a assez de mémoire pour le budget de textures étendu : rien à changer.",
+      "singleGpu": "Une seule carte graphique sur ce PC : rien à choisir.",
+      "windows11": "Réservé à Windows 11.",
+      "unknown": "État illisible sur ce PC.",
+      "powerPlan": "Ce PC ne propose que le plan Utilisation normale : choisissez « Meilleures performances » dans les paramètres d’alimentation de Windows.",
+      "otherAntivirus": "{{name}} protège ce PC : ajoutez le dossier de FiveM aux exclusions dans ses réglages.",
+      "noDefender": "Microsoft Defender n’est pas actif sur ce PC."
+    },
+    "notes": {
+      "keptForPack": "Shaders et post-traitement restent en « Très élevé » pour le pack {{pack}}.",
+      "scaling": "Image calculée à {{percent}} % de la résolution de l’écran.",
+      "customPlan": "Plan {{name}} choisi sur ce PC : il est gardé.",
+      "powerMode": "Mode « Meilleures performances » de Windows 11, sur secteur.",
+      "pagefileSmall": "Mémoire virtuelle limitée à {{size}}.",
+      "pagefileNone": "Mémoire virtuelle désactivée."
+    },
+    "items": {
+      "graphics": {
+        "title": "Graphismes allégés",
+        "text": "Met au plus bas les réglages qui coûtent le plus : herbe, ombres, réflexions, eau, particules, post-traitement, occlusion ambiante, MSAA, profondeur de champ. Textures en « Élevé » si la carte a assez de mémoire vidéo, sinon en « Normal ».",
+        "tradeoff": "Image moins détaillée. La version de DirectX et le mode d’affichage ne changent pas."
+      },
+      "distance": {
+        "title": "Distance d’affichage réduite",
+        "text": "Distance d’affichage et distance étendue au minimum (le réglage le plus lourd du jeu), moins de détails au loin, population moins variée : moins de travail pour le processeur et moins de mémoire vidéo.",
+        "tradeoff": "Les objets lointains apparaissent plus tard."
+      },
+      "scaling": {
+        "title": "Résolution de rendu réduite",
+        "text": "Le jeu calcule l’image en plus petit puis l’agrandit à la taille de l’écran (« Résolution de rendu » dans les réglages de FiveM) : le plus gros gain quand la carte graphique est à la peine.",
+        "tradeoff": "Image plus floue."
+      },
+      "vehicle-textures": {
+        "title": "Textures des véhicules limitées",
+        "text": "Plafonne les textures des véhicules à 512 pixels au lieu de 1 024 : moins de mémoire utilisée sur les serveurs qui ont beaucoup de véhicules ajoutés, moins de textures qui disparaissent.",
+        "tradeoff": "Peintures et plaques un peu moins nettes."
+      },
+      "texture-budget": {
+        "title": "Budget de textures normal",
+        "text": "Remet à zéro le « Budget de textures étendu » de FiveM : au-delà de ce que la carte graphique peut tenir, il provoque saccades et plantages.",
+        "tradeoff": "Sur un PC qui a beaucoup de mémoire, certaines textures se chargent un peu plus tard."
+      },
+      "nui-gpu": {
+        "title": "Interfaces des serveurs fluides",
+        "text": "Remet l’option de FiveM qui calcule les interfaces des serveurs (téléphone, inventaire, HUD) avec la carte graphique du jeu : corrige les ralentissements de l’interface quand la carte est très sollicitée. C’est le réglage par défaut de FiveM.",
+        "tradeoff": "Les versions de ReShade antérieures à 5.9.1 ne sont plus chargées."
+      },
+      "power": {
+        "title": "Alimentation en performances élevées",
+        "text": "Plan « Performances élevées » (ou mode « Meilleures performances » de Windows 11, sur secteur) : le processeur ne baisse plus sa fréquence en pleine partie, les images sont plus régulières.",
+        "tradeoff": "Consommation, chaleur et bruit un peu plus élevés ; sur un portable, l’autonomie baisse."
+      },
+      "gpu": {
+        "title": "Carte graphique dédiée pour FiveM",
+        "text": "Sur un PC à deux cartes graphiques (souvent un portable), Windows lance FiveM, le jeu et ses interfaces sur la carte la plus puissante, jamais sur la carte intégrée. Les nouvelles versions du jeu sont ajoutées automatiquement.",
+        "tradeoff": "Sur batterie, l’autonomie baisse."
+      },
+      "game-dvr": {
+        "title": "Enregistrement de la Xbox Game Bar coupé",
+        "text": "Coupe l’enregistrement en arrière-plan de la Xbox Game Bar, qui filme le jeu en continu et prend du processeur et de la carte graphique.",
+        "tradeoff": "Les captures de la Game Bar (Win+Alt+R) ne marchent plus jusqu’à l’annulation."
+      },
+      "game-mode": {
+        "title": "Mode jeu de Windows",
+        "text": "Réactive le mode jeu (actif par défaut) : Windows donne la priorité au jeu et repousse les mises à jour et leurs redémarrages pendant la partie.",
+        "tradeoff": "Aucun inconvénient connu."
+      },
+      "pagefile": {
+        "title": "Mémoire virtuelle gérée par Windows",
+        "text": "Avec une mémoire virtuelle désactivée ou trop petite, FiveM plante dès que la mémoire vive manque (souvent avec 8 Go). Windows reprend la gestion de sa taille.",
+        "tradeoff": "Prend un peu de place sur le disque système. Prend effet au redémarrage du PC."
+      },
+      "windowed": {
+        "title": "Optimisations des jeux fenêtrés",
+        "text": "Option de Windows 11 pour les jeux DirectX 11 en fenêtre ou en plein écran sans bordure (le mode par défaut de FiveM) : l’image est affichée plus directement, avec moins de latence.",
+        "tradeoff": "FiveM évite ce mode d’affichage, qui pose parfois souci en changeant de mode (Alt+Entrée, Alt+Tab) : annulez si l’image saute ou devient noire."
+      },
+      "priority": {
+        "title": "Priorité du jeu relevée",
+        "text": "À chaque lancement, le jeu passe en priorité « Au-dessus de la normale » : les programmes en arrière-plan lui prennent moins de processeur. L’application s’en charge tant qu’elle est ouverte (zone de notification comprise).",
+        "tradeoff": "Gain faible ; sur un processeur à 4 cœurs, Discord et le son peuvent en souffrir."
+      },
+      "defender": {
+        "title": "Exclusion de l’antivirus pour FiveM",
+        "text": "Microsoft Defender n’analyse plus le dossier de FiveM : chargements plus rapides, moins de saccades quand le jeu lit son cache, plus d’erreurs de lancement dues à l’antivirus.",
+        "tradeoff": "Les fichiers téléchargés depuis les serveurs dans ce dossier ne sont plus analysés."
+      }
+    },
+    "checks": {
+      "title": "À vérifier sur ce PC",
+      "intro": "Ce que l’application ne peut pas changer seule, avec de quoi le faire.",
+      "level": {
+        "ok": "OK",
+        "warn": "À corriger",
+        "info": "Conseil"
+      },
+      "pack": {
+        "title": "Pack graphique installé",
+        "none": "Aucun pack installé : le jeu est le plus léger possible.",
+        "smooth": "{{pack}} tourne bien sur ce PC.",
+        "playable": "{{pack}} est jouable sur ce PC, mais un pack plus léger donnera plus d’images par seconde.",
+        "heavy": "{{pack}} est trop lourd pour ce PC : c’est ce qui coûte le plus d’images par seconde. Choisissez un pack plus léger, ou retirez-le.",
+        "unknown": "{{pack}} : poids sur les performances inconnu. ReShade et ENB sont ce qui coûte le plus d’images par seconde.",
+        "remove": "Retirer le pack",
+        "browse": "Voir les packs"
+      },
+      "power-source": {
+        "title": "Alimentation du portable",
+        "battery": "Le portable est sur batterie : Windows bride le processeur et la carte graphique. Branchez-le pour jouer.",
+        "plugged": "Branché sur secteur."
+      },
+      "ram": {
+        "title": "Mémoire vive",
+        "low": "{{gb}} Go : fermez le navigateur et les applications lourdes avant de jouer, FiveM a besoin de toute la mémoire.",
+        "ok": "{{gb}} Go : suffisant."
+      },
+      "single-channel": {
+        "title": "Une seule barrette de mémoire",
+        "text": "La carte graphique intégrée utilise la mémoire du PC : avec une seule barrette, elle va bien moins vite. Ajouter une seconde barrette identique est la mise à niveau la plus rentable."
+      },
+      "driver": {
+        "title": "Pilote graphique",
+        "old": "{{name}} : pilote du {{date}}, plus d’un an. Installez le dernier : il corrige souvent saccades et plantages.",
+        "recent": "{{name}} : pilote du {{date}}."
+      },
+      "disk": {
+        "title": "Disque du jeu",
+        "hdd": "{{what}} sur un disque dur : chargements longs et décors qui apparaissent tard. Un SSD change tout.",
+        "ssd": "Jeu sur SSD.",
+        "gta": "GTA V",
+        "fivem": "FiveM"
+      },
+      "memory-integrity": {
+        "title": "Intégrité de la mémoire",
+        "on": "Activée. Cette protection de Windows peut coûter 5 à 10 % d’images par seconde, plus sur les processeurs d’avant 2017. La désactiver réduit la sécurité du PC : à vous de choisir, dans Sécurité Windows.",
+        "off": "Désactivée."
+      },
+      "overlays": {
+        "title": "Superpositions",
+        "text": "Les superpositions de Discord, Steam, NVIDIA et de la Xbox Game Bar se dessinent par-dessus le jeu. Désactivez celles dont vous ne vous servez pas, dans les réglages de chaque programme."
+      },
+      "startup": {
+        "title": "Programmes au démarrage",
+        "text": "Chaque programme lancé avec Windows prend de la mémoire et du processeur pendant la partie. Désactivez ceux dont vous n’avez pas besoin."
+      },
+      "links": {
+        "startup-apps": "Applications de démarrage",
+        "core-isolation": "Ouvrir Sécurité Windows",
+        "driver-nvidia": "Télécharger le pilote",
+        "driver-amd": "Télécharger le pilote",
+        "driver-intel": "Télécharger le pilote",
+        "driver-update": "Mises à jour facultatives",
+        "power-settings": "Paramètres d’alimentation",
+        "game-bar": "Réglages de la Game Bar"
+      }
+    }
+  },
   "packDetail": {
     "back": "‹ Bibliothèque",
     "byAuthor": "par {{author}}",
@@ -2026,6 +2245,7 @@
         "graphics": "Graphismes",
         "import": "Ajout",
         "mod": "Mods",
+        "optimize": "Optimisations",
         "remove": "Retrait",
         "restore": "Restauration"
       },

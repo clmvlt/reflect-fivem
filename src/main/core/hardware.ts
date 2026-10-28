@@ -18,6 +18,11 @@ import type { VideoAdapter } from '../util/win'
 const VIRTUAL_ADAPTER =
   /microsoft basic|microsoft remote|remote display|virtual|hyper-v|vmware|virtualbox|parallels|qxl|citrix|parsec|spacedesk|displaylink|splashtop|teamviewer|indirect display|iddsample|meta.*monitor|duet display|luminon/i
 
+/** Carte sans rendu du jeu (pilote de base, écran virtuel ou déporté). */
+export function isVirtualAdapter(name: string): boolean {
+  return VIRTUAL_ADAPTER.test(name)
+}
+
 /**
  * Carte utilisée pour jouer : celle qui a le plus de mémoire vidéo dédiée, parmi les cartes du registre (mémoire
  * exacte), sinon celles de Win32_VideoController (mémoire plafonnée à 4 Go : dernier recours). Une carte du registre

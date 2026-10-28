@@ -1,8 +1,9 @@
 // Service principal : état de l'application, tâches longues, et implémentation de l'API exposée à l'interface.
 
 import { promises as fs } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
-import { app, BrowserWindow, dialog, nativeImage, nativeTheme, net, Notification, safeStorage, screen, shell, systemPreferences } from 'electron'
+import { app, BrowserWindow, dialog, nativeImage, nativeTheme, net, Notification, powerMonitor, safeStorage, screen, shell, systemPreferences } from 'electron'
 import type { AppState, FiveMInstance, GamesInfo, InstanceSummary, MarketKind, Overview, PackPatch, RootId, Settings, TaskProgress } from '@shared/types'
 import type { AccountMe, BuilderBuild, BuilderSaveInput, BuilderTools, CheckoutInput, ItemCheckoutInput, ProfileInput, QuoteInput, ToolKey } from '@shared/types'
 import type { AuthorQuery, CommentQuery, ComponentFile, ForeignSelection, MarketQuery, PackManagerApi } from '@shared/api'
@@ -19,8 +20,11 @@ import { Community } from './core/community'
 import { KeyRing, type SystemProtection } from './core/keys'
 import { Library, toPublic, type StoredManifest } from './core/library'
 import { GraphicsManager, screenSize } from './core/graphics'
-import { Hardware } from './core/hardware'
+import { Hardware, isVirtualAdapter } from './core/hardware'
 import { PerformanceModels } from './core/performance'
+import { Optimizer } from './core/optimizations'
+import { probeSystem, runSystemOps, setPriority } from './core/winTweaks'
+import { runPowerShellElevated } from './core/elevation'
 import { languageFetch, MaintenanceError, onMaintenanceError, serverFetch } from './core/http'
 import { accountLanguageAction, fetchLanguages, startupLocale } from './core/language'
 import { MaintenanceWatch, PausedDownloads } from './core/maintenance'
@@ -36,7 +40,8 @@ import { DownloadQueue, type DownloadContext, type DownloadJob } from './core/do
 import { AppUpdater } from './core/updater'
 import { discordRunning, killProcesses, launchDetached, readVideoAdapters, runningGameProcesses } from './util/win'
 import type { GraphicsTarget } from '@shared/graphics'
-import type { HardwareOverride, MachineProfile } from '@shared/performance'
+import { machineOf, type HardwareOverride, type MachineProfile } from '@shared/performance'
+import type { GuideLink, OptimizationId } from '@shared/optimizations'
 import { fileDestination } from './core/analyzer'
 import { defaultSettings, emptyState, JsonStore, normalizeState, pushHistory } from './core/stores'
 import { copyPlan, currentInstanceId, instanceStateFile, listInstances, MAIN_INSTANCE, runCopy, safeFileName, SECOND_CLIENT_ARG, suggestedName } from './core/instances'
@@ -128,6 +133,10 @@ export class Service {
   hardware: Hardware
   /** Modèle de comparaison des performances de l'API. */
   perfModels: PerformanceModels
+  /** Optimisations du jeu et de Windows pour les PC modestes (page Optimisations). */
+  optimizer: Optimizer
+  /** Processus du jeu dont la priorité a déjà été relevée (optimisation « priority »). */
+  private boosted = new Set<string>()
   /** Maintenances prévues par l'admin (GET /maintenance), envoyées à l'interface. */
   maintenance: MaintenanceWatch
   /** Téléchargements arrêtés par une maintenance, repris à sa fin. */
@@ -217,6 +226,41 @@ export class Service {
       }
     })
     this.perfModels = new PerformanceModels(apiUrl, path.join(dataDir, 'performance-model.json'), apiFetch)
+    this.optimizer = new Optimizer(
+      path.join(dataDir, 'optimizations.json'),
+      {
+        probe: probeSystem,
+        run: (ops, admin) => runSystemOps(ops, admin ? (script) => runPowerShellElevated(script, path.join(dataDir, 'jobs')) : null)
+      },
+      {
+        fivemApp: async () => (this.gamesCache ?? (await this.refreshGames())).fivem.path,
+        gtaPath: async () => (this.gamesCache ?? (await this.refreshGames())).gta.path,
+        settingsFile: async () => (await this.graphics.targets(app.getPath('documents'))).find((g) => g.id === 'fivem')?.path ?? null,
+        writeSettings: async (file, changes) => {
+          const target = (await this.graphics.targets(app.getPath('documents'))).find((g) => g.path === file)
+          if (!target) throw this.toError(t('service.errors.graphicsFileMissingFirstRun'))
+          await this.graphics.write(target, changes)
+        },
+        cfgFile: path.join(process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming'), 'CitizenFX', 'fivem.cfg'),
+        machine: async () => {
+          const machine = machineOf(await this.machineProfile())
+          const active = this.state.get().active
+          const manifest = active ? await this.library.get(active.packId).catch(() => null) : null
+          return {
+            gpuClass: machine.gpuClass,
+            vramMb: machine.vramMb,
+            pack: active ? { name: manifest?.name ?? active.packName, features: manifest?.features ?? [] } : null
+          }
+        },
+        ramMb: () => Math.round(os.totalmem() / 1024 / 1024),
+        windowsBuild: () => Number(os.release().split('.')[2]) || 0,
+        onBattery: () => powerMonitor.isOnBatteryPower(),
+        gameRunning: async () => (await runningGameProcesses()).length > 0,
+        gameProcesses: async () => Optimizer.gameProcesses(await runningGameProcesses()),
+        setPriority,
+        virtualAdapter: isVirtualAdapter
+      }
+    )
     this.maintenance = new MaintenanceWatch({
       apiUrl,
       // GET /maintenance n'est jamais refusé pour maintenance.
@@ -591,6 +635,8 @@ export class Service {
       void this.builder.pruneBlobs().catch((err: unknown) => log.info(`Cache de « Créer ton pack » non nettoyé : ${(err as Error).message}`))
       // Carte graphique (détectée une fois, puis en cache) et modèle de comparaison, prêts pour la Marketplace.
       void this.machineProfile().catch(() => undefined)
+      // Carte graphique dédiée choisie pour FiveM : ajoutée au jeu d'une nouvelle version.
+      void this.optimizer.heal().catch((err: unknown) => log.info(`Optimisations non vérifiées : ${(err as Error).message}`))
     }, 5000)
     setInterval(() => void refreshMarket(), MARKET_REFRESH)
     setInterval(() => void this.watchGame(), GAME_WATCH)
@@ -611,11 +657,22 @@ export class Service {
       if (!this.gamesCache) return
       const differs = running.join() !== [...this.gamesCache.runningProcesses].sort().join()
       if (differs) this.gamesCache = { ...this.gamesCache, runningProcesses: running }
+      if (differs) void this.boostGame(running)
       // Aussi quand une détection complète l'a déjà vu, sans prévenir la zone de notification.
       if (differs || this.gameRunning !== this.gameWasRunning) this.changed()
     } finally {
       this.watching = false
     }
+  }
+
+  /** Priorité du jeu relevée à son lancement (optimisation « priority »), une fois par processus. */
+  private async boostGame(running: string[]): Promise<void> {
+    const game = Optimizer.gameProcesses(running)
+    for (const name of [...this.boosted]) if (!game.includes(name)) this.boosted.delete(name)
+    const fresh = game.filter((n) => !this.boosted.has(n))
+    if (!fresh.length || !(await this.optimizer.priorityOn())) return
+    fresh.forEach((n) => this.boosted.add(n))
+    await setPriority(fresh, 'AboveNormal').catch((err: unknown) => log.info(`Priorité du jeu non changée : ${(err as Error).message}`))
   }
 
   private emit(channel: string, payload?: unknown): void {
@@ -1747,8 +1804,50 @@ export class Service {
 
     maintenanceGet: async () => this.maintenance.current,
 
-    maintenanceCheck: () => this.maintenance.check()
+    maintenanceCheck: () => this.maintenance.check(),
+
+    optimizationsGet: () => this.optimizer.overview(),
+
+    optimizationsApply: async (ids: OptimizationId[]) => {
+      const r = await this.optimizer.apply(ids)
+      const changed = r.done.filter((id) => r.overview.items.some((i) => i.id === id && i.undoable))
+      if (changed.length)
+        await this.state.set(
+          pushHistory(this.state.get(), { action: 'optimize', ok: !r.failed.length, msg: msg('history.optimizationsApplied', { count: changed.length, n: formatNumber(changed.length) }) })
+        )
+      this.changed()
+      return r
+    },
+
+    optimizationsRevert: async (ids: OptimizationId[]) => {
+      const r = await this.optimizer.revert(ids)
+      if (r.done.length)
+        await this.state.set(
+          pushHistory(this.state.get(), { action: 'optimize', ok: !r.failed.length, msg: msg('history.optimizationsReverted', { count: r.done.length, n: formatNumber(r.done.length) }) })
+        )
+      this.changed()
+      return r
+    },
+
+    optimizationsOpen: async (link: GuideLink) => {
+      // Adresse choisie ici, jamais reçue de l'interface.
+      const url = GUIDE_LINKS[link]
+      if (!url) throw this.toError(t('service.errors.invalidLink'))
+      await shell.openExternal(url)
+    }
   }
+}
+
+/** Pages ouvertes par les boutons de la page Optimisations (réglages de Windows, sites des pilotes graphiques). */
+const GUIDE_LINKS: Record<GuideLink, string> = {
+  'startup-apps': 'ms-settings:startupapps',
+  'core-isolation': 'windowsdefender://coreisolation',
+  'driver-nvidia': 'https://www.nvidia.com/en-us/drivers/',
+  'driver-amd': 'https://www.amd.com/en/support/download/drivers.html',
+  'driver-intel': 'https://www.intel.com/content/www/us/en/support/detect.html',
+  'driver-update': 'ms-settings:windowsupdate-optionalupdates',
+  'power-settings': 'ms-settings:powersleep',
+  'game-bar': 'ms-settings:gaming-gamebar'
 }
 
 /** Nom d'instance : espaces superflus retirés, 60 caractères au plus. */

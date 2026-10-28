@@ -167,7 +167,11 @@ const methods = [
   'instanceShortcut',
   'instanceSetPackTarget',
   'maintenanceGet',
-  'maintenanceCheck'
+  'maintenanceCheck',
+  'optimizationsGet',
+  'optimizationsApply',
+  'optimizationsRevert',
+  'optimizationsOpen'
 ] as const
 
 const api = Object.fromEntries(methods.map((m) => [m, call(m)])) as unknown as PackManagerApi

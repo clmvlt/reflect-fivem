@@ -50,6 +50,7 @@ import type {
   UpdateState
 } from './types'
 import type { GraphicsState, GraphicsTarget } from './graphics'
+import type { GuideLink, OptimizationId, OptimizationsOverview, OptimizationsResult } from './optimizations'
 import type { HardwareOverride, MachineProfile, PerformanceDetail } from './performance'
 import type { MaintenanceState } from './maintenance'
 import type { AppLinks } from './links'
@@ -138,6 +139,18 @@ export interface PackManagerApi {
    * et appliquée tout de suite au pack installé. Renvoie le nombre de fichiers du jeu mis à jour.
    */
   setFpsLimit(limit: number | null): Promise<number>
+
+  /** Optimisations pour les PC modestes : état de chacune sur ce PC, vérifications et conseils. */
+  optimizationsGet(): Promise<OptimizationsOverview>
+  /**
+   * Applique des optimisations (les valeurs d'avant sont notées) ; celles qui demandent les droits administrateur sont
+   * faites ensemble, avec une seule demande UAC. Les réglages du jeu demandent que FiveM soit fermé.
+   */
+  optimizationsApply(ids: OptimizationId[]): Promise<OptimizationsResult>
+  /** Remet les valeurs d'avant (seulement celles que l'utilisateur n'a pas changées depuis). */
+  optimizationsRevert(ids: OptimizationId[]): Promise<OptimizationsResult>
+  /** Ouvre une page des réglages de Windows ou le site d'un pilote graphique. */
+  optimizationsOpen(link: GuideLink): Promise<void>
 
   /** Lance FiveM (FiveM.exe à côté du dossier FiveM.app, sinon par le lien fivem://). */
   launchGame(): Promise<void>

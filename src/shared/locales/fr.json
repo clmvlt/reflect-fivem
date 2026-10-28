@@ -56,6 +56,7 @@
   },
   "accountView": {
     "backToPack": "‹ Retour au pack",
+    "backToBuilder": "‹ Retour à « Créer ton pack »",
     "badges": {
       "admin": "Administrateur",
       "author": "Auteur",
@@ -298,6 +299,13 @@
       "title": "Quitter sans enregistrer ?",
       "detail": "Tes derniers choix ne sont pas enregistrés sur ton compte.",
       "ok": "Quitter"
+    },
+    "gate": {
+      "signedOutTitle": "Connecte-toi pour tester « Créer ton pack »",
+      "signedOutText": "Tes créations sont enregistrées sur ton compte : connecte-toi pour composer ton premier pack.",
+      "signIn": "Se connecter",
+      "notAllowedTitle": "Ton compte n’a pas encore accès à « Créer ton pack »",
+      "notAllowedText": "L’accès est donné compte par compte pour le moment."
     },
     "ambiance": {
       "title": "Style de l’image",

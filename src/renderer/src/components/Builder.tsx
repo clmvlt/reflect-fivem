@@ -1,5 +1,5 @@
-// « Créer ton pack » (compte connecté avec le droit « Peut créer un pack » : sinon la page n'est pas proposée, voir
-// canUseBuilder) : le joueur compose son propre pack en choisissant chaque élément (route, végétation, sang...) parmi
+// « Créer ton pack » (compte connecté avec le droit « Peut créer un pack » : sinon la page invite à se connecter ou dit
+// que le compte n'y a pas accès, voir canUseBuilder) : le joueur compose son propre pack en choisissant chaque élément (route, végétation, sang...) parmi
 // ceux de tous les packs de la Marketplace, règle son ambiance (outils ReShade, QuantV, NVE, ENB : un choix rapide, ou
 // chaque outil réglé lui-même avec un style, voir BuilderAmbiance.tsx), enregistre ses créations sur son compte et les
 // installe comme n'importe quel pack de la bibliothèque. Assistant par étapes (les groupes du catalogue,
@@ -128,11 +128,41 @@ export function BuilderIcon({ size = 16 }: { size?: number }) {
   )
 }
 
-/** Sans compte ou sans le droit, rien : l'application ne propose pas la page et la quitte si le droit est retiré. */
-export function Builder({ request, onOpenLocal }: { request: BuilderRequest | null; onOpenLocal: (packId: string) => void }) {
+/**
+ * Page proposée à tous : sans compte, elle invite à se connecter pour tester ; sans le droit, elle dit que le compte n'y
+ * a pas accès (aucune requête /builder dans les deux cas).
+ */
+export function Builder({
+  request,
+  onOpenLocal,
+  onSignIn
+}: {
+  request: BuilderRequest | null
+  onOpenLocal: (packId: string) => void
+  onSignIn: () => void
+}) {
+  const { t } = useTranslation()
   const { account } = useStore()
-  if (!account || !canUseBuilder(account)) return null
-  return <BuilderPage key={account.id} account={account.id} request={request} onOpenLocal={onOpenLocal} />
+  // Compte en cours de lecture.
+  if (account === undefined) return null
+  if (account && canUseBuilder(account)) return <BuilderPage key={account.id} account={account.id} request={request} onOpenLocal={onOpenLocal} />
+  return (
+    <div className="page">
+      <header className="page-head">
+        <h1>{t('builder.title')}</h1>
+      </header>
+      <p className="builder-lead">{t('builder.home.intro')}</p>
+      {account ? (
+        <EmptyState icon="pack" title={t('builder.gate.notAllowedTitle')} text={t('builder.gate.notAllowedText')} />
+      ) : (
+        <EmptyState icon="pack" title={t('builder.gate.signedOutTitle')} text={t('builder.gate.signedOutText')}>
+          <button className="primary" onClick={onSignIn}>
+            {t('builder.gate.signIn')}
+          </button>
+        </EmptyState>
+      )}
+    </div>
+  )
 }
 
 /** Catalogue : copie déjà lue (ou celle du disque) tout de suite, puis revérifié auprès de l'API (304 : rien ne change). */

@@ -37,7 +37,7 @@ const SUB_NAV: { kind: MarketKind; label: 'packs' | 'mods' }[] = [
   { kind: 'mod', label: 'mods' }
 ]
 
-/** « Créer ton pack » en dernier (seulement pour les comptes qui ont le droit). */
+/** « Créer ton pack » en dernier, proposé à tous (sans compte ou sans le droit, sa page l'explique). */
 const NAV: Exclude<Page, 'instances'>[] = ['library', 'market', 'graphics', 'optimizations', 'cleanup', 'settings', 'builder']
 
 export function App() {
@@ -135,16 +135,10 @@ export function App() {
     if (page === 'account') setPage(signInFrom)
   }, [account, signInFrom, page])
 
-  // « Créer ton pack » : seulement avec un compte qui a le droit « Peut créer un pack ». Déconnexion ou droit retiré
-  // (compte relu après un refus de l'API) pendant que la page est ouverte : retour à la Marketplace. Le brouillon en
-  // cours reste gardé pour la prochaine ouverture.
+  // « Créer ton pack » : utilisable seulement avec un compte qui a le droit « Peut créer un pack ». Sans compte ou sans
+  // le droit (déconnexion ou droit retiré pendant que la page est ouverte compris), sa page invite à se connecter ou
+  // dit que le compte n'y a pas accès. Le brouillon en cours reste gardé pour la prochaine ouverture.
   const builderAllowed = canUseBuilder(account)
-  useEffect(() => {
-    if (page !== 'builder' || account === undefined || builderAllowed) return
-    setPage('market')
-    setBuilderRequest(null)
-    if (account) setMessage({ kind: 'info', text: t('builder.errors.notAllowed') })
-  }, [page, account, builderAllowed, setMessage, t])
 
   // Barre latérale affichée dès le premier rendu ; les pages attendent l'état de l'application.
   const detail = openPack ? overview?.library.find((p) => p.id === openPack) : null
@@ -238,7 +232,7 @@ export function App() {
           </span>
         </div>
         <nav>
-          {NAV.filter((id) => id !== 'builder' || builderAllowed).map((id) => {
+          {NAV.map((id) => {
             const catalogs = id === 'library' || id === 'market'
             const open = page === id && catalogs
             const selected = page === id || (id === 'settings' && page === 'instances')
@@ -348,12 +342,12 @@ export function App() {
                 onSignIn={signIn}
               />
             )}
-            {page === 'builder' && <Builder key={builderRequest?.at ?? 'page'} request={builderRequest} onOpenLocal={openLocal} />}
+            {page === 'builder' && <Builder key={builderRequest?.at ?? 'page'} request={builderRequest} onOpenLocal={openLocal} onSignIn={signIn} />}
             {page === 'graphics' && <Graphics />}
             {page === 'optimizations' && <Optimizations onOpenPage={go} />}
             {page === 'cleanup' && <Cleanup />}
             {page === 'discord' && <DiscordView />}
-            {page === 'account' && <AccountView onOpenAuthor={openAuthor} onBack={
+            {page === 'account' && <AccountView onOpenAuthor={openAuthor} backTo={signInFrom === 'builder' ? 'builder' : 'pack'} onBack={
                   signInFrom
                     ? () => {
                         setSignInFrom(null)

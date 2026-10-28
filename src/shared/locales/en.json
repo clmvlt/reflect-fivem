@@ -56,6 +56,7 @@
   },
   "accountView": {
     "backToPack": "‹ Back to pack",
+    "backToBuilder": "‹ Back to “Create your pack”",
     "badges": {
       "admin": "Administrator",
       "author": "Author",
@@ -298,6 +299,13 @@
       "title": "Leave without saving?",
       "detail": "Your latest choices aren’t saved to your account.",
       "ok": "Leave"
+    },
+    "gate": {
+      "signedOutTitle": "Sign in to try “Create your pack”",
+      "signedOutText": "Your creations are saved to your account: sign in to put together your first pack.",
+      "signIn": "Sign in",
+      "notAllowedTitle": "Your account doesn’t have access to “Create your pack” yet",
+      "notAllowedText": "Access is granted account by account for now."
     },
     "ambiance": {
       "title": "Image style",

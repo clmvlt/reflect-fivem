@@ -16,16 +16,24 @@ const LINKS_MAX = 8
 const SERVER_TAG_REFRESH = 60_000
 
 /** Compte reflect-fivem.com : connexion, puis profil public, mot de passe et déconnexion. */
-export function AccountView({ onOpenAuthor, onBack }: { onOpenAuthor: (slug: string) => void; onBack?: () => void }) {
+export function AccountView({
+  onOpenAuthor,
+  onBack,
+  backTo = 'pack'
+}: {
+  onOpenAuthor: (slug: string) => void
+  onBack?: () => void
+  backTo?: 'pack' | 'builder'
+}) {
   const { t } = useTranslation()
   const { account } = useStore()
   return (
     <div className="page">
-      {/* Connexion demandée depuis la fiche d'un pack : on peut y revenir sans se connecter. */}
+      {/* Connexion demandée depuis la fiche d'un pack ou « Créer ton pack » : on peut y revenir sans se connecter. */}
       {onBack && (
         <div className="back-row">
           <button className="link" onClick={onBack}>
-            {t('accountView.backToPack')}
+            {t(backTo === 'builder' ? 'accountView.backToBuilder' : 'accountView.backToPack')}
           </button>
         </div>
       )}

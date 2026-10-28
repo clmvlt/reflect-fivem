@@ -527,8 +527,8 @@ export const PACK_PURCHASE_REQUIRED = 'pack-purchase-required'
 
 /**
  * « Créer ton pack » est proposé : compte connecté qui a le droit « Peut créer un pack » (l'admin l'a toujours). Sans
- * compte ou sans ce droit (compte enregistré par une version qui ne le connaissait pas compris), la page est cachée et
- * aucune requête /builder n'est faite.
+ * compte ou sans ce droit (compte enregistré par une version qui ne le connaissait pas compris), la page invite à se
+ * connecter ou dit que le compte n'y a pas accès, et aucune requête /builder n'est faite.
  */
 export function canUseBuilder(me: Pick<AccountMe, 'admin' | 'canBuildPacks'> | null | undefined): boolean {
   return !!me && (me.canBuildPacks === true || me.admin === true)

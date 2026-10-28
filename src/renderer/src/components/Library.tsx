@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { MarketKind, MyDownload, PackManifest, RootId, TaskProgress } from '@shared/types'
+import type { DownloadItem, MarketKind, MyDownload, PackManifest, RootId, TaskProgress } from '@shared/types'
+import { canUseBuilder } from '@shared/api'
 import { useStore } from '../store'
 import { bytes, num } from '../lib/format'
 import { problemCount } from '@shared/insights'
 import { Cover, EmptyState, packMenuAction, packMeta, Progress, RenameInput } from './common'
+import { DownloadInline, useDownload } from './Downloads'
 import { ModLibrary, useModActions } from './Mods'
 import { useInstallTarget } from './InstallTarget'
 import { usePerformance } from './Performance'
@@ -168,6 +170,25 @@ export function Library({
   )
 }
 
+/**
+ * Nouvelle version d'un pack de la bibliothèque, téléchargée sans passer par la Marketplace : pack de la Marketplace, ou
+ * pack de « Créer ton pack » (reconstruit, pour qui peut créer un pack). `dl` : son téléchargement en cours ; `paused` :
+ * arrêté par une maintenance, repris tout seul à la fin ; `start` : null quand il n'y a rien à lancer.
+ */
+function usePackUpdate(pack: PackManifest, available: boolean): { dl: DownloadItem | null; paused: boolean; start: (() => void) | null } {
+  const { overview, account, run } = useStore()
+  const market = pack.marketplace
+  const built = pack.built
+  const dl = useDownload(market?.id ?? built?.buildId)
+  const paused = !!market && !!overview?.pausedDownloads.some((d) => d.id === market.id)
+  let start: (() => void) | null = null
+  if (available && !paused) {
+    if (market) start = () => void run(() => window.api.marketInstall(market.id))
+    else if (built && canUseBuilder(account)) start = () => void run(() => window.api.builderInstall(built.buildId))
+  }
+  return { dl, paused, start }
+}
+
 /** Pack installé dans le jeu, en grand au-dessus de la grille. */
 function ActiveHero({
   pack,
@@ -190,6 +211,7 @@ function ActiveHero({
   const { run, changeGame } = useStore()
   const [renaming, setRenaming] = useState(false)
   const mine = task && task.detail === pack.id ? task : null
+  const upd = usePackUpdate(pack, update)
   // Nom du fichier du preset, sans dossier ni extension.
   const preset = pack.reshadePreset ? (pack.reshadePreset.split(/[\\/]/).pop() ?? '').replace(/\.ini$/i, '') : null
 
@@ -218,15 +240,23 @@ function ActiveHero({
         <div className="meta">{[pack.author && t('packDetail.byAuthor', { author: pack.author }), packMeta(pack)].filter(Boolean).join(' · ')}</div>
         <div className="hero-facts">
           {preset && <span className="meta">{t('libraryView.hero.preset', { name: preset })}</span>}
-          {update && <span className="accent-text small">{t('libraryView.card.update')}</span>}
+          {update && <span className="accent-text small">{upd.paused ? t('maintenance.pausedShort') : t('libraryView.card.update')}</span>}
           {problems > 0 && <span className="warn-text small">{t('libraryView.card.problems', { count: problems, n: num(problems) })}</span>}
         </div>
         <div className="hero-actions">
           {mine ? (
             <Progress task={mine} />
+          ) : upd.dl ? (
+            <DownloadInline d={upd.dl} />
           ) : (
             <>
-              <button className="primary" onClick={onOpen}>
+              {/* Nouvelle version : téléchargée, puis réinstallée dans le jeu à la place de celle-ci. */}
+              {upd.start && (
+                <button className="primary" onClick={upd.start} title={t('libraryView.card.updateTitle')}>
+                  {t('libraryView.card.updateNow')}
+                </button>
+              )}
+              <button className={upd.start ? undefined : 'primary'} onClick={onOpen}>
                 {t('libraryView.hero.details')}
               </button>
               {pack.marketplace && <button onClick={() => onOpenMarket(pack.marketplace!.id, pack.kind)}>{t('libraryView.hero.marketPage')}</button>}
@@ -301,6 +331,7 @@ function PackCard({
   }
   const [renaming, setRenaming] = useState(false)
   const mine = task && task.detail === pack.id ? task : null
+  const upd = usePackUpdate(pack, update)
 
   const menu = async (e?: MouseEvent): Promise<void> => {
     e?.preventDefault()
@@ -322,6 +353,8 @@ function PackCard({
         <div className="card-foot" onClick={(e) => e.stopPropagation()}>
           {mine ? (
             <Progress task={mine} />
+          ) : upd.dl ? (
+            <DownloadInline d={upd.dl} />
           ) : (
             <>
               {active ? (
@@ -330,8 +363,15 @@ function PackCard({
                 <span className="state" title={t('libraryView.card.pendingTitle')}>
                   {t('libraryView.card.pending')}
                 </span>
+              ) : update && upd.start ? (
+                // Lien plutôt que bouton : il tient à côté d'« Installer » sur les cartes les plus étroites.
+                <button className="link small" onClick={upd.start} title={t('libraryView.card.updateTitle')}>
+                  {t('libraryView.card.updateNow')}
+                </button>
               ) : update ? (
-                <span className="accent-text small">{t('libraryView.card.update')}</span>
+                <span className="accent-text small" title={upd.paused ? t('maintenance.pausedShort') : undefined}>
+                  {t('libraryView.card.update')}
+                </span>
               ) : elsewhere.length > 0 ? (
                 <span className="state ellipsis" title={elsewhere.join(', ')}>
                   {t('instances.card.installedOn', { names: elsewhere.join(', ') })}

@@ -1352,7 +1352,9 @@
       "pendingTitle": "Installé dès la fermeture de FiveM",
       "problems_one": "{{n}} point à vérifier",
       "problems_other": "{{n}} points à vérifier",
-      "update": "Nouvelle version"
+      "update": "Nouvelle version",
+      "updateNow": "Mettre à jour",
+      "updateTitle": "Télécharger la nouvelle version, en gardant vos réglages"
     },
     "chooseFolder": "Choisir le dossier…",
     "empty": {

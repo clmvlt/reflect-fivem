@@ -1092,7 +1092,8 @@ input[type='checkbox'] {
   gap: 8px;
   margin-top: 16px;
 }
-.hero-actions .progress {
+.hero-actions .progress,
+.hero-actions .dl-inline {
   flex: 1;
   max-width: 320px;
 }

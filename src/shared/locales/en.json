@@ -1352,7 +1352,9 @@
       "pendingTitle": "Installed as soon as FiveM closes",
       "problems_one": "{{n}} issue to check",
       "problems_other": "{{n}} issues to check",
-      "update": "New version"
+      "update": "New version",
+      "updateNow": "Update",
+      "updateTitle": "Download the new version, keeping your settings"
     },
     "chooseFolder": "Choose folder…",
     "empty": {

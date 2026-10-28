@@ -88,6 +88,21 @@ export const GRAPHICS_SETTINGS: GraphicsSettingDef[] = [
   setting('VSync', 'vsync', 'display', 'choice', {
     options: [opt('0', 'offFeminine'), opt('1', 'onFeminine'), opt('2', 'half')]
   }),
+  // Mise à l'échelle de l'image (« Résolution de rendu » dans FiveM), de la plus basse à la plus haute.
+  setting('SamplingMode', 'renderScale', 'display', 'choice', {
+    options: [
+      raw('1', '1/2'),
+      raw('2', '2/3'),
+      raw('3', '3/4'),
+      raw('4', '5/6'),
+      opt('0', 'native'),
+      raw('5', '5/4'),
+      raw('6', '3/2'),
+      raw('7', '7/4'),
+      raw('8', '2/1'),
+      raw('9', '5/2')
+    ]
+  }),
 
   setting('TextureQuality', 'textures', 'quality', 'choice', { options: q3 }),
   setting('ShaderQuality', 'shaders', 'quality', 'choice', { options: q3 }),
@@ -119,6 +134,8 @@ export const GRAPHICS_SETTINGS: GraphicsSettingDef[] = [
 
   setting('LodScale', 'lodScale', 'distance', 'range', range(1)),
   setting('MaxLodScale', 'maxLodScale', 'distance', 'range', range(1)),
+  setting('PedLodBias', 'pedLodBias', 'distance', 'range', range(1)),
+  setting('VehicleLodBias', 'vehicleLodBias', 'distance', 'range', range(1)),
   setting('Shadow_Distance', 'shadowDistance', 'distance', 'range', range(2)),
   setting('CityDensity', 'cityDensity', 'distance', 'range', range(1)),
   setting('PedVarietyMultiplier', 'pedVariety', 'distance', 'range', range(1)),
@@ -128,6 +145,9 @@ export const GRAPHICS_SETTINGS: GraphicsSettingDef[] = [
   setting('MotionBlurStrength', 'motionBlur', 'effects', 'range', range(1)),
   setting('UltraShadows_Enabled', 'ultraShadows', 'effects', 'bool'),
   setting('Shadow_LongShadows', 'longShadows', 'effects', 'bool'),
+  setting('Shadow_ParticleShadows', 'particleShadows', 'effects', 'bool'),
+  setting('Lighting_FogVolumes', 'fogVolumes', 'effects', 'bool'),
+  setting('Reflection_MipBlur', 'reflectionBlur', 'effects', 'bool'),
   setting('HdStreamingInFlight', 'hdStreaming', 'effects', 'bool')
 ]
 

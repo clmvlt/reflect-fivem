@@ -44,7 +44,7 @@ import { msg, tm, type Msg } from '@shared/i18n'
 import { formatBytes, formatNumber, quote } from '@shared/intl'
 import { resolveInstallMap } from './analyzer'
 import { parseVersion, reshadeAckLine, versionAtLeast } from './binary'
-import { executePlan, type ExecProgress, type Op, type Plan, type PlanResult } from './executor'
+import { executePlan, opPaths, type ExecProgress, type Op, type Plan, type PlanResult } from './executor'
 import { executePlanElevated } from './elevation'
 import { collectForeign, managedKey, managedSet, scanForeign, type ForeignCollection } from './foreign'
 import {
@@ -65,7 +65,7 @@ import { samePath } from './games'
 import type { Library, StoredManifest } from './library'
 import type { SealedRef } from './sealed'
 import { JsonStore, pushHistory } from './stores'
-import { canWrite, dirSize, exists, freeSpace, newId, sameVolume } from '../util/fsx'
+import { canWrite, dirSize, exists, freeSpace, isInside, newId, sameVolume } from '../util/fsx'
 import { runningGameProcesses } from '../util/win'
 import { log } from '../util/log'
 
@@ -191,7 +191,9 @@ export class Installer {
   /** Exécute un plan, avec les droits administrateur si l'une des racines n'est pas modifiable (aussi pour le changement d'instance). */
   async runPlan(plan: Plan, roots: string[], report: Report): Promise<PlanResult> {
     let elevate = false
-    for (const r of new Set(roots.filter(Boolean))) if (!(await canWrite(r))) elevate = true
+    // Seuls les dossiers touchés par le plan comptent : un pack sans fichier de GTA V ne demande rien pour son dossier.
+    const touched = new Set(roots.filter((r) => r && plan.ops.some((op) => opPaths(op).some((p) => isInside(r, p)))))
+    for (const r of touched) if (!(await canWrite(r))) elevate = true
     // Test : force le passage par le processus séparé (avec PM_NO_UAC, sans fenêtre UAC).
     if (process.env.PM_FORCE_ELEVATION === '1') elevate = true
     const onP = (p: ExecProgress): void => report(plan.title, p.totalBytes ? p.bytes : p.done, p.totalBytes || p.total, p.current)

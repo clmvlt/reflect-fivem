@@ -65,6 +65,12 @@ export interface ExecProgress {
 }
 
 const opBytes = (op: Op): number => ('size' in op ? op.size : 0)
+
+/** Chemins lus ou écrits par une opération. */
+export function opPaths(op: Op): string[] {
+  const { path: p, from, to } = op as { path?: string; from?: string; to?: string }
+  return [p, from, to].filter((x): x is string => !!x)
+}
 const opLabel = (op: Op): string => {
   switch (op.t) {
     case 'place':

@@ -1,10 +1,10 @@
 // Exécution d'un « plan » d'opérations fichiers.
 // Le même code tourne dans l'application ou dans un processus élevé (UAC) quand un dossier est protégé.
 
-import { constants as fsc, promises as fs } from 'node:fs'
+import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { t } from 'i18next'
-import { moveDir, moveFile } from '../util/fsx'
+import { copyFileTracked, moveDir, moveFile } from '../util/fsx'
 import { unsealToFile } from './sealed'
 
 export type Op =
@@ -121,7 +121,7 @@ async function pathExists(p: string): Promise<boolean> {
   }
 }
 
-async function runOp(op: Op): Promise<Omit<OpResult, 'i'>> {
+async function runOp(op: Op, onBytes: (n: number) => void): Promise<Omit<OpResult, 'i'>> {
   switch (op.t) {
     case 'mkdir': {
       if (await pathExists(op.path)) return { ok: true, created: false }
@@ -140,12 +140,12 @@ async function runOp(op: Op): Promise<Omit<OpResult, 'i'>> {
           // Volume différent, FAT32, droits... : copie classique.
         }
       }
-      await fs.copyFile(op.from, op.to, fsc.COPYFILE_EXCL)
+      await copyFileTracked(op.from, op.to, onBytes)
       return { ok: true, linked: false, ...(await statOf(op.to)) }
     }
     case 'unseal': {
       await fs.mkdir(path.dirname(op.to), { recursive: true })
-      await unsealToFile(op.from, { offset: op.offset, length: op.length, key: op.key }, op.to)
+      await unsealToFile(op.from, { offset: op.offset, length: op.length, key: op.key }, op.to, onBytes)
       return { ok: true, linked: false, ...(await statOf(op.to)) }
     }
     case 'remove': {
@@ -261,19 +261,25 @@ export async function executePlan(plan: Plan, onProgress: (p: ExecProgress) => v
   const total = plan.ops.length
   const totalBytes = plan.ops.reduce((s, op) => s + opBytes(op), 0)
   let bytes = 0
+  // Octets déjà écrits du fichier en cours : la barre avance pendant la copie d'un gros fichier.
+  let partial = 0
   let last = 0
   const emit = (done: number, current: string, force = false): void => {
     const now = Date.now()
     if (!force && now - last < 100) return
     last = now
-    onProgress({ done, total, bytes, totalBytes, current })
+    onProgress({ done, total, bytes: bytes + partial, totalBytes, current })
   }
 
   for (let i = 0; i < plan.ops.length; i++) {
     const op = plan.ops[i]
-    emit(i, opLabel(op))
+    const label = opLabel(op)
+    emit(i, label)
     try {
-      const r = await runOp(op)
+      const r = await runOp(op, (n) => {
+        partial += n
+        emit(i, label)
+      })
       results.push({ i, ...r })
     } catch (err) {
       const error = errMsg(err)
@@ -287,6 +293,7 @@ export async function executePlan(plan: Plan, onProgress: (p: ExecProgress) => v
         return { ok: false, results, error, rolledBack: true }
       }
     }
+    partial = 0
     bytes += opBytes(op)
   }
   emit(total, '', true)

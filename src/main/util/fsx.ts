@@ -1,6 +1,7 @@
-import { promises as fs, constants as fsc } from 'node:fs'
+import { createReadStream, promises as fs, constants as fsc } from 'node:fs'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
+import { pipeline } from 'node:stream/promises'
 import { t } from 'i18next'
 import { formatBytes as formatSize } from '@shared/intl'
 
@@ -93,6 +94,25 @@ export async function canWrite(dir: string): Promise<boolean> {
     return true
   } catch {
     return false
+  }
+}
+
+/**
+ * Copie un fichier (échoue si la destination existe) en signalant les octets copiés, sans attendre la fin d'un gros
+ * fichier. Une copie incomplète est supprimée.
+ */
+export async function copyFileTracked(from: string, to: string, onBytes: (n: number) => void): Promise<void> {
+  const st = await fs.stat(from)
+  const out = await fs.open(to, 'wx')
+  try {
+    const source = createReadStream(from, { highWaterMark: 1 << 20 })
+    source.on('data', (chunk) => onBytes(chunk.length))
+    await pipeline(source, out.createWriteStream())
+    await fs.utimes(to, st.atime, st.mtime)
+  } catch (err) {
+    await out.close().catch(() => undefined)
+    await fs.unlink(to).catch(() => undefined)
+    throw err
   }
 }
 

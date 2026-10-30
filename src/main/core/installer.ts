@@ -339,7 +339,8 @@ export class Installer {
 
   /** Bascule vers un pack, ou vers le jeu d'origine (packId null), en une seule opération atomique. */
   private async switchTo(packId: string | null, report: Report): Promise<SwitchResult> {
-    report(t('installer.phase.preparing'), 0, 1)
+    // Durée inconnue : pas de pourcentage, qui resterait à 0 %.
+    report(t('installer.phase.preparing'), 0, 0)
     const lib = this.ctx.library()
     const games = await this.ctx.detectGames()
     const manifest = packId ? await lib.get(packId) : null

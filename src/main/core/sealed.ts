@@ -140,11 +140,17 @@ export async function unsealToBuffer(file: string, ref: SealedRef, limit?: numbe
   return limit === undefined ? all : all.subarray(0, limit)
 }
 
-/** Déchiffre un flux dans un nouveau fichier (échoue s'il existe déjà) ; un fichier incomplet est supprimé. */
-export async function unsealToFile(file: string, ref: SealedRef, to: string): Promise<void> {
+/**
+ * Déchiffre un flux dans un nouveau fichier (échoue s'il existe déjà) en signalant les octets écrits. Un fichier
+ * incomplet est supprimé.
+ */
+export async function unsealToFile(file: string, ref: SealedRef, to: string, onBytes?: (n: number) => void): Promise<void> {
   const out = await fs.open(to, 'wx')
   try {
-    for await (const chunk of unsealChunks(file, ref)) await out.write(chunk)
+    for await (const chunk of unsealChunks(file, ref)) {
+      await out.write(chunk)
+      onBytes?.(chunk.length)
+    }
     await out.close()
   } catch (err) {
     await out.close().catch(() => undefined)

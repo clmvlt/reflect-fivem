@@ -3,14 +3,14 @@ import path from 'node:path'
 import { t } from 'i18next'
 
 /** Exécute un script PowerShell (sortie forcée en UTF-8 pour les chemins accentués). */
-export function runPowerShell(script: string, timeoutMs = 20_000): Promise<string> {
+export function runPowerShell(script: string, timeoutMs = 20_000, signal?: AbortSignal): Promise<string> {
   const full = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n$ErrorActionPreference = 'SilentlyContinue'\n${script}`
   const encoded = Buffer.from(full, 'utf16le').toString('base64')
   return new Promise((resolve, reject) => {
     execFile(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
-      { windowsHide: true, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8' },
+      { windowsHide: true, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8', signal },
       (err, stdout) => (err && !stdout ? reject(err) : resolve(stdout))
     )
   })

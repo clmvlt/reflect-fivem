@@ -197,7 +197,11 @@ export class Installer {
     // Test : force le passage par le processus séparé (avec PM_NO_UAC, sans fenêtre UAC).
     if (process.env.PM_FORCE_ELEVATION === '1') elevate = true
     const onP = (p: ExecProgress): void => report(plan.title, p.totalBytes ? p.bytes : p.done, p.totalBytes || p.total, p.current)
-    if (elevate) log.info(`Plan « ${plan.title} » exécuté avec les droits administrateur`)
+    log.info(`Plan « ${plan.title} » démarré (${plan.ops.length} opérations)`)
+    if (elevate) {
+      log.info(`Plan « ${plan.title} » exécuté avec les droits administrateur`)
+      report(t('installer.phase.elevation'), 0, 0)
+    }
     const res = elevate ? await executePlanElevated(plan, this.ctx.jobsDir, onP) : await executePlan(plan, onP)
     log[res.ok ? 'info' : 'warn'](`Plan « ${plan.title} » : ${res.ok ? 'OK' : res.error} (${plan.ops.length} opérations)`)
     return res

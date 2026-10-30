@@ -20,6 +20,9 @@ function psQuote(s: string): string {
   return `'${s.replace(/'/g, "''")}'`
 }
 
+/** Sans réponse à la demande UAC (fenêtre restée derrière, souvent seulement un bouclier dans la barre des tâches) : abandon. */
+const ELEVATION_TIMEOUT_MS = 5 * 60 * 1000
+
 export async function executePlanElevated(plan: Plan, jobsDir: string, onProgress: (p: ExecProgress) => void): Promise<PlanResult> {
   await fs.mkdir(jobsDir, { recursive: true })
   const planFile = path.join(jobsDir, `${plan.id}.plan.json`)
@@ -36,38 +39,60 @@ export async function executePlanElevated(plan: Plan, jobsDir: string, onProgres
   args.push(`${EXEC_FLAG}${planFile}`, `${HASH_FLAG}${sha}`, `${LOCALE_FLAG}${currentLocale()}`)
   const argList = args.map((a) => psQuote(`"${a}"`)).join(',')
 
-  let stop = false
-  const poll = (async () => {
-    while (!stop) {
+  const readResult = async (): Promise<PlanResult | null> => {
+    try {
+      return JSON.parse(await fs.readFile(resultFile, 'utf8')) as PlanResult
+    } catch {
+      return null
+    }
+  }
+
+  // PM_NO_UAC=1 (tests uniquement) : même mécanisme inter-processus, sans demande d'élévation.
+  const verb = process.env.PM_NO_UAC === '1' ? '' : '-Verb RunAs'
+  const stopWaiting = new AbortController()
+  let exited = false
+  const launch = runPowerShell(
+    // -ErrorAction Stop : sans lui, un refus de la demande UAC n'arrive pas jusqu'au catch.
+    `try { $p = Start-Process -FilePath ${psQuote(exe)} -ArgumentList ${argList} ${verb} -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop; Write-Output ("EXIT:" + $p.ExitCode) } catch { Write-Output ("DENIED:" + $_.Exception.Message) }`,
+    6 * 60 * 60 * 1000,
+    stopWaiting.signal
+  )
+    .catch(() => '')
+    .finally(() => {
+      exited = true
+    })
+
+  /** Suit le processus administrateur ; renvoie le résultat sans attendre la fin de PowerShell quand il est connu. */
+  const watch = async (): Promise<PlanResult | null> => {
+    const launchedAt = Date.now()
+    let started = false
+    while (!exited) {
       await new Promise((r) => setTimeout(r, 250))
       try {
         const raw = await fs.readFile(progressFile, 'utf8')
+        started = true
         const last = raw.trim().split('\n').pop()
         if (last) onProgress(JSON.parse(last) as ExecProgress)
       } catch {
         /* pas encore de progression */
       }
+      const result = await readResult()
+      if (result) return result
+      if (!started && Date.now() - launchedAt > ELEVATION_TIMEOUT_MS) return { ok: false, results: [], error: t('executor.errors.elevationTimeout'), rolledBack: true }
     }
-  })()
+    return null
+  }
 
   try {
-    // PM_NO_UAC=1 (tests uniquement) : même mécanisme inter-processus, sans demande d'élévation.
-    const verb = process.env.PM_NO_UAC === '1' ? '' : '-Verb RunAs'
-    const out = await runPowerShell(
-      `try { $p = Start-Process -FilePath ${psQuote(exe)} -ArgumentList ${argList} ${verb} -Wait -PassThru -WindowStyle Hidden; Write-Output ("EXIT:" + $p.ExitCode) } catch { Write-Output ("DENIED:" + $_.Exception.Message) }`,
-      6 * 60 * 60 * 1000
-    )
-    if (/DENIED:/.test(out)) {
+    const known = await watch()
+    if (known) return known
+    if (/DENIED:/.test(await launch)) {
       return { ok: false, results: [], error: t('executor.errors.elevationDenied'), rolledBack: true }
     }
-    try {
-      return JSON.parse(await fs.readFile(resultFile, 'utf8')) as PlanResult
-    } catch {
-      return { ok: false, results: [], error: t('executor.errors.noResult'), rolledBack: false }
-    }
+    return (await readResult()) ?? { ok: false, results: [], error: t('executor.errors.noResult'), rolledBack: false }
   } finally {
-    stop = true
-    await poll
+    stopWaiting.abort()
+    await launch
     await fs.rm(planFile, { force: true }).catch(() => undefined)
     await fs.rm(progressFile, { force: true }).catch(() => undefined)
     await fs.rm(resultFile, { force: true }).catch(() => undefined)
@@ -124,6 +149,8 @@ export async function runElevatedWorker(argv: string[]): Promise<number> {
   const expected = hashArg.slice(HASH_FLAG.length).replace(/^"|"$/g, '')
   const resultFile = `${planFile}.result.json`
   const progressFile = `${planFile}.progress`
+  // Demande UAC acceptée alors que l'application a déjà abandonné ce plan : plus rien à faire.
+  if (!(await fs.access(planFile).then(() => true, () => false))) return 4
   try {
     const body = await fs.readFile(planFile, 'utf8')
     if (createHash('sha256').update(body).digest('hex') !== expected) {

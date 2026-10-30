@@ -735,9 +735,19 @@ input[type='checkbox'] {
 .progress {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   flex: 1;
   min-width: 120px;
+}
+.progress-foot {
+  display: flex;
+  flex: 0 0 100%;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-2);
 }
 .track {
   position: relative;

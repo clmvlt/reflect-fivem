@@ -792,6 +792,7 @@
       "accessDenied": "Accès refusé : {{path}}",
       "busy": "Un fichier est utilisé par un autre programme. Fermez FiveM et réessayez.",
       "elevationDenied": "Autorisation administrateur refusée. Rien n'a été modifié.",
+      "elevationTimeout": "Pas de réponse à la demande d'autorisation administrateur de Windows. Rien n'a été modifié : réessayez et acceptez la fenêtre (bouclier orange dans la barre des tâches).",
       "exists": "Un fichier existe déjà : {{path}}",
       "failed_one": "{{count}} opération(s) en échec : {{error}}",
       "failed_other": "{{count}} opération(s) en échec : {{error}}",
@@ -1153,6 +1154,7 @@
       "previousInstall": "Ancienne installation"
     },
     "phase": {
+      "elevation": "Windows demande l'autorisation administrateur : acceptez la fenêtre. Si elle n'apparaît pas, cliquez sur le bouclier orange dans la barre des tâches.",
       "preparing": "Préparation"
     },
     "plan": {

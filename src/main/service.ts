@@ -794,10 +794,12 @@ export class Service {
     this.running = { id, abort }
     const base: TaskProgress = { taskId: id, kind, title, phase: '', current: 0, total: 0, done: false, detail: target ?? undefined }
     let last = 0
+    let lastPhase = ''
     const report: Report = (phase, current, total) => {
       const now = Date.now()
-      if (now - last < 80 && current < total) return
+      if (now - last < 80 && current < total && phase === lastPhase) return
       last = now
+      lastPhase = phase
       this.emit(IPC.task, { ...base, phase, current, total } satisfies TaskProgress)
     }
     this.emit(IPC.task, base)

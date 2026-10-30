@@ -792,6 +792,7 @@
       "accessDenied": "Access denied: {{path}}",
       "busy": "A file is in use by another program. Close FiveM and try again.",
       "elevationDenied": "Administrator permission denied. Nothing was changed.",
+      "elevationTimeout": "No answer to the Windows administrator prompt. Nothing was changed: try again and accept the window (orange shield in the taskbar).",
       "exists": "A file already exists: {{path}}",
       "failed_one": "{{count}} operation failed: {{error}}",
       "failed_other": "{{count}} operations failed: {{error}}",
@@ -1153,6 +1154,7 @@
       "previousInstall": "Previous installation"
     },
     "phase": {
+      "elevation": "Windows is asking for administrator permission: accept the window. If it doesn't appear, click the orange shield in the taskbar.",
       "preparing": "Preparing"
     },
     "plan": {

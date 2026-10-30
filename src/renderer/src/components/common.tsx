@@ -17,6 +17,8 @@ export function Progress({ task }: { task: TaskProgress }) {
   const pct = task.total > 0 ? Math.min(100, Math.round((task.current / task.total) * 100)) : null
   // Mods : premier mot du titre, traduit par le processus principal (« Activation », « Désactivation »...).
   const label = task.kind === 'mod' ? task.title.split(' ')[0] : isLabeled(task.kind) ? t(`progress.task.${task.kind}`) : null
+  // Durée inconnue (préparation, demande d'autorisation de Windows) : la barre ne dit rien, le texte dit ce qui se passe.
+  const note = task.total === 0 ? task.phase : ''
   return (
     <div className="progress" title={task.phase}>
       {label && <span className="progress-label">{label}</span>}
@@ -24,6 +26,7 @@ export function Progress({ task }: { task: TaskProgress }) {
         <div className={`fill ${pct === null ? 'is-waiting' : ''}`} style={pct === null ? undefined : { width: `${pct}%` }} />
       </div>
       <span className="pct">{pct === null ? '' : t('progress.percent', { value: num(pct) })}</span>
+      {note && <div className="progress-foot">{note}</div>}
     </div>
   )
 }

@@ -530,6 +530,76 @@ describe('exécuteur de plans', () => {
     expect(await read(path.join(dir, 'dst', 'existant.txt'))).toBe('garde-moi')
     await fs.rm(dir, { recursive: true, force: true })
   })
+
+  it('annulé en cours de plan : ce qui a été fait est défait', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-exec-'))
+    await write(path.join(dir, 'a.txt'), 'a')
+    await write(path.join(dir, 'dst', 'existant.txt'), 'garde-moi')
+    const abort = new AbortController()
+    const res = await executePlan(
+      {
+        id: 't',
+        title: 't',
+        mode: 'atomic',
+        ops: [
+          { t: 'stash', path: path.join(dir, 'dst', 'existant.txt'), to: path.join(dir, 'bk', 'existant.txt'), size: 0 },
+          { t: 'place', from: path.join(dir, 'a.txt'), to: path.join(dir, 'dst', 'a.txt'), link: false, size: 1 }
+        ]
+      },
+      () => abort.abort(),
+      abort.signal
+    )
+    expect(res).toMatchObject({ ok: false, rolledBack: true, cancelled: true })
+    expect(existsSync(path.join(dir, 'dst', 'a.txt'))).toBe(false)
+    expect(await read(path.join(dir, 'dst', 'existant.txt'))).toBe('garde-moi')
+    await fs.rm(dir, { recursive: true, force: true })
+  })
+
+  it('copie : avance pendant un gros fichier, annulable, sans laisser de fichier incomplet', async () => {
+    const { copyFileTracked } = await import('../src/main/util/fsx')
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-exec-'))
+    const size = 8 * 1024 * 1024
+    await fs.writeFile(path.join(dir, 'gros.bin'), Buffer.alloc(size, 1))
+    const abort = new AbortController()
+    let copied = 0
+    await expect(
+      copyFileTracked(
+        path.join(dir, 'gros.bin'),
+        path.join(dir, 'annule.bin'),
+        (n) => {
+          copied += n
+          abort.abort()
+        },
+        abort.signal
+      )
+    ).rejects.toThrow()
+    expect(copied).toBeGreaterThan(0)
+    expect(copied).toBeLessThan(size)
+    expect(existsSync(path.join(dir, 'annule.bin'))).toBe(false)
+    copied = 0
+    await copyFileTracked(path.join(dir, 'gros.bin'), path.join(dir, 'copie.bin'), (n) => (copied += n))
+    expect(copied).toBe(size)
+    const [a, b] = await Promise.all([fs.stat(path.join(dir, 'gros.bin')), fs.stat(path.join(dir, 'copie.bin'))])
+    expect(b.size).toBe(size)
+    expect(Math.abs(a.mtimeMs - b.mtimeMs)).toBeLessThan(2)
+    await fs.rm(dir, { recursive: true, force: true })
+  })
+
+  it('annulé avant de commencer : rien ne bouge ; copie intacte sinon', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-exec-'))
+    await write(path.join(dir, 'a.txt'), 'a')
+    const plan = (to: string) => ({ id: 't', title: 't', mode: 'atomic' as const, ops: [{ t: 'place' as const, from: path.join(dir, 'a.txt'), to: path.join(dir, to), link: false, size: 1 }] })
+    const res = await executePlan(plan('annule.txt'), () => undefined, AbortSignal.abort())
+    expect(res).toMatchObject({ ok: false, cancelled: true })
+    expect(existsSync(path.join(dir, 'annule.txt'))).toBe(false)
+    const ok = await executePlan(plan('copie.txt'), () => undefined, new AbortController().signal)
+    expect(ok.ok).toBe(true)
+    expect(await read(path.join(dir, 'copie.txt'))).toBe('a')
+    const again = await executePlan(plan('copie.txt'), () => undefined)
+    expect(again.ok).toBe(false)
+    expect(await read(path.join(dir, 'copie.txt'))).toBe('a')
+    await fs.rm(dir, { recursive: true, force: true })
+  })
 })
 
 describe('CitizenFX.ini : acceptation ReShade 5+', () => {
@@ -559,6 +629,40 @@ describe('processus administrateur (UAC)', () => {
     await fs.writeFile(planFile, body.replace('dst.txt', 'pirate.txt'))
     expect(await runElevatedWorker([`${EXEC_FLAG}${planFile}`, `${HASH_FLAG}${sha}`])).toBe(3)
     expect(existsSync(path.join(dir, 'out', 'pirate.txt'))).toBe(false)
+    await fs.rm(dir, { recursive: true, force: true })
+  })
+
+  it("s'arrête si l'application a demandé l'annulation, ou a abandonné le plan", async () => {
+    const { runElevatedWorker, EXEC_FLAG, HASH_FLAG } = await import('../src/main/core/elevation')
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-elev-'))
+    await write(path.join(dir, 'src.txt'), 'contenu')
+    const planFile = path.join(dir, 'job.plan.json')
+    const body = JSON.stringify({ id: 'j', title: 'j', mode: 'atomic', ops: [{ t: 'place', from: path.join(dir, 'src.txt'), to: path.join(dir, 'dst.txt'), link: false, size: 7 }] })
+    await fs.writeFile(planFile, body)
+    await fs.writeFile(`${planFile}.cancel`, '')
+    const sha = createHash('sha256').update(body).digest('hex')
+    expect(await runElevatedWorker([`${EXEC_FLAG}${planFile}`, `${HASH_FLAG}${sha}`])).toBe(1)
+    expect(JSON.parse(await read(`${planFile}.result.json`)).cancelled).toBe(true)
+    expect(existsSync(path.join(dir, 'dst.txt'))).toBe(false)
+    await fs.rm(planFile)
+    await fs.rm(`${planFile}.result.json`)
+    expect(await runElevatedWorker([`${EXEC_FLAG}${planFile}`, `${HASH_FLAG}${sha}`])).toBe(4)
+    expect(existsSync(`${planFile}.result.json`)).toBe(false)
+    await fs.rm(dir, { recursive: true, force: true })
+  })
+
+  it("ne demande les droits que pour un dossier touché par le plan", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-elev-'))
+    await write(path.join(dir, 'libre', 'a.txt'), 'a')
+    // Racine impossible à écrire (son parent est un fichier) : un plan qui n'y touche pas passe sans élévation.
+    const blocked = path.join(dir, 'libre', 'a.txt', 'gta')
+    const installer = new Installer({} as never)
+    const plan = { id: 'p', title: 'p', mode: 'atomic' as const, ops: [{ t: 'mkdir' as const, path: path.join(dir, 'libre', 'sous') }] }
+    const phases: string[] = []
+    const res = await installer.runPlan(plan, [path.join(dir, 'libre'), blocked], (phase) => phases.push(phase))
+    expect(res.ok).toBe(true)
+    expect(phases.filter((p) => p.includes('autorisation'))).toEqual([])
+    expect(existsSync(path.join(dir, 'libre', 'sous'))).toBe(true)
     await fs.rm(dir, { recursive: true, force: true })
   })
 })

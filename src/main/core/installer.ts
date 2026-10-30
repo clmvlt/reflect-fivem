@@ -44,7 +44,7 @@ import { msg, tm, type Msg } from '@shared/i18n'
 import { formatBytes, formatNumber, quote } from '@shared/intl'
 import { resolveInstallMap } from './analyzer'
 import { parseVersion, reshadeAckLine, versionAtLeast } from './binary'
-import { executePlan, opPaths, type ExecProgress, type Op, type Plan, type PlanResult } from './executor'
+import { abortable, CancelledError, executePlan, opPaths, type ExecProgress, type Op, type Plan, type PlanResult } from './executor'
 import { executePlanElevated } from './elevation'
 import { collectForeign, managedKey, managedSet, scanForeign, type ForeignCollection } from './foreign'
 import {
@@ -189,7 +189,7 @@ export class Installer {
   }
 
   /** Exécute un plan, avec les droits administrateur si l'une des racines n'est pas modifiable (aussi pour le changement d'instance). */
-  async runPlan(plan: Plan, roots: string[], report: Report): Promise<PlanResult> {
+  async runPlan(plan: Plan, roots: string[], report: Report, signal?: AbortSignal): Promise<PlanResult> {
     let elevate = false
     // Seuls les dossiers touchés par le plan comptent : un pack sans fichier de GTA V ne demande rien pour son dossier.
     const touched = new Set(roots.filter((r) => r && plan.ops.some((op) => opPaths(op).some((p) => isInside(r, p)))))
@@ -202,7 +202,7 @@ export class Installer {
       log.info(`Plan « ${plan.title} » exécuté avec les droits administrateur`)
       report(t('installer.phase.elevation'), 0, 0)
     }
-    const res = elevate ? await executePlanElevated(plan, this.ctx.jobsDir, onP) : await executePlan(plan, onP)
+    const res = elevate ? await executePlanElevated(plan, this.ctx.jobsDir, onP, signal) : await executePlan(plan, onP, signal)
     log[res.ok ? 'info' : 'warn'](`Plan « ${plan.title} » : ${res.ok ? 'OK' : res.error} (${plan.ops.length} opérations)`)
     return res
   }
@@ -322,8 +322,9 @@ export class Installer {
   // -------------------------------------------------------------------------
   // Application / bascule
 
-  async apply(packId: string, report: Report): Promise<SwitchResult> {
-    return this.switchTo(packId, report)
+  /** {@link signal} annule l'installation : rien n'est changé, ou tout est remis en place (CancelledError). */
+  async apply(packId: string, report: Report, signal?: AbortSignal): Promise<SwitchResult> {
+    return this.switchTo(packId, report, signal)
   }
 
   /**
@@ -342,14 +343,14 @@ export class Installer {
   }
 
   /** Bascule vers un pack, ou vers le jeu d'origine (packId null), en une seule opération atomique. */
-  private async switchTo(packId: string | null, report: Report): Promise<SwitchResult> {
+  private async switchTo(packId: string | null, report: Report, signal?: AbortSignal): Promise<SwitchResult> {
     // Durée inconnue : pas de pourcentage, qui resterait à 0 %.
     report(t('installer.phase.preparing'), 0, 0)
     const lib = this.ctx.library()
-    const games = await this.ctx.detectGames()
+    const games = await abortable(this.ctx.detectGames(), signal)
     const manifest = packId ? await lib.get(packId) : null
     const active = this.state.active
-    const content = manifest ? await lib.content(manifest) : null
+    const content = manifest ? await abortable(lib.content(manifest), signal) : null
     let items = manifest && content ? await this.installItems(manifest, content) : []
     const blockers = manifest ? await this.blockers(items, games) : games.runningProcesses.length ? [t('installer.errors.gameRunning')] : []
     if (blockers.length) throw new Error(blockers[0])
@@ -480,9 +481,9 @@ export class Installer {
 
     // 2) Mods installés à la main et fichiers qui seraient écrasés : rangés dans « Ancienne installation ». Fichiers du
     // jeu : gardés dans .fpm-originaux, remis en place au retrait du pack.
-    const known = await this.knownMods(games)
+    const known = await abortable(this.knownMods(games), signal)
     const managed = managedSet(active, known)
-    const collection = await collectForeign(games, active, undefined, known)
+    const collection = await abortable(collectForeign(games, active, undefined, known), signal)
     const overwritten: { root: RootId; rel: string; size: number }[] = []
     const replaced: Destination[] = []
     for (const it of items) {
@@ -529,9 +530,11 @@ export class Installer {
     for (const t of trashDirs) ops.push({ t: 'rmTree', path: t, quiet: true })
 
     const plan: Plan = { id, title: manifest ? t('installer.plan.install', { name: manifest.name }) : t('installer.plan.clean'), mode: 'atomic', ops }
-    const res = await this.runPlan(plan, [...Object.values(roots), ...Object.values(active?.roots ?? {})], report)
+    if (signal?.aborted) throw new CancelledError()
+    const res = await this.runPlan(plan, [...Object.values(roots), ...Object.values(active?.roots ?? {})], report, signal)
     if (!res.ok) {
       await fs.rm(lib.packDir(capId), { recursive: true, force: true }).catch(() => undefined)
+      if (res.cancelled) throw new CancelledError()
       await this.setState(pushHistory(this.state, { action: manifest ? 'apply' : 'clean', packName: manifest?.name, ok: false, ...failureSummary(res.error) }))
       throw new Error(planError(res, t('installer.errors.installFailed')))
     }

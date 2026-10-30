@@ -7,6 +7,24 @@ import { t } from 'i18next'
 import { copyFileTracked, moveDir, moveFile } from '../util/fsx'
 import { unsealToFile } from './sealed'
 
+/** Opération annulée à la demande. */
+export class CancelledError extends Error {
+  constructor() {
+    super(t('executor.cancelled'))
+  }
+}
+
+/** Attend {@link p}, ou rejette dès l'annulation : pour une lecture sans effet, qu'il n'y a pas besoin d'attendre. */
+export function abortable<T>(p: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return p
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(new CancelledError())
+    p.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort))
+    if (signal.aborted) onAbort()
+    else signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
 export type Op =
   /** Crée un dossier s'il n'existe pas (le résultat indique s'il a été créé). */
   | { t: 'mkdir'; path: string }
@@ -54,6 +72,8 @@ export interface PlanResult {
   results: OpResult[]
   error?: string
   rolledBack: boolean
+  /** Annulé à la demande (rolledBack : tout a été remis en place). */
+  cancelled?: boolean
 }
 
 export interface ExecProgress {
@@ -71,6 +91,7 @@ export function opPaths(op: Op): string[] {
   const { path: p, from, to } = op as { path?: string; from?: string; to?: string }
   return [p, from, to].filter((x): x is string => !!x)
 }
+
 const opLabel = (op: Op): string => {
   switch (op.t) {
     case 'place':
@@ -121,7 +142,7 @@ async function pathExists(p: string): Promise<boolean> {
   }
 }
 
-async function runOp(op: Op, onBytes: (n: number) => void): Promise<Omit<OpResult, 'i'>> {
+async function runOp(op: Op, onBytes: (n: number) => void, signal?: AbortSignal): Promise<Omit<OpResult, 'i'>> {
   switch (op.t) {
     case 'mkdir': {
       if (await pathExists(op.path)) return { ok: true, created: false }
@@ -140,12 +161,12 @@ async function runOp(op: Op, onBytes: (n: number) => void): Promise<Omit<OpResul
           // Volume différent, FAT32, droits... : copie classique.
         }
       }
-      await copyFileTracked(op.from, op.to, onBytes)
+      await copyFileTracked(op.from, op.to, onBytes, signal)
       return { ok: true, linked: false, ...(await statOf(op.to)) }
     }
     case 'unseal': {
       await fs.mkdir(path.dirname(op.to), { recursive: true })
-      await unsealToFile(op.from, { offset: op.offset, length: op.length, key: op.key }, op.to, onBytes)
+      await unsealToFile(op.from, { offset: op.offset, length: op.length, key: op.key }, op.to, onBytes, signal)
       return { ok: true, linked: false, ...(await statOf(op.to)) }
     }
     case 'remove': {
@@ -256,10 +277,12 @@ async function removeEmptyTree(dir: string): Promise<boolean> {
   return empty
 }
 
-export async function executePlan(plan: Plan, onProgress: (p: ExecProgress) => void): Promise<PlanResult> {
+export async function executePlan(plan: Plan, onProgress: (p: ExecProgress) => void, signal?: AbortSignal): Promise<PlanResult> {
   const results: OpResult[] = []
   const total = plan.ops.length
   const totalBytes = plan.ops.reduce((s, op) => s + opBytes(op), 0)
+  // Seul un plan atomique sait se défaire : les autres vont au bout.
+  const stop = plan.mode === 'atomic' ? signal : undefined
   let bytes = 0
   // Octets déjà écrits du fichier en cours : la barre avance pendant la copie d'un gros fichier.
   let partial = 0
@@ -270,28 +293,35 @@ export async function executePlan(plan: Plan, onProgress: (p: ExecProgress) => v
     last = now
     onProgress({ done, total, bytes: bytes + partial, totalBytes, current })
   }
+  const rollback = async (i: number, error: string, cancelled: boolean): Promise<PlanResult> => {
+    results.push({ i, ok: false, error })
+    emit(i, t('executor.rollingBack'), true)
+    // Ordre inverse : les fichiers sont retirés avant les dossiers qui les contiennent.
+    for (let j = results.length - 2; j >= 0; j--) await undoOp(plan.ops[results[j].i], results[j])
+    // Dossiers temporaires du plan : supprimés seulement s'ils ne contiennent plus aucun fichier.
+    for (const o of plan.ops) if (o.t === 'rmTree' && o.quiet) await removeEmptyTree(o.path)
+    return { ok: false, results, error, rolledBack: true, ...(cancelled ? { cancelled } : {}) }
+  }
 
   for (let i = 0; i < plan.ops.length; i++) {
     const op = plan.ops[i]
+    // Nettoyage final (non annulable) commencé : l'installation est faite, le plan va au bout.
+    if (stop?.aborted && op.t !== 'rmTree' && op.t !== 'rmdirIfEmpty') return rollback(i, t('executor.cancelled'), true)
     const label = opLabel(op)
     emit(i, label)
     try {
-      const r = await runOp(op, (n) => {
-        partial += n
-        emit(i, label)
-      })
+      const r = await runOp(
+        op,
+        (n) => {
+          partial += n
+          emit(i, label)
+        },
+        stop
+      )
       results.push({ i, ...r })
     } catch (err) {
-      const error = errMsg(err)
-      results.push({ i, ok: false, error })
-      if (plan.mode === 'atomic') {
-        emit(i, t('executor.rollingBack'), true)
-        // Ordre inverse : les fichiers sont retirés avant les dossiers qui les contiennent.
-        for (let j = results.length - 2; j >= 0; j--) await undoOp(plan.ops[results[j].i], results[j])
-        // Dossiers temporaires du plan : supprimés seulement s'ils ne contiennent plus aucun fichier.
-        for (const o of plan.ops) if (o.t === 'rmTree' && o.quiet) await removeEmptyTree(o.path)
-        return { ok: false, results, error, rolledBack: true }
-      }
+      if (plan.mode === 'atomic') return stop?.aborted ? rollback(i, t('executor.cancelled'), true) : rollback(i, errMsg(err), false)
+      results.push({ i, ok: false, error: errMsg(err) })
     }
     partial = 0
     bytes += opBytes(op)

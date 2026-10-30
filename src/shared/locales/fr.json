@@ -788,9 +788,11 @@
     "unknownMethod": "Méthode inconnue : {{method}}"
   },
   "executor": {
+    "cancelled": "Installation annulée.",
     "errors": {
       "accessDenied": "Accès refusé : {{path}}",
       "busy": "Un fichier est utilisé par un autre programme. Fermez FiveM et réessayez.",
+      "cancelUnconfirmed": "L'annulation n'a pas pu être confirmée : vérifiez le jeu puis relancez l'installation.",
       "elevationDenied": "Autorisation administrateur refusée. Rien n'a été modifié.",
       "elevationTimeout": "Pas de réponse à la demande d'autorisation administrateur de Windows. Rien n'a été modifié : réessayez et acceptez la fenêtre (bouclier orange dans la barre des tâches).",
       "exists": "Un fichier existe déjà : {{path}}",
@@ -1994,6 +1996,7 @@
     }
   },
   "progress": {
+    "cancelling": "Annulation…",
     "percent": "{{value}} %",
     "task": {
       "apply": "Installation",
@@ -2330,6 +2333,7 @@
       "restoredCaptured": "Jeu remis d’origine. Vos mods installés à la main sont rangés dans {{name}}."
     },
     "doneNextLaunch": "C’est fait : le changement prendra effet au prochain lancement de FiveM.",
+    "installCancelled": "Installation annulée : le jeu est revenu à son état précédent.",
     "download": {
       "added": "{{name}} est dans la bibliothèque.",
       "claimed": "Téléchargement de {{name}} validé : vous pouvez maintenant le noter.",

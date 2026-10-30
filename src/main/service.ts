@@ -25,6 +25,7 @@ import { PerformanceModels } from './core/performance'
 import { Optimizer } from './core/optimizations'
 import { probeSystem, runSystemOps, setPriority } from './core/winTweaks'
 import { runPowerShellElevated } from './core/elevation'
+import { CancelledError } from './core/executor'
 import { languageFetch, MaintenanceError, onMaintenanceError, serverFetch } from './core/http'
 import { accountLanguageAction, fetchLanguages, startupLocale } from './core/language'
 import { MaintenanceWatch, PausedDownloads } from './core/maintenance'
@@ -811,9 +812,14 @@ export class Service {
         log.info(`Tâche terminée : ${title}`)
       } catch (err) {
         const message = (err as Error)?.message ?? String(err)
-        log.error(`Tâche en échec : ${title} : ${message}`)
         if (id === this.pendingTask) this.relaunchHint = false
-        this.emit(IPC.task, { ...base, done: true, ok: false, error: message } satisfies TaskProgress)
+        if (err instanceof CancelledError) {
+          log.info(`Tâche annulée : ${title}`)
+          this.emit(IPC.task, { ...base, done: true, ok: false, cancelled: true } satisfies TaskProgress)
+        } else {
+          log.error(`Tâche en échec : ${title} : ${message}`)
+          this.emit(IPC.task, { ...base, done: true, ok: false, error: message } satisfies TaskProgress)
+        }
       } finally {
         this.release()
       }
@@ -1150,11 +1156,11 @@ export class Service {
       if (!target) throw this.toError(t('instances.errors.notFound'))
       if (target.id === current) {
         const title = t('service.tasks.apply', { name: m.name })
-        return this.whenGameClosed(title, id, () => this.startTask('apply', title, id, (report) => this.installer.apply(id, report)))
+        return this.whenGameClosed(title, id, () => this.startTask('apply', title, id, (report, signal) => this.installer.apply(id, report, signal)))
       }
       const title = t('instances.applyTask', { name: m.name, instance: target.name })
       return this.whenGameClosed(title, null, () =>
-        this.startTask('apply', title, id, (report) => this.onInstance(target.id, (installer) => installer.apply(id, report)))
+        this.startTask('apply', title, id, (report, signal) => this.onInstance(target.id, (installer) => installer.apply(id, report, signal)))
       )
     },
 
@@ -1379,6 +1385,12 @@ export class Service {
       if (this.pending) log.info(`Changement en attente abandonné : ${this.pending.title}`)
       this.pending = null
       this.changed()
+    },
+
+    cancelTask: async (taskId: string) => {
+      if (this.running?.id !== taskId || !taskId.startsWith('apply-')) return
+      log.info('Annulation de l’installation demandée')
+      this.running.abort.abort()
     },
 
     setCloseToTray: async (on: boolean) => {

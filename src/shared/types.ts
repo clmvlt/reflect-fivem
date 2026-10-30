@@ -356,6 +356,8 @@ export interface TaskProgress {
   done: boolean
   ok?: boolean
   error?: string
+  /** Fin d'une tâche annulée à la demande : tout a été remis en place. */
+  cancelled?: boolean
   result?: unknown
 }
 

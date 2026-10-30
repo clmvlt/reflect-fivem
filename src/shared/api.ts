@@ -160,6 +160,8 @@ export interface PackManagerApi {
   restartGame(): Promise<void>
   /** Abandonne le changement de pack en attente de la fermeture du jeu. */
   cancelPending(): Promise<void>
+  /** Annule l'installation en cours : ce qui a déjà été fait est défait. */
+  cancelTask(taskId: string): Promise<void>
   /** Fermer la fenêtre garde l'application dans la zone de notification. */
   setCloseToTray(on: boolean): Promise<void>
 

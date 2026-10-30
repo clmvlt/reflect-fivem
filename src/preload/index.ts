@@ -68,6 +68,7 @@ const methods = [
   'closeGame',
   'restartGame',
   'cancelPending',
+  'cancelTask',
   'setCloseToTray',
   'machineProfile',
   'refreshMachine',

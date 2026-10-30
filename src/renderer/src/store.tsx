@@ -146,7 +146,8 @@ export function StoreProvider({ children }: { children: ReactNode }): ReactEleme
       setTask(null)
       // Téléchargement : son résultat arrive avec la fin du téléchargement (onDownloadDone).
       if (p.kind === 'download') return
-      if (!p.ok) setMessage({ kind: 'error', text: p.error ?? t('common.failed') })
+      if (p.cancelled) setMessage({ kind: 'info', text: t('store.installCancelled') })
+      else if (!p.ok) setMessage({ kind: 'error', text: p.error ?? t('common.failed') })
       else {
         const info = resultMessage(p)
         // Changement fait à la fermeture du jeu : le rappeler.

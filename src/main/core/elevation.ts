@@ -22,12 +22,21 @@ function psQuote(s: string): string {
 
 /** Sans réponse à la demande UAC (fenêtre restée derrière, souvent seulement un bouclier dans la barre des tâches) : abandon. */
 const ELEVATION_TIMEOUT_MS = 5 * 60 * 1000
+/** Annulation demandée au processus administrateur : temps laissé pour défaire ce qui a été fait. */
+const CANCEL_GRACE_MS = 2 * 60 * 1000
 
-export async function executePlanElevated(plan: Plan, jobsDir: string, onProgress: (p: ExecProgress) => void): Promise<PlanResult> {
+/**
+ * {@link signal} annule le plan : le processus administrateur (qu'on ne peut pas arrêter sans droits) reçoit la demande
+ * par un fichier, et défait lui-même ce qu'il a fait. S'il n'a pas encore démarré, sa demande UAC est abandonnée.
+ */
+export async function executePlanElevated(plan: Plan, jobsDir: string, onProgress: (p: ExecProgress) => void, signal?: AbortSignal): Promise<PlanResult> {
   await fs.mkdir(jobsDir, { recursive: true })
+  // Demandes d'annulation des plans précédents, gardées au cas où leur processus aurait démarré trop tard.
+  for (const f of await fs.readdir(jobsDir)) if (f.endsWith('.cancel')) await fs.rm(path.join(jobsDir, f), { force: true }).catch(() => undefined)
   const planFile = path.join(jobsDir, `${plan.id}.plan.json`)
   const progressFile = `${planFile}.progress`
   const resultFile = `${planFile}.result.json`
+  const cancelFile = `${planFile}.cancel`
   const body = JSON.stringify(plan)
   await fs.writeFile(planFile, body, 'utf8')
   await fs.rm(progressFile, { force: true })
@@ -66,6 +75,7 @@ export async function executePlanElevated(plan: Plan, jobsDir: string, onProgres
   const watch = async (): Promise<PlanResult | null> => {
     const launchedAt = Date.now()
     let started = false
+    let cancelledAt = 0
     while (!exited) {
       await new Promise((r) => setTimeout(r, 250))
       try {
@@ -78,7 +88,13 @@ export async function executePlanElevated(plan: Plan, jobsDir: string, onProgres
       }
       const result = await readResult()
       if (result) return result
+      if (signal?.aborted && !cancelledAt) {
+        cancelledAt = Date.now()
+        await fs.writeFile(cancelFile, '').catch(() => undefined)
+      }
+      if (!started && cancelledAt) return { ok: false, results: [], error: t('executor.cancelled'), rolledBack: true, cancelled: true }
       if (!started && Date.now() - launchedAt > ELEVATION_TIMEOUT_MS) return { ok: false, results: [], error: t('executor.errors.elevationTimeout'), rolledBack: true }
+      if (cancelledAt && Date.now() - cancelledAt > CANCEL_GRACE_MS) return { ok: false, results: [], error: t('executor.errors.cancelUnconfirmed'), rolledBack: false }
     }
     return null
   }
@@ -149,8 +165,12 @@ export async function runElevatedWorker(argv: string[]): Promise<number> {
   const expected = hashArg.slice(HASH_FLAG.length).replace(/^"|"$/g, '')
   const resultFile = `${planFile}.result.json`
   const progressFile = `${planFile}.progress`
+  const cancelFile = `${planFile}.cancel`
   // Demande UAC acceptée alors que l'application a déjà abandonné ce plan : plus rien à faire.
   if (!(await fs.access(planFile).then(() => true, () => false))) return 4
+  const abort = new AbortController()
+  const checkCancel = (): Promise<void> => fs.access(cancelFile).then(() => abort.abort(), () => undefined)
+  let cancelWatch: NodeJS.Timeout | undefined
   try {
     const body = await fs.readFile(planFile, 'utf8')
     if (createHash('sha256').update(body).digest('hex') !== expected) {
@@ -158,13 +178,21 @@ export async function runElevatedWorker(argv: string[]): Promise<number> {
       return 3
     }
     const plan = JSON.parse(body) as Plan
-    const result = await executePlan(plan, (p) => {
-      void fs.appendFile(progressFile, `${JSON.stringify(p)}\n`).catch(() => undefined)
-    })
+    await checkCancel()
+    cancelWatch = setInterval(() => void checkCancel(), 300)
+    const result = await executePlan(
+      plan,
+      (p) => {
+        void fs.appendFile(progressFile, `${JSON.stringify(p)}\n`).catch(() => undefined)
+      },
+      abort.signal
+    )
     await fs.writeFile(resultFile, JSON.stringify(result))
     return result.ok ? 0 : 1
   } catch (err) {
     await fs.writeFile(resultFile, JSON.stringify({ ok: false, results: [], error: (err as Error).message, rolledBack: false })).catch(() => undefined)
     return 4
+  } finally {
+    clearInterval(cancelWatch)
   }
 }

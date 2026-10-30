@@ -99,15 +99,15 @@ export async function canWrite(dir: string): Promise<boolean> {
 
 /**
  * Copie un fichier (échoue si la destination existe) en signalant les octets copiés, sans attendre la fin d'un gros
- * fichier. Une copie incomplète est supprimée.
+ * fichier ; annulable par {@link signal}. Une copie incomplète est supprimée.
  */
-export async function copyFileTracked(from: string, to: string, onBytes: (n: number) => void): Promise<void> {
+export async function copyFileTracked(from: string, to: string, onBytes: (n: number) => void, signal?: AbortSignal): Promise<void> {
   const st = await fs.stat(from)
   const out = await fs.open(to, 'wx')
   try {
     const source = createReadStream(from, { highWaterMark: 1 << 20 })
     source.on('data', (chunk) => onBytes(chunk.length))
-    await pipeline(source, out.createWriteStream())
+    await pipeline(source, out.createWriteStream(), { signal })
     await fs.utimes(to, st.atime, st.mtime)
   } catch (err) {
     await out.close().catch(() => undefined)

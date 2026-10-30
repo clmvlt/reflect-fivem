@@ -788,9 +788,11 @@
     "unknownMethod": "Unknown method: {{method}}"
   },
   "executor": {
+    "cancelled": "Installation cancelled.",
     "errors": {
       "accessDenied": "Access denied: {{path}}",
       "busy": "A file is in use by another program. Close FiveM and try again.",
+      "cancelUnconfirmed": "The cancellation couldn't be confirmed: check the game, then start the installation again.",
       "elevationDenied": "Administrator permission denied. Nothing was changed.",
       "elevationTimeout": "No answer to the Windows administrator prompt. Nothing was changed: try again and accept the window (orange shield in the taskbar).",
       "exists": "A file already exists: {{path}}",
@@ -1994,6 +1996,7 @@
     }
   },
   "progress": {
+    "cancelling": "Cancelling…",
     "percent": "{{value}}%",
     "task": {
       "apply": "Installing",
@@ -2330,6 +2333,7 @@
       "restoredCaptured": "Game restored to its original state. Your manually installed mods were stashed in {{name}}."
     },
     "doneNextLaunch": "Done: the change will take effect the next time FiveM starts.",
+    "installCancelled": "Installation cancelled: the game is back to its previous state.",
     "download": {
       "added": "{{name}} is in the library.",
       "claimed": "Download of {{name}} confirmed: you can now rate it.",

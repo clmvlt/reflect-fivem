@@ -17,8 +17,12 @@ export function Progress({ task }: { task: TaskProgress }) {
   const pct = task.total > 0 ? Math.min(100, Math.round((task.current / task.total) * 100)) : null
   // Mods : premier mot du titre, traduit par le processus principal (« Activation », « Désactivation »...).
   const label = task.kind === 'mod' ? task.title.split(' ')[0] : isLabeled(task.kind) ? t(`progress.task.${task.kind}`) : null
+  // Bouton Annuler désactivé une fois cliqué : ce qui a déjà été fait est en train d'être défait.
+  const [cancelling, setCancelling] = useState<string | null>(null)
+  const canCancel = task.kind === 'apply'
+  const isCancelling = cancelling === task.taskId
   // Durée inconnue (préparation, demande d'autorisation de Windows) : la barre ne dit rien, le texte dit ce qui se passe.
-  const note = task.total === 0 ? task.phase : ''
+  const note = isCancelling ? t('progress.cancelling') : task.total === 0 ? task.phase : ''
   return (
     <div className="progress" title={task.phase}>
       {label && <span className="progress-label">{label}</span>}
@@ -26,7 +30,24 @@ export function Progress({ task }: { task: TaskProgress }) {
         <div className={`fill ${pct === null ? 'is-waiting' : ''}`} style={pct === null ? undefined : { width: `${pct}%` }} />
       </div>
       <span className="pct">{pct === null ? '' : t('progress.percent', { value: num(pct) })}</span>
-      {note && <div className="progress-foot">{note}</div>}
+      {(note || canCancel) && (
+        <div className="progress-foot">
+          <span>{note}</span>
+          {canCancel && (
+            <button
+              className="link small"
+              disabled={isCancelling}
+              onClick={(e) => {
+                e.stopPropagation()
+                setCancelling(task.taskId)
+                void window.api.cancelTask(task.taskId)
+              }}
+            >
+              {t('common.cancel')}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

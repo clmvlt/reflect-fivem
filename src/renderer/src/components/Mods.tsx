@@ -14,6 +14,7 @@ import type { PackPerformance } from '@shared/performance'
 import { confirmDialog } from './Confirm'
 import { popupMenu } from './Menu'
 import { ItemBadge, usePaidAction } from './Purchase'
+import { ModOptionsButton } from './ModOptions'
 
 // Catégories de l'API (libellés et nombre de mods), lues une fois par lancement et par langue (libellés traduits par
 // l'API).
@@ -292,6 +293,7 @@ function ModRow({
               {t('modsView.update')}
             </button>
           )}
+          <ModOptionsButton mod={mod} />
           <ModSwitch mod={mod} enabled={enabled} disabled={!!task} actions={actions} />
           <button className="more" onClick={() => void menu()} aria-label={t('modsView.moreOptions')} title={t('modsView.moreOptions')}>
             ⋯
@@ -402,6 +404,7 @@ export function ModMarketAction({
         </button>
       )}
       {toggle}
+      <ModOptionsButton mod={local} className={cls(false)} />
       <button className={cls(false)} onClick={() => void actions.remove(local, enabled)} disabled={!!task}>
         {t('common.delete')}
       </button>

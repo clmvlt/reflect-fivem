@@ -1170,7 +1170,8 @@
       "modUpdate": "Mise à jour de {{name}}",
       "moveScreenshots": "Déplacement des captures",
       "remove": "Retrait de {{name}}",
-      "removeMods": "Retrait des mods"
+      "removeMods": "Retrait des mods",
+      "modOptions": "Personnalisation de {{name}}"
     }
   },
   "instances": {
@@ -1466,7 +1467,8 @@
     "notes": {
       "enableFromLibrary": "Activez-le depuis la bibliothèque.",
       "modNotEnabled": "{{name}} est dans vos mods, mais n’a pas été activé : {{reason}}",
-      "updateNotInstalled": "La nouvelle version de {{name}} est dans la bibliothèque. Installez-la pour remplacer l’ancienne : {{error}}"
+      "updateNotInstalled": "La nouvelle version de {{name}} est dans la bibliothèque. Installez-la pour remplacer l’ancienne : {{error}}",
+      "modOptionsLost": "{{name}} est à jour, mais vos réglages n’ont pas pu être repris : {{error}}"
     },
     "packGone": "Ce pack n’est plus disponible sur la Marketplace.",
     "phase": {
@@ -1644,7 +1646,16 @@
       "disable": "Désactiver ce mod",
       "enable": "Activer ce mod"
     },
-    "update": "Mettre à jour"
+    "update": "Mettre à jour",
+    "options": {
+      "button": "Personnaliser",
+      "title": "Personnaliser {{mod}}",
+      "hint": "Vos réglages s’appliquent à votre jeu : vous êtes seul à les voir. FiveM doit être fermé.",
+      "original": "D’origine",
+      "custom": "Autre couleur",
+      "tooDark": "Trop sombre : cette couleur ne se verrait pas en jeu.",
+      "apply": "Appliquer"
+    }
   },
   "optimizations": {
     "title": "Optimisations",
@@ -2230,7 +2241,8 @@
       "remove": "Retrait de {{name}}",
       "stash": "Rangement des mods",
       "trashScreenshots": "Suppression des captures",
-      "update": "Mise à jour de {{name}}"
+      "update": "Mise à jour de {{name}}",
+      "customizeMod": "Personnalisation de {{name}}"
     }
   },
   "settings": {
@@ -2410,5 +2422,12 @@
     "title": "Quoi de neuf dans la version {{version}}",
     "unavailable": "Nouveautés indisponibles pour le moment. Réessayez plus tard.",
     "version": "Version {{version}}"
+  },
+  "modOptions": {
+    "phase": "Application de vos réglages",
+    "errors": {
+      "color": "Cette couleur n’est pas utilisable : trop sombre, elle ne se verrait pas en jeu.",
+      "notFound": "Ce mod ne contient pas ce qu’il faut modifier ({{particles}})."
+    }
   }
 }

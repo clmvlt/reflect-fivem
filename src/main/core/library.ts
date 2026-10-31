@@ -42,6 +42,8 @@ export interface StoredManifest extends Omit<PackManifest, 'components'> {
   quantvPresetFrom?: string | null
   /** Pack protégé : contenu gardé chiffré (content.fpk), jamais extrait. */
   protection?: PackProtection
+  /** Mod réglé par le joueur : dossier de generated/ où sont ses fichiers à ces réglages (voir modOptions.ts). */
+  optionsDir?: string
   /** Pack de « Créer ton pack » : fichiers des composants (SHA-256) gardés en cache pour le reconstruire. */
   builtBlobs?: string[]
 }
@@ -220,6 +222,18 @@ export class Library {
     await fs.mkdir(path.dirname(file), { recursive: true })
     await fs.writeFile(file, data)
     return { src: file, size: data.length, source }
+  }
+
+  /** Fichier d'un mod aux réglages du joueur ; null s'il n'est pas réglé, ou que ce fichier n'est pas concerné. */
+  async optionSource(m: StoredManifest, dest: Destination): Promise<(SizedSource & { source: string }) | null> {
+    if (!m.optionsDir) return null
+    const source = `generated/${m.optionsDir}/${dest.root}/${dest.path}`
+    const found = await this.installSource(m, source)
+    return found && { ...found, source }
+  }
+
+  async removeOptionFiles(id: string, dir: string): Promise<void> {
+    await fs.rm(path.join(this.packDir(id), 'generated', dir), { recursive: true, force: true }).catch(() => undefined)
   }
 
   /**

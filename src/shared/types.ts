@@ -120,8 +120,21 @@ export interface PackManifest {
   kind?: MarketKind
   /** Catégorie d'un mod de la Marketplace (clé de GET /mods/categories), null sinon. */
   category?: string | null
+  /** Réglages proposés par la fiche d'un mod de la Marketplace. */
+  options?: ModOption[]
+  /** Choix du joueur pour ces réglages (id de l'option -> valeur) ; sans choix : le mod tel quel. */
+  optionValues?: Record<string, string>
   /** Pack construit par « Créer ton pack » à partir d'une création du compte. */
   built?: BuiltLink
+}
+
+/** Réglage d'un mod, appliqué sur le PC du joueur : une couleur (« #rrggbb ») pour des particules du mod. */
+export interface ModOption {
+  id: string
+  type: 'color'
+  /** Nom affiché par langue ; « fr » est toujours présent. */
+  label: Record<string, string>
+  targets: { file: string; particles: string[] }[]
 }
 
 /** Lien entre un pack de la bibliothèque et la création de « Créer ton pack » dont il est construit. */

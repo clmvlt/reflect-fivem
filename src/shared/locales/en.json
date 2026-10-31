@@ -1170,7 +1170,8 @@
       "modUpdate": "Updating {{name}}",
       "moveScreenshots": "Moving screenshots",
       "remove": "Removing {{name}}",
-      "removeMods": "Removing mods"
+      "removeMods": "Removing mods",
+      "modOptions": "Customizing {{name}}"
     }
   },
   "instances": {
@@ -1466,7 +1467,8 @@
     "notes": {
       "enableFromLibrary": "Enable it from your library.",
       "modNotEnabled": "{{name}} is in your mods but wasn’t enabled: {{reason}}",
-      "updateNotInstalled": "The new version of {{name}} is in your library. Install it to replace the old one: {{error}}"
+      "updateNotInstalled": "The new version of {{name}} is in your library. Install it to replace the old one: {{error}}",
+      "modOptionsLost": "{{name}} is up to date, but your settings could not be carried over: {{error}}"
     },
     "packGone": "This pack is no longer available on the Marketplace.",
     "phase": {
@@ -1644,7 +1646,16 @@
       "disable": "Disable this mod",
       "enable": "Enable this mod"
     },
-    "update": "Update"
+    "update": "Update",
+    "options": {
+      "button": "Customize",
+      "title": "Customize {{mod}}",
+      "hint": "Your settings apply to your game: only you can see them. FiveM must be closed.",
+      "original": "Original",
+      "custom": "Other colour",
+      "tooDark": "Too dark: this colour would not show in game.",
+      "apply": "Apply"
+    }
   },
   "optimizations": {
     "title": "Optimizations",
@@ -2230,7 +2241,8 @@
       "remove": "Removing {{name}}",
       "stash": "Stashing mods",
       "trashScreenshots": "Deleting screenshots",
-      "update": "Updating {{name}}"
+      "update": "Updating {{name}}",
+      "customizeMod": "Customizing {{name}}"
     }
   },
   "settings": {
@@ -2410,5 +2422,12 @@
     "title": "What’s new in version {{version}}",
     "unavailable": "Release notes are unavailable right now. Try again later.",
     "version": "Version {{version}}"
+  },
+  "modOptions": {
+    "phase": "Applying your settings",
+    "errors": {
+      "color": "This colour cannot be used: it is too dark to show in game.",
+      "notFound": "This mod does not contain what needs changing ({{particles}})."
+    }
   }
 }

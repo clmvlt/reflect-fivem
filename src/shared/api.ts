@@ -124,6 +124,11 @@ export interface PackManagerApi {
    * Active ou désactive un mod (FiveM doit être fermé). `disable` : mods en conflit à désactiver dans la même opération.
    */
   setModEnabled(id: string, enabled: boolean, disable?: string[]): Promise<string>
+  /**
+   * Applique les réglages d'un mod (id de l'option -> valeur ; sans valeur : le mod tel quel). Activé, il est remplacé dans
+   * le jeu en une seule opération (FiveM doit être fermé).
+   */
+  setModOptions(id: string, values: Record<string, string>): Promise<string>
   /** Désactive d'un coup tous les mods activés (FiveM doit être fermé) ; le pack graphique reste installé. */
   disableAllMods(): Promise<string>
   /** Retire le mod du jeu s'il est activé, puis de la bibliothèque des mods. */

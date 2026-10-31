@@ -615,6 +615,7 @@ export class Service {
     const refreshMarket = async (): Promise<void> => {
       try {
         await this.marketplace.refreshCatalog()
+        await this.marketplace.syncModOptions().catch((err: unknown) => log.info(`Options des mods non relues : ${(err as Error).message}`))
         this.changed()
       } catch (err) {
         log.info(`Catalogue de la Marketplace non chargé : ${(err as Error).message}`)
@@ -1263,6 +1264,12 @@ export class Service {
       const m = await this.modLibrary.get(id)
       const title = t(enabled ? 'service.tasks.enableMod' : 'service.tasks.disableMod', { name: m.name })
       return this.startTask('mod', title, id, (report) => this.installer.setModEnabled(id, enabled, report, disable ?? []))
+    },
+
+    setModOptions: async (id: string, values: Record<string, string>) => {
+      if ((await runningGameProcesses()).length) throw this.toError(t('service.errors.closeGameForMod'))
+      const m = await this.modLibrary.get(id)
+      return this.startTask('mod', t('service.tasks.customizeMod', { name: m.name }), id, (report) => this.installer.setModOptions(id, values, report))
     },
 
     disableAllMods: async () => {

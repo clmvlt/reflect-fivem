@@ -45,12 +45,14 @@ import type {
 } from '@shared/types'
 import { MOD_GONE, PACK_GONE, PACK_LOGIN_REQUIRED, PACK_PURCHASE_REQUIRED, type AuthorQuery, type MarketQuery } from '@shared/api'
 import { formatBytes as displayBytes } from '@shared/intl'
+import { parseModOptions } from '@shared/modOptions'
 import { parsePackPerformance, parsePerformanceDetail, type PerformanceDetail } from '@shared/performance'
 import { toAuthorRef } from './account'
 import { priceOf } from './purchases'
 import { ApiError, MaintenanceError, serverFetch } from './http'
 import type { Report } from './installer'
 import type { ImportProgress, Library, StoredManifest } from './library'
+import { carryModOptions } from './modOptions'
 import { KEY_SIZE, packageId } from './sealed'
 import { exists, formatBytes, freeSpace, walkFiles } from '../util/fsx'
 import { log } from '../util/log'
@@ -67,6 +69,8 @@ export interface RemoteSummary {
   kind?: string
   /** Catégorie d'un mod (clé). */
   category?: string | null
+  /** Réglages proposés pour un mod (voir parseModOptions). */
+  options?: unknown
   slug: string
   name: string
   summary: string
@@ -508,6 +512,21 @@ export class Marketplace {
     this.complete = complete
   }
 
+  /**
+   * Options des mods de la bibliothèque, d'après le catalogue lu : l'admin peut en ajouter sans changer l'archive, donc
+   * sans nouvelle version à télécharger.
+   */
+  async syncModOptions(): Promise<void> {
+    for (const m of (await this.localIndex('mod')).values()) {
+      const remote = this.catalog.get(m.marketplace!.id)
+      if (!remote) continue
+      const options = parseModOptions(remote.options)
+      if (JSON.stringify(options) === JSON.stringify(m.options ?? [])) continue
+      const lib = this.libraryOf('mod')
+      await lib.save({ ...(await lib.get(m.id)), options })
+    }
+  }
+
   /** Catalogue d'un pack ou d'un mod du catalogue lu (null s'il n'y est pas). */
   kindOf(id: string): MarketKind | null {
     const r = this.catalog.get(id)
@@ -714,6 +733,14 @@ export class Marketplace {
     }
     const next = await lib.get(imported.id)
     next.name = linked.name
+    // Réglages du joueur : réappliqués à cette version ; impossible (mod changé) : mise à jour faite, et il en est averti.
+    let note: string | undefined
+    try {
+      await carryModOptions(lib, linked, next, report)
+    } catch (err) {
+      log.warn(`Réglages de ${linked.name} non repris : ${(err as Error).message}`)
+      note = t('market.notes.modOptionsLost', { name: linked.name, error: (err as Error).message })
+    }
     await lib.save(next)
     await lib.copyUserConfigs(linked.id, next.id)
     let enabled = false
@@ -726,7 +753,7 @@ export class Marketplace {
     // Réglages modifiés pendant la dernière partie, récupérés au remplacement : repris pour la suite.
     await lib.copyUserConfigs(linked.id, next.id)
     await lib.remove(linked.id)
-    return { packId: next.id, name: next.name, kind: 'mod', status: 'updated', enabled }
+    return { packId: next.id, name: next.name, kind: 'mod', status: 'updated', enabled, note }
   }
 
   /**
@@ -883,6 +910,7 @@ export class Marketplace {
     if (kind === 'mod') {
       m.kind = 'mod'
       m.category = remote.category ?? null
+      m.options = parseModOptions(remote.options)
     }
     m.marketplace = { id: remote.id, slug: remote.slug, sha256: remote.sha256!, version: remote.version, downloadedAt: new Date().toISOString(), kind }
     await lib.save(m)

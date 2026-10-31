@@ -58,6 +58,7 @@ const methods = [
   'importMods',
   'modPreflight',
   'setModEnabled',
+  'setModOptions',
   'disableAllMods',
   'deleteMod',
   'openModFolder',

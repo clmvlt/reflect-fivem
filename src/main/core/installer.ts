@@ -59,7 +59,9 @@ import {
   RESHADE_INI_DEST
 } from './reshade'
 import { isEnbLocal, withEnbFpsLimit, withPackFpsLimit } from './enb'
+import { usableValues } from '@shared/modOptions'
 import { CONFIG_EXT, ext, isAllowedFiveMPath, isProtectedGtaPath } from './knowledge'
+import { writeModOptionFiles } from './modOptions'
 import { readSource, type PackContent } from './content'
 import { samePath } from './games'
 import type { Library, StoredManifest } from './library'
@@ -928,7 +930,15 @@ export class Installer {
 
   private async modItems(m: StoredManifest): Promise<InstallItem[]> {
     const lib = this.modLib()
-    return this.installItems(m, await lib.content(m), lib)
+    const items = await this.installItems(m, await lib.content(m), lib)
+    if (!m.optionsDir) return items
+    // Fichiers aux réglages du joueur : à la place de ceux du mod (copiés, jamais liés).
+    return Promise.all(
+      items.map(async (it) => {
+        const own = await lib.optionSource(m, it.dest)
+        return own ? { ...it, src: own.src, sealed: own.sealed, source: own.source, size: own.size, fromUser: true } : it
+      })
+    )
   }
 
   /** Raisons d'empêcher l'activation d'un mod : celles d'un pack, et un mod ne s'installe que dans FiveM.app. */
@@ -998,6 +1008,31 @@ export class Installer {
     const remove = this.mods.filter((x) => x.enabled && disable.includes(x.id))
     await this.changeMods({ remove, add: [m] }, report, msg('modEnable', { name: m.name }))
     return { name: m.name, enabled: true }
+  }
+
+  /**
+   * Applique les réglages d'un mod, toujours à partir de son contenu d'origine. Activé, il est remplacé dans le jeu en une
+   * seule opération ; au moindre échec, le mod et ses réglages précédents restent en place.
+   */
+  async setModOptions(modId: string, values: Record<string, string>, report: Report): Promise<{ name: string }> {
+    await this.assertGameClosed()
+    const lib = this.modLib()
+    const m = await lib.get(modId)
+    const kept = usableValues(m.options ?? [], values)
+    if (Object.keys(kept).length !== Object.keys(values).length) throw new Error(t('modOptions.errors.color'))
+    const dir = await writeModOptionFiles(lib, m, kept, report)
+    const next: StoredManifest = { ...m, optionValues: kept, optionsDir: dir ?? undefined }
+    const entry = this.mods.find((x) => x.id === modId)
+    try {
+      if (entry?.enabled) await this.changeMods({ remove: [entry], add: [next] }, report, msg('modOptions', { name: m.name }))
+    } catch (err) {
+      if (dir) await lib.removeOptionFiles(modId, dir)
+      throw err
+    }
+    // Relu : le remplacement a pu garder un réglage modifié en jeu.
+    await lib.save({ ...(await lib.get(modId)), optionValues: kept, optionsDir: dir ?? undefined })
+    if (m.optionsDir) await lib.removeOptionFiles(modId, m.optionsDir)
+    return { name: m.name }
   }
 
   /** Désactive tous les mods activés en une seule opération (serveurs en mode pur) : le pack actif reste en place. */

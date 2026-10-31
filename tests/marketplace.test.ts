@@ -210,6 +210,27 @@ describe('catalogue des mods', () => {
     await market.refreshCatalog()
     expect(await market.status()).toEqual({ updates: [], gone: [] })
   })
+
+  it('options d’un mod : relues du catalogue, sans nouvelle archive ; les choix du joueur restent', async () => {
+    const option = { id: 'flames', type: 'color', label: { fr: 'Flammes' }, targets: [{ file: 'core.ypt', particles: ['veh_backfire_glow'] }] }
+    const stored = { id: 'mod-local', marketplace: { id: 'm1', sha256: 'b46a', downloadedAt: '2026-01-01' }, optionValues: { flames: '#ff0000' } }
+    const save = vi.fn(async () => undefined)
+    const mods = { ...library([stored]), get: async () => stored, save } as unknown as Library
+    const market = new Marketplace('https://api.test/api', 'cache', () => library(), null, () => mods)
+    const catalog = (options: unknown): void =>
+      void fetchMock.mockImplementation(async (url) => (url.includes('/mods?') ? page([remote({ id: 'm1', kind: 'mod', options })]) : page([])))
+
+    catalog([option])
+    await market.refreshCatalog()
+    await market.syncModOptions()
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ options: [option], optionValues: { flames: '#ff0000' } }))
+
+    // Rien de changé : rien à écrire.
+    save.mockClear()
+    Object.assign(stored, { options: [option] })
+    await market.syncModOptions()
+    expect(save).not.toHaveBeenCalled()
+  })
 })
 
 describe('poids sur les performances', () => {

@@ -836,6 +836,8 @@ export interface BuilderComponentCard {
   /** Noms des packs où il a été trouvé. */
   sources: string[]
   updatedAt: string
+  /** Réglages proposés au joueur, appliqués à l'installation. */
+  options: ModOption[]
 }
 
 /** Pack où un composant a été trouvé ; `packSlug` null si le pack n'est plus visible. */
@@ -1138,6 +1140,8 @@ export interface BuilderBuild extends BuilderLocal {
   plan: BuildPlan
   createdAt: string
   updatedAt: string
+  /** Choix pour les options des composants (composant -> option -> couleur). */
+  options: Record<string, Record<string, string>>
 }
 
 /** Création à enregistrer (nom de 80 caractères au plus) : composants hors outils d'ambiance, et choix par outil. */
@@ -1145,6 +1149,7 @@ export interface BuilderSaveInput {
   name: string
   components: string[]
   tools: BuilderTools
+  options?: Record<string, Record<string, string>>
 }
 
 /** Packs de la bibliothèque construits par « Créer ton pack » : nouvelle révision en ligne, ou création supprimée. */

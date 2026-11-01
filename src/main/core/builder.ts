@@ -45,6 +45,7 @@ import { BUILDER_NOT_ALLOWED, canUseBuilder, SIGNED_OUT } from '@shared/api'
 import { currentLocale } from '@shared/i18n'
 import { formatBytes as displayBytes } from '@shared/intl'
 import { httpsUrl } from '@shared/links'
+import { isUsableColor, paintOf, parseModOptions, parseOptionValues } from '@shared/modOptions'
 import { parsePackPerformance } from '@shared/performance'
 import { cleanTools, fromLegacy, isToolKey, isToolMode, lookImages, styleOf } from '@shared/ambiance'
 import type {
@@ -95,6 +96,7 @@ import type { Report } from './installer'
 import { isAllowedFiveMPath, isProtectedGtaPath } from './knowledge'
 import type { BuiltItem, Library, StoredManifest } from './library'
 import type { DownloadAuth, InstallHooks } from './marketplace'
+import { particleKey, RecolorError, recolorRpf } from './rpfRecolor'
 import { formatBytes, freeSpace, readJson, sameVolume, walkFiles, writeJsonAtomic } from '../util/fsx'
 import { log } from '../util/log'
 
@@ -139,6 +141,14 @@ export interface ManifestFile {
   sha256: string
   url: string
   entryCount: number
+  /** Particules à recolorer dans ce .rpf une fois téléchargé (choix du joueur). */
+  recolors: ManifestRecolor[]
+}
+
+export interface ManifestRecolor {
+  file: string
+  particles: string[]
+  color: string
 }
 
 /** Fichier écrit par l'API (preset ReShade avec les réglages du joueur), en UTF-8. */
@@ -162,6 +172,20 @@ export interface BuildManifest {
   unavailable: BuilderBuildComponent[]
   problems: BuilderProblem[]
   totalSize: number
+}
+
+/** Copie recolorée d'un .rpf (null : rien à y changer) ; les particules trouvées sont ajoutées à {@link found}. */
+async function recolorBlob(file: string, recolors: ManifestRecolor[], found: Set<string>): Promise<Buffer | null> {
+  const result = await recolorRpf(
+    await fs.readFile(file),
+    recolors.map((r) => ({ file: r.file, particles: r.particles, ...paintOf(r.color) }))
+  ).catch((err: unknown) => {
+    // Archive illisible : ses particules sont signalées manquantes.
+    if (err instanceof RecolorError) return null
+    throw err
+  })
+  for (const key of result?.found ?? []) found.add(key)
+  return result?.data ?? null
 }
 
 const unsafePath = (root: unknown, p: unknown): Error => new Error(t('builder.errors.unsafePath', { path: `${String(root)}/${String(p)}` }))
@@ -197,7 +221,7 @@ export function checkManifest(raw: unknown): BuildManifest {
       !isApiPath(url)
     )
       throw badResponse()
-    files.push({ componentId: strOrNull(f.componentId), root: f.root, path: f.path as string, kind: f.kind, size, sha256: f.sha256, url, entryCount })
+    files.push({ componentId: strOrNull(f.componentId), root: f.root, path: f.path as string, kind: f.kind, size, sha256: f.sha256, url, entryCount, recolors: toRecolors(f.recolors) })
   }
   // Ordre d'installation : les zips d'abord (un fichier remplace ensuite celui d'un zip au même endroit).
   files.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'bundle' ? -1 : 1))
@@ -221,6 +245,15 @@ export function checkManifest(raw: unknown): BuildManifest {
     problems: arr(r.problems).map(toProblem),
     totalSize: num(r.totalSize) ?? files.reduce((s, f) => s + f.size, 0)
   }
+}
+
+function toRecolors(raw: unknown): ManifestRecolor[] {
+  return arr(raw).map((item) => {
+    const r = obj(item)
+    const particles = strings(r.particles)
+    if (typeof r.file !== 'string' || !r.file || !particles.length || typeof r.color !== 'string' || !isUsableColor(r.color)) throw badResponse()
+    return { file: r.file, particles, color: r.color }
+  })
 }
 
 /** Adresse relative à l'API (« /builder/files/... »), sans autre hôte ni remontée. */
@@ -338,7 +371,8 @@ function toCard(raw: unknown): BuilderComponentCard | null {
     conflictsWith: ids(o.conflictsWith),
     tags: strings(o.tags),
     sources: strings(o.sources),
-    updatedAt: str(o.updatedAt)
+    updatedAt: str(o.updatedAt),
+    options: parseModOptions(o.options)
   }
 }
 
@@ -628,6 +662,7 @@ function toBuild(raw: unknown): Omit<BuilderBuild, keyof BuilderLocal> {
     tools,
     problems: arr(o.problems).map(toProblem),
     estimate: isObj(o.estimate) ? toEstimate(o.estimate) : null,
+    options: parseOptionValues(o.options),
     plan: toPlan(o.plan),
     createdAt: str(o.createdAt),
     updatedAt: str(o.updatedAt)
@@ -934,7 +969,8 @@ export class Builder {
     const body = {
       name: input.name.replace(/\s+/g, ' ').trim().slice(0, NAME_MAX),
       components: [...new Set(input.components.filter((c) => UUID.test(c)))],
-      tools: cleanTools(input.tools)
+      tools: cleanTools(input.tools),
+      ...(input.options ? { options: input.options } : {})
     }
     const raw = id ? await this.call<unknown>('PUT', `/builder/builds/${id}`, body) : await this.call<unknown>('POST', '/builder/builds', body)
     const b = toBuild(raw)
@@ -1379,6 +1415,7 @@ export class Builder {
       const key = `${root}:${rel.toLowerCase()}`
       written.set(key, { root, rel: written.get(key)?.rel ?? rel, size })
     }
+    const found = new Set<string>()
     const bundles = manifest.files.filter((f) => f.kind === 'bundle')
     const files = manifest.files.filter((f) => f.kind === 'file')
     const total = bundles.length + files.length + manifest.generated.length
@@ -1395,9 +1432,13 @@ export class Builder {
         if (signal.aborted) throw new Error(t('market.errors.cancelled'))
         const target = lib.builtFile(id, f.root, f.path)
         await fs.mkdir(path.dirname(target), { recursive: true })
-        await fs.copyFile(this.blobFile(f.sha256), target)
-        keep(f.root, f.path, f.size)
+        const recolored = f.recolors.length ? await recolorBlob(this.blobFile(f.sha256), f.recolors, found) : null
+        if (recolored) await fs.writeFile(target, recolored)
+        else await fs.copyFile(this.blobFile(f.sha256), target)
+        keep(f.root, f.path, recolored?.length ?? f.size)
       }
+      const missing = manifest.files.flatMap((f) => f.recolors.flatMap((r) => r.particles.filter((p) => !found.has(particleKey(r.file, p)))))
+      if (missing.length) throw new Error(t('modOptions.errors.notFound', { particles: [...new Set(missing)].join(', ') }))
       for (const g of manifest.generated) {
         report(phase, done++, total)
         const data = Buffer.from(g.content, 'utf8')

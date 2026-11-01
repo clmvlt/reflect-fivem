@@ -66,6 +66,23 @@ export function colorToRgb(value: string): [number, number, number] {
   return [r / 255, g / 255, b / 255]
 }
 
+/** Choix enregistrés d'une création de « Créer ton pack » (composant -> option -> couleur) ; le reste est ignoré. */
+export function parseOptionValues(raw: unknown): Record<string, Record<string, string>> {
+  const out: Record<string, Record<string, string>> = {}
+  if (!raw || typeof raw !== 'object') return out
+  for (const [component, values] of Object.entries(raw)) {
+    if (!values || typeof values !== 'object') continue
+    const kept = Object.entries(values).filter(([, v]) => typeof v === 'string' && isUsableColor(v)) as [string, string][]
+    if (kept.length) out[component] = Object.fromEntries(kept)
+  }
+  return out
+}
+
+/** Choix des éléments encore dans une création : ceux d'un élément retiré ne comptent plus. */
+export function chosenOptions(d: { components: string[]; options?: Record<string, Record<string, string>> }): Record<string, Record<string, string>> {
+  return Object.fromEntries(Object.entries(d.options ?? {}).filter(([id, values]) => d.components.includes(id) && Object.keys(values).length > 0))
+}
+
 /** Choix qui s'appliquent encore : options toujours proposées par le mod, couleurs valides. */
 export function usableValues(options: ModOption[], values: Record<string, string> | undefined): Record<string, string> {
   const out: Record<string, string> = {}

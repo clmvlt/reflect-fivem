@@ -17,6 +17,7 @@ import { SUMMARY, TOOLS, wizardPages, wizardSteps } from '@shared/builderPages'
 import type { AccountMe } from '@shared/types'
 import type { BuilderAccount } from '../src/main/core/builder'
 import type { InstallHooks } from '../src/main/core/marketplace'
+import { colorsOf, fakeRpf, fakeYpt, readRpf } from './fixtures/rpf'
 
 // Extraction des archives dans le processus des tests (pas de worker).
 vi.mock('../src/main/archive', async () => {
@@ -44,6 +45,7 @@ const {
   toolOff,
   withKnownStyles
 } = await import('@shared/ambiance')
+const { chosenOptions } = await import('@shared/modOptions')
 const { ApiError } = await import('../src/main/core/http')
 const { Library } = await import('../src/main/core/library')
 
@@ -456,6 +458,86 @@ describe('installation d’une création', () => {
     await expect(s.builder.install(BUILD, vi.fn(), new AbortController().signal, hooks())).rejects.toThrow(/chemin refusé/)
     expect(s.requests).toEqual([])
     expect(await s.library.list()).toEqual([])
+  })
+})
+
+describe('réglages d’un élément', () => {
+  const OPTION = { id: 'flames', type: 'color', label: { fr: 'Flammes' }, targets: [{ file: 'core.ypt', particles: ['veh_flame'] }] }
+  const archive = (): Buffer => fakeRpf([{ name: 'core.ypt', resource: fakeYpt([{ name: 'veh_flame', rgba: [1, 0.5, 0, 0.3] }, { name: 'veh_smoke', rgba: [0.2, 0.2, 0.2, 0.5] }]) }])
+
+  /** Création d'un seul .rpf, avec ces recolorations dans son manifeste. */
+  function publishRpf(s: Setup, revision: string, data: Buffer, recolors: unknown[]) {
+    const blob = s.serve(data)
+    s.routes.set(`GET /builder/builds/${BUILD}/manifest`, {
+      buildId: BUILD,
+      name: 'Flammes',
+      revision,
+      files: [{ ...blob, url: `/builder/files/${blob.sha256}`, entryCount: 1, kind: 'file', componentId: ROADS_ID, root: 'fivem', path: 'mods/flammes.rpf', recolors }],
+      generated: [],
+      preset: null,
+      unavailable: [],
+      problems: [],
+      totalSize: blob.size
+    })
+    return blob
+  }
+  const installed = (s: Setup, packId: string): Promise<Buffer> => fs.readFile(path.join(s.library.contentDir(packId), 'FiveM Application Data', 'mods', 'flammes.rpf'))
+
+  it('recolore la copie du pack ; le fichier en cache reste d’origine', async () => {
+    const s = setup()
+    const blob = publishRpf(s, 'rev-1', archive(), [{ file: 'core.ypt', particles: ['veh_flame'], color: '#00ff00' }])
+    const result = await s.builder.install(BUILD, vi.fn(), new AbortController().signal, hooks())
+    const pack = await s.library.get(result.packId)
+    const ypt = readRpf(await installed(s, pack.id)).get('core.ypt')!
+    for (const color of colorsOf(ypt, 0)) [0, 1, 0, 0.3].forEach((x, i) => expect(color[i]).toBeCloseTo(x, 5))
+    for (const color of colorsOf(ypt, 1)) [0.2, 0.2, 0.2, 0.5].forEach((x, i) => expect(color[i]).toBeCloseTo(x, 5))
+    expect((await fs.readFile(s.builder.blobFile(blob.sha256))).equals(archive())).toBe(true)
+    expect(pack.files[0].size).toBe((await installed(s, pack.id)).length)
+  })
+
+  it('une autre couleur est une nouvelle révision, sans nouveau téléchargement', async () => {
+    const s = setup()
+    publishRpf(s, 'rev-1', archive(), [{ file: 'core.ypt', particles: ['veh_flame'], color: '#00ff00' }])
+    const first = await s.builder.install(BUILD, vi.fn(), new AbortController().signal, hooks())
+    const downloads = s.requests.filter((r) => r.url.includes('/builder/files/')).length
+    publishRpf(s, 'rev-2', archive(), [{ file: 'core.ypt', particles: ['veh_flame'], color: '#ff0000' }])
+    const second = await s.builder.install(BUILD, vi.fn(), new AbortController().signal, hooks())
+    expect(second.status).toBe('updated')
+    expect(s.requests.filter((r) => r.url.includes('/builder/files/')).length).toBe(downloads)
+    const ypt = readRpf(await installed(s, second.packId)).get('core.ypt')!
+    for (const color of colorsOf(ypt, 0)) [1, 0, 0, 0.3].forEach((x, i) => expect(color[i]).toBeCloseTo(x, 5))
+    expect(await s.library.list()).toHaveLength(1)
+    expect(first.packId).not.toBe(second.packId)
+  })
+
+  it('sans choix : le fichier d’origine ; particule introuvable : rien n’est installé', async () => {
+    const s = setup()
+    publishRpf(s, 'rev-1', archive(), [])
+    const plain = await s.builder.install(BUILD, vi.fn(), new AbortController().signal, hooks())
+    expect((await installed(s, plain.packId)).equals(archive())).toBe(true)
+
+    publishRpf(s, 'rev-2', archive(), [{ file: 'core.ypt', particles: ['absente'], color: '#00ff00' }])
+    await expect(s.builder.install(BUILD, vi.fn(), new AbortController().signal, hooks())).rejects.toThrow(/absente/)
+    // Un .rpf illisible non plus.
+    publishRpf(s, 'rev-3', Buffer.from('pas une archive'), [{ file: 'core.ypt', particles: ['veh_flame'], color: '#00ff00' }])
+    await expect(s.builder.install(BUILD, vi.fn(), new AbortController().signal, hooks())).rejects.toThrow(/veh_flame/)
+    // La version installée reste en place.
+    expect((await s.library.list()).map((p) => p.id)).toEqual([plain.packId])
+  })
+
+  it('refuse une recoloration incohérente dans le manifeste', () => {
+    const blob = { sha256: 'a'.repeat(64), size: 1, url: '/builder/files/a', entryCount: 1, kind: 'file', root: 'fivem', path: 'mods/a.rpf' }
+    expect(checkManifest({ revision: 'r', files: [blob] }).files[0].recolors).toEqual([])
+    expect(() => checkManifest({ revision: 'r', files: [{ ...blob, recolors: [{ file: 'core.ypt', particles: ['p'], color: '#000000' }] }] })).toThrow()
+    expect(() => checkManifest({ revision: 'r', files: [{ ...blob, recolors: [{ file: 'core.ypt', particles: [], color: '#ff0000' }] }] })).toThrow()
+  })
+
+  it('catalogue et création lisent les réglages ; un choix d’élément retiré ne compte plus', () => {
+    const catalog = toCatalog({ groups: [], categories: [{ key: 'effects', components: [{ id: ROADS_ID, options: [OPTION, { id: 'x', type: 'autre' }] }, { id: PRESET_ID }] }] }, { offline: false, checked: true })
+    expect(catalog.categories[0].components.map((c) => c.options)).toEqual([[OPTION], []])
+    const base = { name: 'n', components: [ROADS_ID], tools: noTools() }
+    expect(chosenOptions({ ...base, options: { [ROADS_ID]: { flames: '#ff0000' }, [PRESET_ID]: { flames: '#00ff00' } } })).toEqual({ [ROADS_ID]: { flames: '#ff0000' } })
+    expect(chosenOptions(base)).toEqual({})
   })
 })
 

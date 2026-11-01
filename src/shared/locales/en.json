@@ -389,7 +389,8 @@
       "details": "Details",
       "notAnalyzed": "Not analyzed yet",
       "weightTitle": "Weight on performance and added video memory",
-      "enableBase": "Turn on"
+      "enableBase": "Turn on",
+      "optionsHint": "This setting applies to your game when the pack is installed: only you can see it."
     },
     "details": {
       "choose": "Choose",

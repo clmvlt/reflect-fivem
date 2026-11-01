@@ -13,7 +13,7 @@ const GRADIENT_END = '#2020ff'
 /** Bouton « Personnaliser » d'un mod qui a des options (rien sinon) et sa fenêtre. */
 export function ModOptionsButton({ mod, className }: { mod: PackManifest; className?: string }) {
   const { t } = useTranslation()
-  const { task } = useStore()
+  const { run, task } = useStore()
   const [open, setOpen] = useState(false)
   if (!mod.options?.length) return null
   return (
@@ -21,15 +21,38 @@ export function ModOptionsButton({ mod, className }: { mod: PackManifest; classN
       <button className={className} onClick={() => setOpen(true)} disabled={!!task}>
         {t('modsView.options.button')}
       </button>
-      {open && <ModOptionsDialog mod={mod} options={mod.options} onClose={() => setOpen(false)} />}
+      {open && (
+        <OptionsDialog
+          name={mod.name}
+          options={mod.options}
+          current={mod.optionValues}
+          onApply={(values) => void run(() => window.api.setModOptions(mod.id, values))}
+          onClose={() => setOpen(false)}
+        />
+      )}
     </>
   )
 }
 
-function ModOptionsDialog({ mod, options, onClose }: { mod: PackManifest; options: ModOption[]; onClose: () => void }) {
+/** Réglages d'un mod ou d'un élément de « Créer ton pack » ; `hint` : à la place du texte d'un mod déjà téléchargé. */
+export function OptionsDialog({
+  name,
+  options,
+  current,
+  hint,
+  onApply,
+  onClose
+}: {
+  name: string
+  options: ModOption[]
+  current: Record<string, string> | undefined
+  hint?: string
+  onApply: (values: Record<string, string>) => void
+  onClose: () => void
+}) {
   const { t, i18n } = useTranslation()
-  const { run, task } = useStore()
-  const saved = usableValues(options, mod.optionValues)
+  const { task } = useStore()
+  const saved = usableValues(options, current)
   const [values, setValues] = useState<Record<string, string>>(saved)
   const set = (id: string, value: string | null): void =>
     setValues((current) => {
@@ -41,14 +64,14 @@ function ModOptionsDialog({ mod, options, onClose }: { mod: PackManifest; option
   const tooDark = Object.values(values).some((v) => !isUsableColor(v))
   const dirty = options.some((o) => (values[o.id] ?? null) !== (saved[o.id] ?? null))
 
-  const apply = async (): Promise<void> => {
+  const apply = (): void => {
     onClose()
-    await run(() => window.api.setModOptions(mod.id, values))
+    onApply(values)
   }
 
   return (
     <Modal
-      title={t('modsView.options.title', { mod: mod.name })}
+      title={t('modsView.options.title', { mod: name })}
       onClose={onClose}
       className="mod-options"
       actions={
@@ -56,13 +79,13 @@ function ModOptionsDialog({ mod, options, onClose }: { mod: PackManifest; option
           <button onClick={onClose} data-autofocus>
             {t('common.cancel')}
           </button>
-          <button className="primary" onClick={() => void apply()} disabled={!dirty || tooDark || !!task}>
+          <button className="primary" onClick={apply} disabled={!dirty || tooDark || !!task}>
             {t('modsView.options.apply')}
           </button>
         </>
       }
     >
-      <p className="hint">{t('modsView.options.hint')}</p>
+      <p className="hint">{hint ?? t('modsView.options.hint')}</p>
       {options.map((option) => {
         const value = values[option.id] ?? null
         return (

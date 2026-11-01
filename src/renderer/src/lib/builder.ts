@@ -2,6 +2,7 @@
 // choix, conflits en direct, réglages des outils (seulement ce que le joueur change) et contrôles des paramètres
 // d'effets. Les règles propres aux outils d'ambiance sont dans @shared/ambiance.
 
+import { chosenOptions } from '@shared/modOptions'
 import { cleanTools, fromLegacy, recommendedTools, toolBases, TOOL_KEYS, toolOff } from '@shared/ambiance'
 import type {
   BuilderAdjustments,
@@ -30,11 +31,13 @@ export interface Draft {
   removed: BuilderBuildComponent[]
   /** Noms connus des composants (création ouverte), pour ceux absents du catalogue. */
   names: Record<string, string>
+  /** Choix pour les options des composants (composant -> option -> couleur). */
+  options: Record<string, Record<string, string>>
 }
 
 /** Nouvelle création : « Recommandé » (le choix par défaut de chaque outil). */
 export function newDraft(name: string, catalog: BuilderCatalog): Draft {
-  return { id: null, name, components: [], tools: recommendedTools(catalog), removed: [], names: {} }
+  return { id: null, name, components: [], tools: recommendedTools(catalog), removed: [], names: {}, options: {} }
 }
 
 /**
@@ -56,23 +59,24 @@ export function draftOf(build: BuilderBuild): Draft {
     const component = tools[key].component
     if (tools[key].mode === 'pack' && component && removed.some((c) => c.id === component)) tools[key] = toolOff()
   }
-  return { id: build.id, name: build.name, components, tools, removed, names: Object.fromEntries(known.map((c) => [c.id, c.name])) }
+  return { id: build.id, name: build.name, components, tools, removed, names: Object.fromEntries(known.map((c) => [c.id, c.name])), options: build.options }
 }
 
 /**
  * Brouillon gardé d'avant les outils d'ambiance (`reshade`, preset et bases parmi les composants) : ses composants
  * d'outils deviennent leur choix « Importé d'un pack », avec ses réglages ReShade pour le preset.
  */
-export function upgradeDraft(draft: Omit<Draft, 'tools'> & { tools?: unknown; reshade?: unknown }, categoryOf: (id: string) => string | null | undefined): Draft {
-  const { reshade, tools: rawTools, ...rest } = draft
-  if (rawTools !== undefined && reshade === undefined) return { ...rest, tools: cleanTools(rawTools) }
+export function upgradeDraft(draft: Omit<Draft, 'tools' | 'options'> & { tools?: unknown; reshade?: unknown; options?: Draft['options'] }, categoryOf: (id: string) => string | null | undefined): Draft {
+  const { reshade, tools: rawTools, options, ...rest } = draft
+  if (rawTools !== undefined && reshade === undefined) return { ...rest, tools: cleanTools(rawTools), options: options ?? {} }
   const { components, tools } = fromLegacy(draft.components, categoryOf, reshade, cleanTools(rawTools))
-  return { ...rest, components, tools }
+  return { ...rest, components, tools, options: options ?? {} }
 }
 
 /** Ce qui est enregistré d'une création : comparé pour savoir s'il reste des changements à enregistrer. */
-export function snapshot(d: Pick<Draft, 'name' | 'components' | 'tools'>): string {
-  return JSON.stringify({ name: d.name.trim(), components: [...d.components].sort(), tools: sortKeys(cleanTools(d.tools)) })
+export function snapshot(d: Pick<Draft, 'name' | 'components' | 'tools'> & { options?: Draft['options'] }): string {
+  const options = chosenOptions(d)
+  return JSON.stringify({ name: d.name.trim(), components: [...d.components].sort(), tools: sortKeys(cleanTools(d.tools)), ...(Object.keys(options).length ? { options: sortKeys(options) } : {}) })
 }
 
 /** Deux instantanés (snapshot) aux mêmes éléments et réglages : seul le nom diffère, ce n'est pas une modification. */

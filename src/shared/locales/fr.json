@@ -389,7 +389,8 @@
       "details": "Détails",
       "notAnalyzed": "Pas encore analysé",
       "weightTitle": "Poids sur les performances et mémoire vidéo ajoutée",
-      "enableBase": "Activer"
+      "enableBase": "Activer",
+      "optionsHint": "Ce réglage s’applique à votre jeu quand le pack est installé : vous êtes seul à le voir."
     },
     "details": {
       "choose": "Choisir",

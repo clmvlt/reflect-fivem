@@ -3151,6 +3151,13 @@ button.discord-brand:disabled {
 .mod-switch .switch-text {
   min-width: 72px;
 }
+.builder-option-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  border-radius: 50%;
+}
 .mod-option {
   margin: 12px 0 0;
   padding: 0;

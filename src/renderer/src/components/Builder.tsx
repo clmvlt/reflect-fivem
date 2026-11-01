@@ -46,6 +46,7 @@ import {
 import { apiError, cleanError, useStore } from '../store'
 import { bytes, longDate, num, q } from '../lib/format'
 import { SUMMARY, TOOLS, toolsGroup, wizardPages, wizardSteps, type WizardPage } from '@shared/builderPages'
+import { chosenOptions } from '@shared/modOptions'
 import { blockersOf, cardIndex, conflictsOf, shownProblems, draftOf, missingBases, NAME_MAX, newDraft, sameComposition, snapshot, toggle, upgradeDraft, type CardRef, type Draft } from '../lib/builder'
 import { Cover, EmptyState } from './common'
 import { confirmDialog } from './Confirm'
@@ -351,7 +352,7 @@ function Home({
 /** Composition enregistrée telle quelle, sans les composants retirés (refusés à l'enregistrement). */
 async function savedInput(id: string, name: string): Promise<BuilderSaveInput> {
   const draft = draftOf(await window.api.builderBuildGet(id))
-  return { name, components: draft.components, tools: draft.tools }
+  return { name, components: draft.components, tools: draft.tools, options: chosenOptions(draft) }
 }
 
 function BuildCard({
@@ -714,7 +715,7 @@ function Wizard({
     if (dirty && !(await confirmDialog(t('builder.leave.title'), t('builder.leave.detail'), t('builder.leave.ok')))) return
     onExit()
   }
-  const input = (): BuilderSaveInput => ({ name: draft.name.trim() || t('builder.newName'), components: draft.components, tools: withKnownStyles(draft.tools, catalog) })
+  const input = (): BuilderSaveInput => ({ name: draft.name.trim() || t('builder.newName'), components: draft.components, tools: withKnownStyles(draft.tools, catalog), options: chosenOptions(draft) })
   const afterSave = (id: string, name: string): void => {
     const next = { ...draft, id, name, tools: withKnownStyles(draft.tools, catalog), removed: [] }
     setDraft(next)
@@ -880,6 +881,7 @@ function Wizard({
               onChoose={choose}
               onDetails={setDetails}
               onBase={enable}
+              onOptions={(id, values) => setDraft({ ...draft, options: { ...draft.options, [id]: values } })}
               baseLabel={baseLabel}
             />
           ) : (
@@ -942,6 +944,7 @@ function CategoryPage({
   onChoose,
   onDetails,
   onBase,
+  onOptions,
   baseLabel
 }: {
   category: BuilderCategory
@@ -951,6 +954,7 @@ function CategoryPage({
   onChoose: (category: BuilderCategory, id: string | null) => void
   onDetails: (id: string) => void
   onBase: (base: string) => void
+  onOptions: (id: string, values: Record<string, string>) => void
   baseLabel: (base: string) => string
 }) {
   const { t } = useTranslation()
@@ -988,6 +992,8 @@ function CategoryPage({
           onChoose={() => onChoose(category, card.id)}
           onDetails={() => onDetails(card.id)}
           onBase={onBase}
+          optionValues={draft.options[card.id]}
+          onOptions={(values) => onOptions(card.id, values)}
         />
       ))}
     </div>

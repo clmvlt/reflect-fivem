@@ -5,12 +5,14 @@ import { useEffect, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import type { BuilderComponentCard, BuilderComponentDetail, BuilderPerformance } from '@shared/types'
+import { colorCss } from '@shared/modOptions'
 import { EMBEDDED_PERFORMANCE_MODEL, tierLabel } from '@shared/performance'
 import { cleanError, useStore } from '../store'
 import { builderImageUrl, bytes, num, q } from '../lib/format'
 import { Gallery } from './Gallery'
 import { Markdown } from './Markdown'
 import { Modal } from './Modal'
+import { OptionsDialog } from './ModOptions'
 import { memText, usePerformance } from './Performance'
 
 /** Entrée ou Espace sur une carte : comme un clic. */
@@ -63,10 +65,14 @@ export function ComponentTile({
   blockers,
   missing,
   baseLabel,
+  optionValues,
   onChoose,
   onDetails,
-  onBase
+  onBase,
+  onOptions
 }: {
+  optionValues?: Record<string, string>
+  onOptions?: (values: Record<string, string>) => void
   card: BuilderComponentCard
   selected: boolean
   blockers: BuilderComponentCard[]
@@ -78,6 +84,7 @@ export function ComponentTile({
 }) {
   const { t } = useTranslation()
   const [failed, setFailed] = useState(false)
+  const [customizing, setCustomizing] = useState(false)
   const stop = (fn: () => void) => (e: MouseEvent) => {
     e.stopPropagation()
     fn()
@@ -88,54 +95,68 @@ export function ComponentTile({
     if (!blocked) onChoose()
   }
   return (
-    <article
-      className={`card clickable builder-card ${selected ? 'is-selected' : ''} ${blocked ? 'is-blocked' : ''}`}
-      role="button"
-      tabIndex={0}
-      aria-pressed={selected}
-      title={blocked ?? undefined}
-      onClick={choose}
-      onKeyDown={(e) => activate(e, choose)}
-    >
-      <div className="cover">
-        {card.cover && !failed ? (
-          <img className="cover-img" src={builderImageUrl(card.id, card.cover.id, true)} alt="" draggable={false} onError={() => setFailed(true)} />
-        ) : (
-          <div className="cover-empty">{card.name}</div>
-        )}
-        {selected && <Check />}
-      </div>
-      <div className="card-body">
-        <div className="name" title={card.name}>
-          {card.name}
+    <>
+      <article
+        className={`card clickable builder-card ${selected ? 'is-selected' : ''} ${blocked ? 'is-blocked' : ''}`}
+        role="button"
+        tabIndex={0}
+        aria-pressed={selected}
+        title={blocked ?? undefined}
+        onClick={choose}
+        onKeyDown={(e) => activate(e, choose)}
+      >
+        <div className="cover">
+          {card.cover && !failed ? (
+            <img className="cover-img" src={builderImageUrl(card.id, card.cover.id, true)} alt="" draggable={false} onError={() => setFailed(true)} />
+          ) : (
+            <div className="cover-empty">{card.name}</div>
+          )}
+          {selected && <Check />}
         </div>
-        {card.summary && <p className="builder-text">{card.summary}</p>}
-        {card.credits && (
-          <div className="meta" title={card.credits}>
-            {t('builder.card.credits', { credits: card.credits })}
+        <div className="card-body">
+          <div className="name" title={card.name}>
+            {card.name}
           </div>
-        )}
-        {card.requires.length > 0 && !missing.length && <div className="meta">{t('builder.card.requires', { bases: card.requires.map(baseLabel).join(', ') })}</div>}
-        {missing.map((b) => (
-          <div key={b} className="builder-note warn-text">
-            {t('builder.card.missing', { base: baseLabel(b) })}{' '}
-            <button className="link" onClick={stop(() => onBase(b))}>
-              {t('builder.card.enableBase')}
+          {card.summary && <p className="builder-text">{card.summary}</p>}
+          {card.credits && (
+            <div className="meta" title={card.credits}>
+              {t('builder.card.credits', { credits: card.credits })}
+            </div>
+          )}
+          {card.requires.length > 0 && !missing.length && <div className="meta">{t('builder.card.requires', { bases: card.requires.map(baseLabel).join(', ') })}</div>}
+          {missing.map((b) => (
+            <div key={b} className="builder-note warn-text">
+              {t('builder.card.missing', { base: baseLabel(b) })}{' '}
+              <button className="link" onClick={stop(() => onBase(b))}>
+                {t('builder.card.enableBase')}
+              </button>
+            </div>
+          ))}
+          {card.unreadable && <div className="meta">{t('builder.card.unreadable')}</div>}
+          <div className="card-foot">
+            <WeightBadge perf={card.performance} />
+            <span className="meta">{bytes(card.size)}</span>
+            <div className="spacer" />
+            {selected && card.options.length > 0 && onOptions && (
+              <button title="" onClick={stop(() => setCustomizing(true))}>
+                {Object.entries(optionValues ?? {}).map(([id, color]) => (
+                  <span key={id} className="builder-option-dot" style={{ background: colorCss(color) }} aria-hidden />
+                ))}
+                {t('modsView.options.button')}
+              </button>
+            )}
+            {/* Toujours possible : sans la raison du blocage au survol. */}
+            <button title="" onClick={stop(onDetails)}>
+              {t('builder.card.details')}
             </button>
           </div>
-        ))}
-        {card.unreadable && <div className="meta">{t('builder.card.unreadable')}</div>}
-        <div className="card-foot">
-          <WeightBadge perf={card.performance} />
-          <span className="meta">{bytes(card.size)}</span>
-          <div className="spacer" />
-          {/* Toujours possible : sans la raison du blocage au survol. */}
-          <button title="" onClick={stop(onDetails)}>
-            {t('builder.card.details')}
-          </button>
         </div>
-      </div>
-    </article>
+      </article>
+      {/* À côté de la carte : un clic dans la fenêtre ne doit pas la choisir ou la retirer. */}
+      {customizing && onOptions && (
+        <OptionsDialog name={card.name} options={card.options} current={optionValues} hint={t('builder.card.optionsHint')} onApply={onOptions} onClose={() => setCustomizing(false)} />
+      )}
+    </>
   )
 }
 

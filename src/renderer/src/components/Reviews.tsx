@@ -730,7 +730,7 @@ function CommentItem({
   const { account } = useStore()
   const { t } = useTranslation()
   const [mode, setMode] = useState<'edit' | 'report' | 'hide' | null>(null)
-  const admin = !!account?.admin
+  const admin = !!account?.admin || !!account?.moderator
   const isReply = c.parentId !== null
   const name = c.author?.displayName ?? t('reviews.deletedAccount')
 
@@ -839,7 +839,7 @@ function CommentItem({
           </p>
         )}
 
-        {/* Admin : commentaire masqué affiché avec son texte, la raison et les signalements. */}
+        {/* Admin ou modérateur : commentaire masqué affiché avec son texte, la raison et les signalements. */}
         {admin && (c.status === 'hidden' || (c.reportCount ?? 0) > 0) && (
           <div className="moderation-note">
             {c.status === 'hidden' && (c.moderationReason ? t('reviews.moderationHiddenReason', { reason: c.moderationReason }) : t('reviews.moderationHidden'))}

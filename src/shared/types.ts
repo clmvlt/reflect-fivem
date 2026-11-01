@@ -543,7 +543,7 @@ export interface MarketPack {
   performance?: PackPerformance | null
   /** Prix en centimes TTC, fixé par l'admin ; null : gratuit (absent d'une API plus ancienne : gratuit). */
   price: number | null
-  /** Faux pour un brouillon (pas encore publié), que seul l'admin connecté voit. */
+  /** Faux pour un brouillon (pas encore publié), que seuls l'admin et le modérateur connectés voient. */
   published: boolean
   /** Identifiant de la vidéo YouTube de présentation (null si aucune, ou absente des listes d'une API plus ancienne). */
   youtubeId: string | null
@@ -715,6 +715,8 @@ export interface AccountMe {
   avatarUrl: string | null
   role: 'user' | 'admin'
   admin: boolean
+  /** Modérateur : voit les brouillons et modère les avis (absent d'un compte enregistré par une ancienne version). */
+  moderator?: boolean
   canPublish: boolean
   /** Peut publier des mods (depuis le site). */
   canPublishMods: boolean

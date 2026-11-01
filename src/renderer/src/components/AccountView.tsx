@@ -347,6 +347,7 @@ function AccountHead({ me, actions }: { me: AccountMe; actions?: ReactNode }) {
   const { t } = useTranslation()
   const badges = [
     me.admin && t('accountView.badges.admin'),
+    me.moderator && t('accountView.badges.moderator'),
     me.canPublish && t('accountView.badges.author'),
     me.canPublishMods && !me.admin && t('accountView.badges.modAuthor'),
     me.googleLinked && 'Google',

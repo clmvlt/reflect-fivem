@@ -100,7 +100,7 @@ export interface RemoteSummary {
   performance?: unknown
   /** Prix en centimes TTC (null : gratuit ; absent avec une API plus ancienne). */
   price?: number | null
-  /** Faux pour un brouillon, servi à l'admin seulement (absent avec une API plus ancienne : publié). */
+  /** Faux pour un brouillon, servi à l'admin et au modérateur seulement (absent avec une API plus ancienne : publié). */
   published?: boolean
   /** Absent des listes d'une API plus ancienne (seule la fiche le donnait). */
   youtubeId?: string | null
@@ -148,8 +148,8 @@ export interface DownloadAuth {
   accessToken(): Promise<string | null>
   /** Jeton refusé par l'API : renouvelé, puis renvoyé (null si la connexion a expiré). */
   renewRejected(token: string): Promise<string | null>
-  /** Compte admin connecté (jamais bloqué par une maintenance). */
-  isAdmin?(): boolean
+  /** Compte admin (jamais bloqué par une maintenance) ou modérateur connecté. */
+  isStaff?(): boolean
 }
 
 export interface InstallHooks {
@@ -360,17 +360,17 @@ export class Marketplace {
     return send(next)
   }
 
-  /** Admin connecté : brouillons visibles, jamais bloqué par une maintenance. */
-  private admin(): boolean {
-    return !!this.auth?.isAdmin?.()
+  /** Admin ou modérateur connecté : brouillons visibles ; l'admin n'est jamais bloqué par une maintenance. */
+  private staff(): boolean {
+    return !!this.auth?.isStaff?.()
   }
 
   /**
-   * Requête anonyme ; celle de l'admin connecté porte son jeton (fiches, images et téléchargements des brouillons, et
+   * Requête anonyme ; celle de l'admin ou du modérateur connecté porte son jeton (fiches, images et téléchargements des brouillons, et
    * jamais de blocage pour maintenance).
    */
   private async fetchPublic(url: string, init: { signal: AbortSignal }): Promise<Response> {
-    return this.admin() ? this.fetchAsAccount(url, init) : apiFetch(url, init)
+    return this.staff() ? this.fetchAsAccount(url, init) : apiFetch(url, init)
   }
 
   private async localIndex(kind: MarketKind = 'pack'): Promise<Map<string, StoredManifest>> {
@@ -402,7 +402,7 @@ export class Marketplace {
     // « Compatibles avec mon PC » seulement : sinon, rien de la machine ne part vers l'API.
     if (Number.isInteger(query.vram) && query.vram! > 0) params.set('vram', String(query.vram))
     if (Number.isInteger(query.gpuClass) && query.gpuClass! >= 0) params.set('gpuClass', String(query.gpuClass))
-    if (this.admin()) params.set('drafts', 'true')
+    if (this.staff()) params.set('drafts', 'true')
     const [page, index] = await Promise.all([this.get<RemotePage>(`${catalogPath(kind)}?${params}`), this.localIndex(kind)])
     for (const r of page.items) this.catalog.set(r.id, r)
     return { items: page.items.map((r) => toMarketPack(r, index.get(r.id))), page: page.page, total: page.total, totalPages: page.totalPages }
@@ -496,8 +496,8 @@ export class Marketplace {
       if (kind === 'mod' && !this.modLibrary) continue
       try {
         for (let page = 0; page < 50; page++) {
-          // Brouillons de l'admin compris : un brouillon téléchargé n'est pas marqué retiré.
-          const result = await this.get<RemotePage>(`${catalogPath(kind)}?page=${page}&size=100${this.admin() ? '&drafts=true' : ''}`)
+          // Brouillons de l'admin et du modérateur compris : un brouillon téléchargé n'est pas marqué retiré.
+          const result = await this.get<RemotePage>(`${catalogPath(kind)}?page=${page}&size=100${this.staff() ? '&drafts=true' : ''}`)
           for (const r of result.items) all.set(r.id, { ...r, kind: r.kind ?? kind })
           if (page + 1 >= result.totalPages) break
         }

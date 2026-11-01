@@ -164,7 +164,7 @@ function useMarketPage(query: MarketQuery): { page: MarketPage | null; error: st
   const [loading, setLoading] = useState(true)
   const { i18n } = useTranslation()
   const { account } = useStore()
-  const admin = !!account?.admin
+  const staff = !!account?.admin || !!account?.moderator
   const key = JSON.stringify(query)
 
   const load = useCallback(async () => {
@@ -179,11 +179,11 @@ function useMarketPage(query: MarketQuery): { page: MarketPage | null; error: st
     }
   }, [key])
 
-  // Langue changée : page relue (textes et messages d'erreur de l'API) ; admin connecté ou déconnecté : brouillons
+  // Langue changée : page relue (textes et messages d'erreur de l'API) ; admin ou modérateur connecté ou déconnecté : brouillons
   // ajoutés ou retirés.
   useEffect(() => {
     void load()
-  }, [load, i18n.language, admin])
+  }, [load, i18n.language, staff])
 
   return { page, error, loading, reload: () => void load() }
 }
@@ -413,7 +413,7 @@ function FeaturedBadge({ kind, className = '' }: { kind: MarketKind; className?:
   )
 }
 
-/** Brouillon (pas encore publié) : seul l'admin connecté le voit dans la Marketplace. */
+/** Brouillon (pas encore publié) : seuls l'admin et le modérateur connectés le voient dans la Marketplace. */
 function DraftBadge({ className = '' }: { className?: string }) {
   const { t } = useTranslation()
   return (

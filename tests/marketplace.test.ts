@@ -136,7 +136,7 @@ describe('requêtes de la Marketplace', () => {
   it('admin connecté : brouillons demandés avec son jeton ; sinon, requête anonyme sans brouillons', async () => {
     const page = { items: [remote({ published: false })], page: 0, size: 24, total: 1, totalPages: 1 }
     fetchMock.mockImplementation(async () => json(200, page))
-    const auth = (admin: boolean) => ({ accessToken: async () => 'at_1', renewRejected: async () => null, isAdmin: () => admin })
+    const auth = (admin: boolean) => ({ accessToken: async () => 'at_1', renewRejected: async () => null, isStaff: () => admin })
     const listed = await new Marketplace('https://api.test/api', 'cache', () => library, auth(true)).list({})
     expect(listed.items[0].published).toBe(false)
     await new Marketplace('https://api.test/api', 'cache', () => library, auth(false)).list({})

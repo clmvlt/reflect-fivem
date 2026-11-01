@@ -191,6 +191,8 @@ interface RemoteMe {
   avatarUrl: string | null
   role: string | null
   admin: boolean
+  /** Absent d'une API plus ancienne : pas modérateur. */
+  moderator?: boolean
   canPublish: boolean
   canPublishMods?: boolean
   /** Absent d'une API plus ancienne : pas de droit. */
@@ -260,6 +262,7 @@ function toMe(r: RemoteMe): AccountMe {
     avatarUrl: avatarMediaUrl(r.avatarUrl),
     role: r.role === 'admin' ? 'admin' : 'user',
     admin: !!r.admin,
+    moderator: !!r.moderator,
     canPublish: !!r.canPublish,
     canPublishMods: !!r.canPublishMods,
     canBuildPacks: !!r.canBuildPacks,
@@ -518,6 +521,12 @@ export class Account {
   /** Compte admin connecté : jamais bloqué par une maintenance (ses requêtes doivent porter son jeton). */
   isAdmin(): boolean {
     return !!this.current()?.admin
+  }
+
+  /** Compte admin ou modérateur connecté : brouillons visibles dans la Marketplace (ses requêtes doivent porter son jeton). */
+  isStaff(): boolean {
+    const me = this.current()
+    return !!me?.admin || !!me?.moderator
   }
 
   /**

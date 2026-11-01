@@ -59,6 +59,7 @@
     "backToBuilder": "‹ Back to “Create your pack”",
     "badges": {
       "admin": "Administrator",
+      "moderator": "Moderator",
       "author": "Author",
       "modAuthor": "Mod author"
     },

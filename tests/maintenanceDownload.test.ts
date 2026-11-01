@@ -152,7 +152,7 @@ describe('téléchargement pendant une maintenance', () => {
 
   it('l’admin connecté n’est pas bloqué : ses requêtes portent son jeton', async () => {
     const { lib } = fakeLibrary()
-    const auth = { accessToken: async () => 'at_admin', renewRejected: async () => 'at_admin', isAdmin: () => true }
+    const auth = { accessToken: async () => 'at_admin', renewRejected: async () => 'at_admin', isStaff: () => true }
     const market = new Marketplace(API, path.join(dir, 'cache'), () => lib, auth)
     fetchMock.mockImplementation(async (_url, init) =>
       new Headers(init?.headers).get('Authorization') === 'Bearer at_admin' ? json(200, { items: [], page: 0, size: 24, total: 0, totalPages: 0 }) : maintenance503()

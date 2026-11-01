@@ -1654,7 +1654,11 @@
       "original": "D’origine",
       "custom": "Autre couleur",
       "tooDark": "Trop sombre : cette couleur ne se verrait pas en jeu.",
-      "apply": "Appliquer"
+      "apply": "Appliquer",
+      "solid": "Couleur unie",
+      "gradient": "Dégradé",
+      "start": "Début de la flamme",
+      "end": "Fin de la flamme"
     }
   },
   "optimizations": {

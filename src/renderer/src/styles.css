@@ -3176,9 +3176,24 @@ button.discord-brand:disabled {
   border-radius: 50%;
 }
 .mod-option-swatch.is-selected,
-.mod-option-original.is-selected {
+.mod-option-mode.is-selected {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+.mod-option-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.mod-option-preview {
+  height: 14px;
+  margin-bottom: 8px;
+  border-radius: 7px;
+}
+.mod-option-stop {
+  margin: 8px 0 4px;
+  font-size: 12px;
 }
 .mod-option-custom {
   display: inline-flex;

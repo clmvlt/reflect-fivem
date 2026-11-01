@@ -2,11 +2,13 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ModOption, PackManifest } from '@shared/types'
-import { isUsableColor, optionLabel, usableValues } from '@shared/modOptions'
+import { colorCss, colorStops, isUsableColor, optionLabel, usableValues } from '@shared/modOptions'
 import { useStore } from '../store'
 import { Modal } from './Modal'
 
 const SWATCHES = ['#ff2a1a', '#ff7a00', '#ffd400', '#1dff3c', '#00e5ff', '#2020ff', '#a020ff', '#ff2bbf', '#ffffff']
+const GRADIENT_START = '#a020ff'
+const GRADIENT_END = '#2020ff'
 
 /** Bouton « Personnaliser » d'un mod qui a des options (rien sinon) et sa fenêtre. */
 export function ModOptionsButton({ mod, className }: { mod: PackManifest; className?: string }) {
@@ -66,29 +68,58 @@ function ModOptionsDialog({ mod, options, onClose }: { mod: PackManifest; option
         return (
           <fieldset key={option.id} className="mod-option">
             <legend>{optionLabel(option, i18n.language)}</legend>
-            <div className="mod-option-swatches">
-              <button className={`mod-option-original ${value === null ? 'is-selected' : ''}`} onClick={() => set(option.id, null)} aria-pressed={value === null}>
-                {t('modsView.options.original')}
-              </button>
-              {SWATCHES.map((color) => (
-                <button
-                  key={color}
-                  className={`mod-option-swatch ${value === color ? 'is-selected' : ''}`}
-                  style={{ background: color }}
-                  onClick={() => set(option.id, color)}
-                  aria-label={color}
-                  aria-pressed={value === color}
-                />
-              ))}
-              <label className="mod-option-custom">
-                {t('modsView.options.custom')}
-                <input type="color" value={value ?? '#ffffff'} onChange={(e) => set(option.id, e.target.value)} />
-              </label>
-            </div>
+            <OptionColors value={value} onChange={(next) => set(option.id, next)} />
             {value !== null && !isUsableColor(value) && <p className="small warn-text">{t('modsView.options.tooDark')}</p>}
           </fieldset>
         )
       })}
     </Modal>
+  )
+}
+
+/** Choix d'une teinte : pastilles, ou couleur libre. */
+function ColorRow({ value, onChange }: { value: string | null; onChange: (color: string) => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="mod-option-swatches">
+      {SWATCHES.map((color) => (
+        <button key={color} className={`mod-option-swatch ${value === color ? 'is-selected' : ''}`} style={{ background: color }} onClick={() => onChange(color)} aria-label={color} aria-pressed={value === color} />
+      ))}
+      <label className="mod-option-custom">
+        {t('modsView.options.custom')}
+        <input type="color" value={value ?? '#ffffff'} onChange={(e) => onChange(e.target.value)} />
+      </label>
+    </div>
+  )
+}
+
+/** Couleur d'une option : celle du mod, une couleur unie, ou un dégradé du début à la fin de la flamme. */
+function OptionColors({ value, onChange }: { value: string | null; onChange: (value: string | null) => void }) {
+  const { t } = useTranslation()
+  const [start, end] = value === null ? [GRADIENT_START, GRADIENT_END] : colorStops(value)
+  const gradient = value !== null && value.includes(',')
+  const mode = (active: boolean, label: string, choose: () => void) => (
+    <button className={`mod-option-mode ${active ? 'is-selected' : ''}`} onClick={choose} aria-pressed={active}>
+      {label}
+    </button>
+  )
+  return (
+    <>
+      <div className="mod-option-modes">
+        {mode(value === null, t('modsView.options.original'), () => onChange(null))}
+        {mode(value !== null && !gradient, t('modsView.options.solid'), () => onChange(start))}
+        {mode(gradient, t('modsView.options.gradient'), () => onChange(`${start},${start === end ? GRADIENT_END : end}`))}
+      </div>
+      {value !== null && !gradient && <ColorRow value={start} onChange={onChange} />}
+      {gradient && (
+        <>
+          <div className="mod-option-preview" style={{ background: colorCss(value) }} aria-hidden />
+          <div className="mod-option-stop">{t('modsView.options.start')}</div>
+          <ColorRow value={start} onChange={(color) => onChange(`${color},${end}`)} />
+          <div className="mod-option-stop">{t('modsView.options.end')}</div>
+          <ColorRow value={end} onChange={(color) => onChange(`${start},${color}`)} />
+        </>
+      )}
+    </>
   )
 }

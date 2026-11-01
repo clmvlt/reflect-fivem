@@ -3,7 +3,7 @@
 
 import { randomBytes } from 'node:crypto'
 import { t } from 'i18next'
-import { colorToRgb, usableValues } from '@shared/modOptions'
+import { paintOf, usableValues } from '@shared/modOptions'
 import { resolveInstallMap } from './analyzer'
 import type { Report } from './installer'
 import type { Library, StoredManifest } from './library'
@@ -19,7 +19,7 @@ const MAX_ARCHIVE = 1024 * 1024 * 1024
 export async function writeModOptionFiles(lib: Library, m: StoredManifest, values: Record<string, string>, report: Report): Promise<string | null> {
   const recolors: Recolor[] = (m.options ?? [])
     .filter((o) => values[o.id])
-    .flatMap((o) => o.targets.map((target) => ({ file: target.file, particles: target.particles, rgb: colorToRgb(values[o.id]) })))
+    .flatMap((o) => o.targets.map((target) => ({ file: target.file, particles: target.particles, ...paintOf(values[o.id]) })))
   if (!recolors.length) return null
   report(t('modOptions.phase'), 0, 0)
 

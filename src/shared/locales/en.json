@@ -1654,7 +1654,11 @@
       "original": "Original",
       "custom": "Other colour",
       "tooDark": "Too dark: this colour would not show in game.",
-      "apply": "Apply"
+      "apply": "Apply",
+      "solid": "Solid colour",
+      "gradient": "Gradient",
+      "start": "Flame start",
+      "end": "Flame end"
     }
   },
   "optimizations": {

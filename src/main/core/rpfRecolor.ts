@@ -1,6 +1,7 @@
 // Recoloration de particules dans une archive .rpf de GTA V (format RPF7) : les effets d'un .ypt décrivent leur couleur par
 // des images clés (comportement ptxu_Colour d'une particule), sans toucher aux textures. Seuls le rouge, le vert et le
-// bleu de ces images clés changent ; la transparence, l'intensité et tout le reste de l'archive restent tels quels.
+// bleu de ces images clés changent ; la transparence, l'intensité et tout le reste de l'archive restent tels quels. Une
+// image clé porte son moment dans la vie de la particule (de 0 à 1) : un dégradé y prend la teinte de ce moment.
 //
 // Rouge, vert et bleu étant dans la ressource compressée, celle-ci est décompressée, modifiée, recompressée ; sa taille
 // change, donc les archives qui l'englobent sont réécrites. Les fichiers non concernés sont repris octet pour octet.
@@ -39,11 +40,18 @@ const KEYFRAMES = 0x70
 const KEYFRAME_SIZE = 0x20
 const KEYFRAME_VALUE = 0x10
 
-/** Particules à recolorer dans les ressources nommées {@link file} ; {@link rgb} : de 0 à 1. */
-export interface Recolor {
+type Rgb = [number, number, number]
+
+/** Couleur d'une particule, de 0 à 1 ; avec {@link rgbEnd}, dégradé de {@link rgb} (naissance) à celle-ci (fin de vie). */
+export interface Paint {
+  rgb: Rgb
+  rgbEnd?: Rgb
+}
+
+/** Particules à recolorer dans les ressources nommées {@link file}. */
+export interface Recolor extends Paint {
   file: string
   particles: string[]
-  rgb: [number, number, number]
 }
 
 export class RecolorError extends Error {
@@ -88,15 +96,15 @@ function text(d: Buffer, at: number): string {
   return d.toString('latin1', at, end < 0 ? d.length : end)
 }
 
-function setColour(d: Buffer, keyframes: number, rgb: [number, number, number]): number {
+function setColour(d: Buffer, keyframes: number, paint: Paint): number {
   const values = pointer(d, keyframes + KEYFRAMES)
   if (values === null) return 0
   const count = d.readUInt16LE(keyframes + KEYFRAMES + 8)
   for (let i = 0; i < count; i++) {
     const at = values + i * KEYFRAME_SIZE + KEYFRAME_VALUE
-    d.writeFloatLE(rgb[0], at)
-    d.writeFloatLE(rgb[1], at + 4)
-    d.writeFloatLE(rgb[2], at + 8)
+    const end = paint.rgbEnd ?? paint.rgb
+    const time = Math.min(1, Math.max(0, d.readFloatLE(values + i * KEYFRAME_SIZE) || 0))
+    for (let c = 0; c < 3; c++) d.writeFloatLE(paint.rgb[c] + (end[c] - paint.rgb[c]) * time, at + c * 4)
   }
   return count
 }
@@ -105,7 +113,7 @@ function setColour(d: Buffer, keyframes: number, rgb: [number, number, number]):
  * Recolore un .ypt décompressé, sur place ; {@link colors} : particule (en minuscules) -> couleur. Renvoie les particules
  * trouvées et si des images clés ont changé. Le contenu d'un mod n'est pas sûr : une ressource incohérente est refusée.
  */
-export function recolorParticles(d: Buffer, colors: Map<string, [number, number, number]>): { found: string[]; changed: boolean } {
+export function recolorParticles(d: Buffer, colors: Map<string, Paint>): { found: string[]; changed: boolean } {
   const found: string[] = []
   let changed = false
   try {
@@ -115,12 +123,12 @@ export function recolorParticles(d: Buffer, colors: Map<string, [number, number,
       const name = pointer(d, rule + RULE_NAME)
       if (name === null) continue
       const particle = text(d, name).toLowerCase()
-      const rgb = colors.get(particle)
-      if (!rgb) continue
+      const paint = colors.get(particle)
+      if (!paint) continue
       found.push(particle)
       for (const behaviour of pointers(d, rule + RULE_BEHAVIOURS)) {
         if (d.readUInt32LE(behaviour + BEHAVIOUR_TYPE) !== BEHAVIOUR_COLOUR) continue
-        const count = setColour(d, behaviour + COLOUR_RGBA_MIN, rgb) + setColour(d, behaviour + COLOUR_RGBA_MAX, rgb)
+        const count = setColour(d, behaviour + COLOUR_RGBA_MIN, paint) + setColour(d, behaviour + COLOUR_RGBA_MAX, paint)
         changed ||= count > 0
       }
     }
@@ -145,7 +153,7 @@ class Rebuilder {
 
   constructor(
     private d: Buffer,
-    private byFile: Map<string, Map<string, [number, number, number]>>
+    private byFile: Map<string, Map<string, Paint>>
   ) {}
 
   private recolored(name: string, raw: Buffer): Promise<Buffer | null> {
@@ -268,11 +276,11 @@ export async function recolorRpf(archive: Buffer, recolors: Recolor[]): Promise<
   if (archive.length < 16 || archive.readUInt32LE(0) !== RPF_MAGIC) throw new RecolorError('damaged')
   const encryption = archive.readUInt32LE(12)
   if (encryption !== ENCRYPTION_NONE && encryption !== ENCRYPTION_OPEN) throw new RecolorError('encrypted')
-  const byFile = new Map<string, Map<string, [number, number, number]>>()
+  const byFile = new Map<string, Map<string, Paint>>()
   for (const r of recolors) {
     const file = r.file.toLowerCase()
-    const colors = byFile.get(file) ?? new Map<string, [number, number, number]>()
-    for (const particle of r.particles) colors.set(particle.toLowerCase(), r.rgb)
+    const colors = byFile.get(file) ?? new Map<string, Paint>()
+    for (const particle of r.particles) colors.set(particle.toLowerCase(), { rgb: r.rgb, rgbEnd: r.rgbEnd })
     byFile.set(file, colors)
   }
   const rebuilder = new Rebuilder(archive, byFile)

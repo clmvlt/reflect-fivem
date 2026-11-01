@@ -1,5 +1,6 @@
 // Options d'un mod de la Marketplace (couleur des flammes...), lues dans sa fiche et réglées dans l'application. Le choix du
-// joueur (id de l'option -> valeur) est appliqué sur son PC : le mod d'origine n'est jamais modifié.
+// joueur (id de l'option -> valeur) est appliqué sur son PC : le mod d'origine n'est jamais modifié. Valeur d'une couleur :
+// « #rrggbb », ou « #rrggbb,#rrggbb » pour un dégradé, du début à la fin de la vie de la particule.
 
 import type { ModOption } from './types'
 
@@ -30,10 +31,28 @@ export function optionLabel(option: ModOption, language: string): string {
   return option.label[language.split('-')[0]] ?? option.label.fr
 }
 
-/** Couleur « #rrggbb » assez lumineuse pour se voir en jeu. */
+/** Couleur ou dégradé dont chaque teinte est assez lumineuse pour se voir en jeu. */
 export function isUsableColor(value: string): boolean {
-  if (!COLOR.test(value)) return false
-  return Math.max(...hexToBytes(value)) >= MIN_BRIGHTNESS
+  const stops = value.split(',')
+  return stops.length <= 2 && stops.every((c) => COLOR.test(c) && Math.max(...hexToBytes(c)) >= MIN_BRIGHTNESS)
+}
+
+/** Teintes de début et de fin d'une valeur (les mêmes pour une couleur unie). */
+export function colorStops(value: string): [string, string] {
+  const [start, end] = value.split(',')
+  return [start, end ?? start]
+}
+
+/** Peinture d'une particule (voir rpfRecolor.ts) : sa couleur, et celle de sa fin de vie pour un dégradé. */
+export function paintOf(value: string): { rgb: [number, number, number]; rgbEnd?: [number, number, number] } {
+  const [start, end] = value.split(',')
+  return end ? { rgb: colorToRgb(start), rgbEnd: colorToRgb(end) } : { rgb: colorToRgb(start) }
+}
+
+/** Fond CSS d'un aperçu de cette valeur. */
+export function colorCss(value: string): string {
+  const [start, end] = colorStops(value)
+  return start === end ? start : `linear-gradient(to right, ${start}, ${end})`
 }
 
 function hexToBytes(value: string): [number, number, number] {

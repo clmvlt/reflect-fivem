@@ -31,7 +31,7 @@ const { JsonStore, emptyState } = await import('../src/main/core/stores')
 const { inspectFiveM, inspectGta } = await import('../src/main/core/games')
 const { carryModOptions } = await import('../src/main/core/modOptions')
 const { recolorRpf, RecolorError, particleKey } = await import('../src/main/core/rpfRecolor')
-const { parseModOptions, usableValues, isUsableColor, optionLabel } = await import('../src/shared/modOptions')
+const { colorCss, colorStops, paintOf, parseModOptions, usableValues, isUsableColor, optionLabel } = await import('../src/shared/modOptions')
 
 // ------------------------------------------------------------------ fausses archives
 
@@ -65,7 +65,10 @@ function fakeYpt(particles: { name: string; rgba: [number, number, number, numbe
     ]) {
       ptr(keyframes + 0x70, values)
       d.writeUInt16LE(2, keyframes + 0x78)
-      for (let k = 0; k < 2; k++) p.rgba.forEach((c, n) => d.writeFloatLE(c, values + k * 32 + 16 + n * 4))
+      for (let k = 0; k < 2; k++) {
+        d.writeFloatLE(k, values + k * 32)
+        p.rgba.forEach((c, n) => d.writeFloatLE(c, values + k * 32 + 16 + n * 4))
+      }
     }
   })
   return d
@@ -213,6 +216,17 @@ describe('recoloration d’une archive .rpf', () => {
     expect(data!.length % 512).toBe(0)
   })
 
+  it('dégradé : chaque image clé prend la teinte de son moment dans la vie de la particule', async () => {
+    const { data } = await recolorRpf(backfireMod(), [{ file: 'core.ypt', particles: ['veh_exhaust_backfire'], rgb: GREEN, rgbEnd: [1, 0, 0] }])
+    const ypt = readRpf(data!).get('vfx.rpf/ptfx.rpf/core.ypt')!
+    const [minStart, minEnd, maxStart, maxEnd] = colorsOf(ypt, 0)
+    near(minStart, [0, 1, 0, ORANGE[3]])
+    near(maxStart, [0, 1, 0, ORANGE[3]])
+    near(minEnd, [1, 0, 0, ORANGE[3]])
+    near(maxEnd, [1, 0, 0, ORANGE[3]])
+    for (const color of colorsOf(ypt, 1)) near(color, SMOKE)
+  })
+
   it('garde la taille dans l’en-tête d’une ressource qui l’y avait', async () => {
     const source = fakeRpf([{ name: 'core.ypt', resource: backfireYpt(), big: true }])
     const { data } = await recolorRpf(source, recolors)
@@ -257,6 +271,16 @@ describe('options d’une fiche', () => {
     expect(isUsableColor('#2020ff')).toBe(true)
     expect(isUsableColor('#000000')).toBe(false)
     expect(isUsableColor('rouge')).toBe(false)
+    expect(isUsableColor('#a020ff,#2020ff')).toBe(true)
+    expect(isUsableColor('#a020ff,#000000')).toBe(false)
+    expect(isUsableColor('#a020ff,#2020ff,#ffffff')).toBe(false)
+    expect(usableValues([OPTION], { flames: '#A020FF,#2020FF' })).toEqual({ flames: '#a020ff,#2020ff' })
+    expect(colorStops('#a020ff,#2020ff')).toEqual(['#a020ff', '#2020ff'])
+    expect(colorStops('#a020ff')).toEqual(['#a020ff', '#a020ff'])
+    expect(colorCss('#a020ff')).toBe('#a020ff')
+    expect(colorCss('#a020ff,#2020ff')).toBe('linear-gradient(to right, #a020ff, #2020ff)')
+    expect(paintOf('#ff0000')).toEqual({ rgb: [1, 0, 0] })
+    expect(paintOf('#ff0000,#0000ff')).toEqual({ rgb: [1, 0, 0], rgbEnd: [0, 0, 1] })
     expect(usableValues([OPTION], { flames: '#FF0000', autre: '#00ff00' })).toEqual({ flames: '#ff0000' })
     expect(usableValues([OPTION], { flames: '#101010' })).toEqual({})
     expect(optionLabel(OPTION, 'en-US')).toBe('Flame colour')
@@ -345,6 +369,23 @@ describe('réglages d’un mod dans le jeu', () => {
     await installer.setModOptions(id, {}, report)
     expect((await fs.readFile(file)).equals(source)).toBe(true)
     expect((await mods.get(id)).optionsDir).toBeUndefined()
+    await installer.setModEnabled(id, false, report)
+  })
+
+  it('applique un dégradé dans le jeu, puis le garde à la réactivation', async () => {
+    const id = await addMod('Flammes degrade', backfireMod())
+    await installer.setModEnabled(id, true, report)
+    await installer.setModOptions(id, { flames: '#00ff00,#ff0000' }, report)
+    const file = inGame('Flammes degrade.rpf')
+    const check = async (): Promise<void> => {
+      const [start, end] = await flameColors(file)
+      near(start, [0, 1, 0, ORANGE[3]])
+      near(end, [1, 0, 0, ORANGE[3]])
+    }
+    await check()
+    await installer.setModEnabled(id, false, report)
+    await installer.setModEnabled(id, true, report)
+    await check()
     await installer.setModEnabled(id, false, report)
   })
 

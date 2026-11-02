@@ -206,7 +206,7 @@ describe('réponses de PowerShell', () => {
 
   it('résultats des changements : un résultat manquant compte comme un échec', () => {
     expect(parseOpResults('{"ok":true}', 2)).toEqual([{ ok: true }, { ok: false }])
-    expect(parseOpResults('[{"ok":false,"error":"refusé"},{"ok":true,"added":"C:\\\\FiveM"}]', 2)).toEqual([{ ok: false, error: 'refusé' }, { ok: true, added: ['C:\\FiveM'] }])
+    expect(parseOpResults('[{"ok":false,"error":"refusé"},{"ok":true}]', 2)).toEqual([{ ok: false, error: 'refusé' }, { ok: true }])
     expect(parseOpResults('pas du JSON', 1)).toEqual([{ ok: false }])
   })
 })
@@ -266,12 +266,9 @@ class FakeWindows implements OptimizerSystem {
         case 'powermode':
           this.powerModeAc = op.mode
           return { ok: true }
-        case 'defender': {
-          const added = op.add.filter((p) => !this.exclusions.has(p))
-          added.forEach((p) => this.exclusions.add(p))
+        case 'defender':
           op.remove.forEach((p) => this.exclusions.delete(p))
-          return { ok: true, added }
-        }
+          return { ok: true }
         case 'pagefile':
           this.pagefile = { ...this.pagefile, auto: op.auto, files: op.auto ? [] : op.files }
           return { ok: true }
@@ -352,11 +349,13 @@ describe('optimisations sur un Windows simulé', () => {
       'game-mode': 'native',
       pagefile: 'native',
       windowed: 'off',
-      priority: 'off',
-      defender: 'off'
+      priority: 'off'
     })
+    // Plus proposée : l'utilisateur ajoute lui-même l'exclusion de l'antivirus (vérification).
+    expect(o.items.some((i) => i.id === 'defender')).toBe(false)
     expect(o.items.every((i) => !i.undoable)).toBe(true)
-    expect(o.checks.map((c) => c.id)).toEqual(['ram', 'driver', 'overlays', 'startup'])
+    expect(o.checks.map((c) => c.id)).toEqual(['ram', 'driver', 'defender', 'overlays', 'startup'])
+    expect(o.checks.find((c) => c.id === 'defender')).toMatchObject({ link: 'defender-exclusions', copy: path.dirname(fivemApp) })
     expect(o.checks.find((c) => c.id === 'ram')?.level).toBe('warn')
   })
 
@@ -418,39 +417,19 @@ describe('optimisations sur un Windows simulé', () => {
   it('une seule demande administrateur ; refusée, le reste est fait quand même', async () => {
     win.pagefile = { auto: false, files: [{ name: 'C:\\pagefile.sys', initial: 512, maximum: 1024 }], allocatedMb: 1024 }
     win.denyAdmin = true
-    const r = await optimizer.apply(['pagefile', 'defender', 'game-dvr'])
+    const r = await optimizer.apply(['pagefile', 'game-dvr'])
     expect(r.denied).toBe(true)
     expect(r.done).toEqual(['game-dvr'])
-    expect(r.failed.map((f) => f.id).sort()).toEqual(['defender', 'pagefile'])
+    expect(r.failed.map((f) => f.id)).toEqual(['pagefile'])
     expect(win.runs.filter((x) => x.admin)).toHaveLength(1)
 
     win.denyAdmin = false
-    const ok = await optimizer.apply(['pagefile', 'defender'])
-    expect(ok.done).toEqual(['pagefile', 'defender'])
+    const ok = await optimizer.apply(['pagefile'])
+    expect(ok.done).toEqual(['pagefile'])
     expect(ok.reboot).toBe(true)
     expect(win.pagefile.auto).toBe(true)
-    expect([...win.exclusions]).toEqual([path.dirname(fivemApp)])
-    await optimizer.revert(['pagefile', 'defender'])
+    await optimizer.revert(['pagefile'])
     expect(win.pagefile).toMatchObject({ auto: false, files: [{ name: 'C:\\pagefile.sys', initial: 512, maximum: 1024 }] })
-    expect(win.exclusions.size).toBe(0)
-  })
-
-  it('exclusion déjà présente : « Annuler » ne la retire pas', async () => {
-    win.exclusions.add(path.dirname(fivemApp))
-    await optimizer.apply(['defender'])
-    expect((await item('defender')).status).toBe('on')
-    await optimizer.revert(['defender'])
-    expect(win.exclusions.has(path.dirname(fivemApp))).toBe(true)
-  })
-
-  it('autre antivirus actif : exclusion sans objet', async () => {
-    win.antivirus = [
-      { name: 'Windows Defender', enabled: false },
-      { name: 'Avast Antivirus', enabled: true }
-    ]
-    const d = await item('defender')
-    expect(d.status).toBe('na')
-    expect(d.note).toContain('Avast Antivirus')
   })
 
   it('carte graphique dédiée : FiveM, le jeu et ses pages, préférences gardées, nouvelle version ajoutée', async () => {

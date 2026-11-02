@@ -1725,8 +1725,7 @@
       "windows11": "Réservé à Windows 11.",
       "unknown": "État illisible sur ce PC.",
       "powerPlan": "Ce PC ne propose que le plan Utilisation normale : choisissez « Meilleures performances » dans les paramètres d’alimentation de Windows.",
-      "otherAntivirus": "{{name}} protège ce PC : ajoutez le dossier de FiveM aux exclusions dans ses réglages.",
-      "noDefender": "Microsoft Defender n’est pas actif sur ce PC."
+      "retired": "Plus proposée : ajoutez vous-même le dossier de FiveM aux exclusions de l’antivirus (voir « À vérifier sur ce PC »)."
     },
     "notes": {
       "keptForPack": "Shaders et post-traitement restent en « Très élevé » pour le pack {{pack}}.",
@@ -1852,6 +1851,13 @@
         "gta": "GTA V",
         "fivem": "FiveM"
       },
+      "defender": {
+        "title": "Exclusion de l’antivirus pour FiveM",
+        "text": "Exclure le dossier de FiveM de l’analyse de Microsoft Defender accélère les chargements et réduit les saccades quand le jeu lit son cache, mais les fichiers téléchargés depuis les serveurs n’y sont plus analysés. Pour le faire : Gérer les paramètres › Ajouter ou supprimer des exclusions › Ajouter une exclusion › Dossier, puis choisissez {{path}}.",
+        "other": "{{name}} protège ce PC : pour accélérer les chargements, vous pouvez exclure le dossier de FiveM de son analyse dans ses réglages ({{path}}). Les fichiers téléchargés depuis les serveurs n’y seront plus analysés."
+      },
+      "copy": "Copier le chemin",
+      "copied": "Chemin copié",
       "memory-integrity": {
         "title": "Intégrité de la mémoire",
         "on": "Activée. Cette protection de Windows peut coûter 5 à 10 % d’images par seconde, plus sur les processeurs d’avant 2017. La désactiver réduit la sécurité du PC : à vous de choisir, dans Sécurité Windows.",
@@ -1868,6 +1874,7 @@
       "links": {
         "startup-apps": "Applications de démarrage",
         "core-isolation": "Ouvrir Sécurité Windows",
+        "defender-exclusions": "Ouvrir Sécurité Windows",
         "driver-nvidia": "Télécharger le pilote",
         "driver-amd": "Télécharger le pilote",
         "driver-intel": "Télécharger le pilote",

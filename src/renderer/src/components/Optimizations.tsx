@@ -235,9 +235,15 @@ function OptimizationRow({
 function CheckRow({ check }: { check: CheckState }) {
   const { t } = useTranslation()
   const { run } = useStore()
+  const [copied, setCopied] = useState(false)
   // Constat calculé par le processus principal, sinon texte fixe de la vérification.
   const id = check.id
   const text = check.detail ?? (id === 'single-channel' || id === 'overlays' || id === 'startup' ? t(`optimizations.checks.${id}.text`) : '')
+  const copy = async (value: string): Promise<void> => {
+    await navigator.clipboard.writeText(value)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
   return (
     <li className="row top opt-row">
       <div className="row-main">
@@ -247,9 +253,10 @@ function CheckRow({ check }: { check: CheckState }) {
         </div>
         <div className="meta meta-wrap">{text}</div>
       </div>
-      {check.link && (
+      {(check.link || check.copy) && (
         <div className="actions">
-          <button onClick={() => void run(() => window.api.optimizationsOpen(check.link!))}>{t(`optimizations.checks.links.${check.link}`)}</button>
+          {check.copy && <button onClick={() => void run(() => copy(check.copy!))}>{t(copied ? 'optimizations.checks.copied' : 'optimizations.checks.copy')}</button>}
+          {check.link && <button onClick={() => void run(() => window.api.optimizationsOpen(check.link!))}>{t(`optimizations.checks.links.${check.link}`)}</button>}
         </div>
       )}
     </li>

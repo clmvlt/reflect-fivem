@@ -1863,6 +1863,7 @@ export class Service {
 const GUIDE_LINKS: Record<GuideLink, string> = {
   'startup-apps': 'ms-settings:startupapps',
   'core-isolation': 'windowsdefender://coreisolation',
+  'defender-exclusions': 'windowsdefender://threatsettings',
   'driver-nvidia': 'https://www.nvidia.com/en-us/drivers/',
   'driver-amd': 'https://www.amd.com/en/support/download/drivers.html',
   'driver-intel': 'https://www.intel.com/content/www/us/en/support/detect.html',

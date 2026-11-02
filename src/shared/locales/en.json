@@ -1725,8 +1725,7 @@
       "windows11": "Windows 11 only.",
       "unknown": "Couldn’t read the state on this PC.",
       "powerPlan": "This PC only offers the Balanced plan: choose “Best performance” in the Windows power settings.",
-      "otherAntivirus": "{{name}} protects this PC: add the FiveM folder to the exclusions in its settings.",
-      "noDefender": "Microsoft Defender isn’t active on this PC."
+      "retired": "No longer offered: add the FiveM folder to the antivirus exclusions yourself (see “To check on this PC”)."
     },
     "notes": {
       "keptForPack": "Shaders and post FX stay at “Very high” for the {{pack}} pack.",
@@ -1852,6 +1851,13 @@
         "gta": "GTA V",
         "fivem": "FiveM"
       },
+      "defender": {
+        "title": "Antivirus exclusion for FiveM",
+        "text": "Excluding the FiveM folder from Microsoft Defender scans speeds up loading and reduces stutter when the game reads its cache, but files downloaded from servers into it are no longer scanned. To do it: Manage settings › Add or remove exclusions › Add an exclusion › Folder, then choose {{path}}.",
+        "other": "{{name}} protects this PC: to speed up loading, you can exclude the FiveM folder from its scans in its settings ({{path}}). Files downloaded from servers into it will no longer be scanned."
+      },
+      "copy": "Copy path",
+      "copied": "Path copied",
       "memory-integrity": {
         "title": "Memory integrity",
         "on": "On. This Windows protection can cost 5 to 10% of frames per second, more on processors from before 2017. Turning it off lowers the PC’s security: your call, in Windows Security.",
@@ -1868,6 +1874,7 @@
       "links": {
         "startup-apps": "Startup apps",
         "core-isolation": "Open Windows Security",
+        "defender-exclusions": "Open Windows Security",
         "driver-nvidia": "Download the driver",
         "driver-amd": "Download the driver",
         "driver-intel": "Download the driver",

@@ -47,7 +47,10 @@ export type Change =
   | { t: 'powermode'; before: string; after: string }
   | { t: 'xml'; key: string; before: string; after: string }
   | { t: 'cfg'; key: string; before: string | null; after: string }
-  /** `added` : exclusion ajoutée par l'application (faux : elle existait déjà, « Annuler » la laisse). */
+  /**
+   * Exclusion de l'antivirus, ajoutée par les versions précédentes (plus proposée : seulement annulée). `added` :
+   * ajoutée par l'application (faux : elle existait déjà, « Annuler » la laisse).
+   */
   | { t: 'defender'; path: string; added?: boolean }
   | { t: 'pagefile'; before: { auto: boolean; files: PageFile[] } }
   | { t: 'priority' }
@@ -169,8 +172,6 @@ function opOf(c: Change): { op: SystemOp; admin: boolean } | null {
       return { op: { t: 'power', scheme: c.after }, admin: false }
     case 'powermode':
       return { op: { t: 'powermode', mode: c.after }, admin: false }
-    case 'defender':
-      return { op: { t: 'defender', add: [c.path], remove: [] }, admin: true }
     case 'pagefile':
       return { op: { t: 'pagefile', auto: true, files: [] }, admin: true }
     default:
@@ -289,7 +290,7 @@ export class Optimizer {
 
   private overviewOf(env: Env): OptimizationsOverview {
     const applied = this.saved?.applied ?? {}
-    const items = OPTIMIZATIONS.map((d): OptimizationState => {
+    const items = OPTIMIZATIONS.filter((d) => !d.retired || applied[d.id]).map((d): OptimizationState => {
       const plan = this.plan(d.id, env)
       const undoable = !!applied[d.id]
       if ('na' in plan) return { id: d.id, status: 'na', undoable, note: plan.na }
@@ -389,15 +390,10 @@ export class Optimizer {
       case 'priority':
         return { changes: recorded ? [] : [{ t: 'priority' }] }
       case 'defender': {
-        if (!env.fivem) return { na: t('optimizations.na.noFiveM') }
-        const av = env.probe.antivirus
-        const defender = av.some((a) => /defender/i.test(a.name) && a.enabled)
-        if (!defender) {
-          const others = av.filter((a) => a.enabled && !/defender/i.test(a.name)).map((a) => a.name)
-          return { na: others.length ? t('optimizations.na.otherAntivirus', { name: formatList(others.map(quote)) }) : t('optimizations.na.noDefender') }
-        }
-        // Exclusions illisibles sans droits administrateur : celle notée ici fait foi.
-        return { changes: recorded ? [] : [{ t: 'defender', path: env.fivem.dir }], note: env.fivem.dir }
+        // Plus proposée (voir la vérification du même nom) : seulement annulable si une version précédente l'a appliquée.
+        if (!recorded) return { na: t('optimizations.na.retired') }
+        const change = this.saved?.applied.defender?.changes.find((c) => c.t === 'defender')
+        return { changes: [], note: change?.t === 'defender' ? change.path : null }
       }
     }
   }
@@ -476,6 +472,16 @@ export class Optimizer {
           ? { id: 'memory-integrity', level: 'info', detail: t('optimizations.checks.memory-integrity.on'), link: 'core-isolation' }
           : { id: 'memory-integrity', level: 'ok', detail: t('optimizations.checks.memory-integrity.off'), link: null }
       )
+    // Exclusion de l'antivirus : ajoutée par l'utilisateur, jamais par l'application (les antivirus y voient un logiciel
+    // malveillant). Rien à faire si une version précédente l'a déjà ajoutée.
+    if (env.fivem && !this.saved?.applied.defender) {
+      const enabled = p.antivirus.filter((a) => a.enabled)
+      const others = enabled.filter((a) => !/defender/i.test(a.name)).map((a) => a.name)
+      if (enabled.some((a) => /defender/i.test(a.name)))
+        out.push({ id: 'defender', level: 'info', detail: t('optimizations.checks.defender.text', { path: env.fivem.dir }), link: 'defender-exclusions', copy: env.fivem.dir })
+      else if (others.length)
+        out.push({ id: 'defender', level: 'info', detail: t('optimizations.checks.defender.other', { name: formatList(others.map(quote)), path: env.fivem.dir }), link: null, copy: env.fivem.dir })
+    }
     out.push({ id: 'overlays', level: 'info', detail: null, link: 'game-bar' })
     out.push({ id: 'startup', level: 'info', detail: null, link: 'startup-apps' })
     return out
@@ -537,7 +543,7 @@ export class Optimizer {
             if (env.cfg && same(env.cfg.values[c.key], c.after)) cfg[c.key] = c.before
             break
           case 'defender':
-            if (c.added) ops.push({ id, op: { t: 'defender', add: [], remove: [c.path] }, admin: true })
+            if (c.added) ops.push({ id, op: { t: 'defender', remove: [c.path] }, admin: true })
             break
           case 'pagefile':
             if (env.probe.pagefile.auto) ops.push({ id, op: { t: 'pagefile', auto: c.before.auto, files: c.before.files }, admin: true })
@@ -619,8 +625,7 @@ export class Optimizer {
       }
       batch.forEach((o, i) => {
         const r = res[i]
-        if (!r?.ok) return fail(o.id, r?.error || t('optimizations.errors.failed'))
-        if (o.change.t === 'defender') o.change.added = !!r.added?.length
+        if (!r?.ok) fail(o.id, r?.error || t('optimizations.errors.failed'))
       })
     }
     // Fichiers du jeu : tous les réglages en une écriture par fichier.

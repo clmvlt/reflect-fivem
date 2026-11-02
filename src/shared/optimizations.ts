@@ -39,6 +39,12 @@ export interface OptimizationDef {
   reboot?: boolean
   /** Modifie des fichiers que FiveM réécrit en quittant : le jeu doit être fermé. */
   gameClosed?: boolean
+  /**
+   * Plus proposée : listée seulement si une version précédente l'a appliquée, pour pouvoir l'annuler. L'exclusion de
+   * l'antivirus ajoutée par l'application la faisait prendre pour un logiciel malveillant : c'est désormais une
+   * vérification (l'utilisateur l'ajoute lui-même dans Sécurité Windows).
+   */
+  retired?: boolean
 }
 
 export const OPTIMIZATIONS: OptimizationDef[] = [
@@ -55,7 +61,7 @@ export const OPTIMIZATIONS: OptimizationDef[] = [
   { id: 'pagefile', group: 'windows', gain: 'medium', admin: true, reboot: true },
   { id: 'windowed', group: 'windows', gain: 'low', optional: true },
   { id: 'priority', group: 'windows', gain: 'low', optional: true },
-  { id: 'defender', group: 'windows', gain: 'low', optional: true, admin: true }
+  { id: 'defender', group: 'windows', gain: 'low', optional: true, admin: true, retired: true }
 ]
 
 export const optimizationDef = (id: OptimizationId): OptimizationDef => OPTIMIZATIONS.find((o) => o.id === id)!
@@ -77,7 +83,7 @@ export interface OptimizationState {
 }
 
 /** Vérifications et conseils (rien n'est changé automatiquement). */
-export type CheckId = 'power-source' | 'memory-integrity' | 'driver' | 'disk' | 'ram' | 'single-channel' | 'startup' | 'overlays'
+export type CheckId = 'power-source' | 'memory-integrity' | 'driver' | 'disk' | 'ram' | 'single-channel' | 'defender' | 'startup' | 'overlays'
 
 /** ok : rien à faire ; warn : à corriger ; info : conseil. */
 export type CheckLevel = 'ok' | 'warn' | 'info'
@@ -86,6 +92,7 @@ export type CheckLevel = 'ok' | 'warn' | 'info'
 export type GuideLink =
   | 'startup-apps'
   | 'core-isolation'
+  | 'defender-exclusions'
   | 'driver-nvidia'
   | 'driver-amd'
   | 'driver-intel'
@@ -99,6 +106,8 @@ export interface CheckState {
   /** Constat dans la langue affichée (« Pilote du 12 mars 2024 »). */
   detail: string | null
   link: GuideLink | null
+  /** Texte à copier (chemin d'un dossier à indiquer dans les réglages de Windows). */
+  copy?: string
 }
 
 export interface OptimizationsOverview {

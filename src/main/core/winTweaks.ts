@@ -1,5 +1,6 @@
 // Lecture et modification des réglages de Windows touchés par les optimisations (voir core/optimizations.ts) : valeurs du
-// registre, mode d'alimentation, mémoire virtuelle, exclusions de l'antivirus. Tout passe par PowerShell, en une seule
+// registre, mode d'alimentation, mémoire virtuelle, retrait des exclusions de l'antivirus ajoutées par les versions
+// précédentes (l'application n'en ajoute plus : les antivirus y voient un logiciel malveillant). Tout passe par PowerShell, en une seule
 // exécution pour la lecture et une par niveau de droits pour les changements (une seule demande UAC).
 
 import { runPowerShell } from '../util/win'
@@ -26,7 +27,7 @@ export type SystemOp =
   | { t: 'reg'; hive: Hive; key: string; name: string; type: 'dword' | 'string'; data: RegData }
   | { t: 'power'; scheme: string }
   | { t: 'powermode'; mode: string }
-  | { t: 'defender'; add: string[]; remove: string[] }
+  | { t: 'defender'; remove: string[] }
   | { t: 'pagefile'; auto: boolean; files: PageFile[] }
 
 export interface PageFile {
@@ -39,8 +40,6 @@ export interface PageFile {
 export interface OpResult {
   ok: boolean
   error?: string
-  /** Exclusions de l'antivirus vraiment ajoutées (celles déjà présentes ne sont pas comptées). */
-  added?: string[]
 }
 
 /** Carte graphique d'après son pilote. */
@@ -280,13 +279,7 @@ foreach ($op in @($ops)) {
         if (-not $r.ok) { $r.error = "PowerSetUserConfiguredACPowerMode: $rc" }
       }
       'defender' {
-        $before = @((Get-MpPreference -ErrorAction Stop).ExclusionPath)
-        $added = @()
-        foreach ($p in @($op.add)) {
-          if ($before -notcontains $p) { Add-MpPreference -ExclusionPath $p -ErrorAction Stop; $added += $p }
-        }
         foreach ($p in @($op.remove)) { Remove-MpPreference -ExclusionPath $p -ErrorAction Stop }
-        $r.added = @($added)
         $r.ok = $true
       }
       'pagefile' {
@@ -318,13 +311,9 @@ export function parseOpResults(out: string, count: number): OpResult[] {
   }
   const list = arr(json as unknown[])
   return Array.from({ length: count }, (_, i) => {
-    const r = list[i] as { ok?: unknown; error?: unknown; added?: unknown } | undefined
+    const r = list[i] as { ok?: unknown; error?: unknown } | undefined
     if (!r) return { ok: false }
-    return {
-      ok: r.ok === true,
-      ...(typeof r.error === 'string' && r.error ? { error: r.error } : {}),
-      ...(r.added !== undefined ? { added: arr(r.added as string[]).filter((p) => typeof p === 'string') } : {})
-    }
+    return { ok: r.ok === true, ...(typeof r.error === 'string' && r.error ? { error: r.error } : {}) }
   })
 }
 

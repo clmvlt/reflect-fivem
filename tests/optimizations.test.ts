@@ -432,6 +432,41 @@ describe('optimisations sur un Windows simulé', () => {
     expect(win.pagefile).toMatchObject({ auto: false, files: [{ name: 'C:\\pagefile.sys', initial: 512, maximum: 1024 }] })
   })
 
+  it("exclusion de l'antivirus : plus jamais ajoutée par l'application", async () => {
+    const r = await optimizer.apply(['defender'])
+    expect(r.done).toEqual([])
+    expect(r.failed.map((f) => f.id)).toEqual(['defender'])
+    expect(win.runs).toEqual([])
+  })
+
+  it('exclusion ajoutée par une version précédente : listée et annulable, sans la vérification', async () => {
+    const fivemDir = path.dirname(fivemApp)
+    win.exclusions.add(fivemDir)
+    await fs.writeFile(
+      path.join(dir, 'optimizations.json'),
+      JSON.stringify({ schema: 1, applied: { defender: { at: '2026-01-01T00:00:00.000Z', changes: [{ t: 'defender', path: fivemDir, added: true }] } } })
+    )
+    const o = await optimizer.overview()
+    expect(o.items.find((i) => i.id === 'defender')).toMatchObject({ status: 'on', undoable: true, note: fivemDir })
+    expect(o.checks.some((c) => c.id === 'defender')).toBe(false)
+    const back = await optimizer.revert(['defender'])
+    expect(back.done).toEqual(['defender'])
+    expect(win.runs).toEqual([{ ops: [{ t: 'defender', remove: [fivemDir] }], admin: true }])
+    expect(win.exclusions.size).toBe(0)
+    expect(back.overview.items.some((i) => i.id === 'defender')).toBe(false)
+    expect(back.overview.checks.some((c) => c.id === 'defender')).toBe(true)
+  })
+
+  it('autre antivirus actif : conseil pour ses propres réglages, sans lien vers Sécurité Windows', async () => {
+    win.antivirus = [
+      { name: 'Windows Defender', enabled: false },
+      { name: 'Avast Antivirus', enabled: true }
+    ]
+    const c = (await optimizer.overview()).checks.find((x) => x.id === 'defender')
+    expect(c).toMatchObject({ link: null, copy: path.dirname(fivemApp) })
+    expect(c?.detail).toContain('Avast Antivirus')
+  })
+
   it('carte graphique dédiée : FiveM, le jeu et ses pages, préférences gardées, nouvelle version ajoutée', async () => {
     win.drivers = [
       { name: 'Intel(R) UHD Graphics 620', version: '1', date: '2025-01-10', memory: 128 * 1024 ** 2 },

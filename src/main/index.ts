@@ -9,21 +9,22 @@ import { initI18n } from '@shared/i18n'
 import { ApiError } from './core/account'
 import { resolveDataDir } from './core/dataDir'
 import { describeLink, findDeepLink, type MarketLink, parseMarketLink, PROTOCOL } from './core/deepLink'
-import { EXEC_FLAG, LOCALE_FLAG, runElevatedWorker } from './core/elevation'
+import { EXEC_FLAG, LOCALE_FLAG, runElevatedScript, runElevatedWorker, SCRIPT_FLAG } from './core/elevation'
 import { Service } from './service'
 import { isInside } from './util/fsx'
 import { log } from './util/log'
 import trayIconFile from '../../resources/icon.png?asset'
 
-const isElevatedWorker = process.argv.some((a) => a.startsWith(EXEC_FLAG))
+const isElevatedScript = process.argv.some((a) => a.startsWith(SCRIPT_FLAG))
+const isElevatedWorker = isElevatedScript || process.argv.some((a) => a.startsWith(EXEC_FLAG))
 
 if (isElevatedWorker) {
-  // Processus administrateur éphémère : exécute un plan puis quitte, sans fenêtre.
+  // Processus administrateur éphémère : exécute un plan ou un script PowerShell puis quitte, sans fenêtre.
   app.setPath('userData', path.join(os.tmpdir(), 'reflect-fivem-elevated'))
   app.disableHardwareAcceleration()
   initI18n(process.argv.find((a) => a.startsWith(LOCALE_FLAG))?.slice(LOCALE_FLAG.length) ?? 'fr')
   void app.whenReady().then(async () => {
-    const code = await runElevatedWorker(process.argv)
+    const code = await (isElevatedScript ? runElevatedScript(process.argv) : runElevatedWorker(process.argv))
     app.exit(code)
   })
 } else {

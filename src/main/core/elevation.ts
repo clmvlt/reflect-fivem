@@ -12,6 +12,8 @@ import { executePlan, type ExecProgress, type Plan, type PlanResult } from './ex
 import { runPowerShell } from '../util/win'
 
 export const EXEC_FLAG = '--pm-exec-plan='
+/** Script PowerShell à exécuter avec les droits administrateur (voir {@link runPowerShellElevated}). */
+export const SCRIPT_FLAG = '--pm-exec-script='
 export const HASH_FLAG = '--pm-plan-sha256='
 /** Langue affichée, pour les messages du processus élevé. */
 export const LOCALE_FLAG = '--pm-locale='
@@ -43,11 +45,6 @@ export async function executePlanElevated(plan: Plan, jobsDir: string, onProgres
   await fs.rm(resultFile, { force: true })
   const sha = createHash('sha256').update(body).digest('hex')
 
-  const exe = process.execPath
-  const args = app.isPackaged ? [] : [app.getAppPath()]
-  args.push(`${EXEC_FLAG}${planFile}`, `${HASH_FLAG}${sha}`, `${LOCALE_FLAG}${currentLocale()}`)
-  const argList = args.map((a) => psQuote(`"${a}"`)).join(',')
-
   const readResult = async (): Promise<PlanResult | null> => {
     try {
       return JSON.parse(await fs.readFile(resultFile, 'utf8')) as PlanResult
@@ -56,16 +53,9 @@ export async function executePlanElevated(plan: Plan, jobsDir: string, onProgres
     }
   }
 
-  // PM_NO_UAC=1 (tests uniquement) : même mécanisme inter-processus, sans demande d'élévation.
-  const verb = process.env.PM_NO_UAC === '1' ? '' : '-Verb RunAs'
   const stopWaiting = new AbortController()
   let exited = false
-  const launch = runPowerShell(
-    // -ErrorAction Stop : sans lui, un refus de la demande UAC n'arrive pas jusqu'au catch.
-    `try { $p = Start-Process -FilePath ${psQuote(exe)} -ArgumentList ${argList} ${verb} -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop; Write-Output ("EXIT:" + $p.ExitCode) } catch { Write-Output ("DENIED:" + $_.Exception.Message) }`,
-    6 * 60 * 60 * 1000,
-    stopWaiting.signal
-  )
+  const launch = launchSelfElevated([`${EXEC_FLAG}${planFile}`, `${HASH_FLAG}${sha}`], 6 * 60 * 60 * 1000, stopWaiting.signal)
     .catch(() => '')
     .finally(() => {
       exited = true
@@ -116,33 +106,40 @@ export async function executePlanElevated(plan: Plan, jobsDir: string, onProgres
 }
 
 /**
+ * Relance l'exécutable de l'application avec les droits administrateur (une demande UAC) et attend sa fin. Renvoie la
+ * sortie du lanceur : « EXIT:<code> », ou « DENIED:<message> » si l'autorisation est refusée.
+ */
+function launchSelfElevated(flags: string[], timeoutMs: number, signal?: AbortSignal): Promise<string> {
+  const args = app.isPackaged ? [] : [app.getAppPath()]
+  args.push(...flags, `${LOCALE_FLAG}${currentLocale()}`)
+  const argList = args.map((a) => psQuote(`"${a}"`)).join(',')
+  // PM_NO_UAC=1 (tests uniquement) : même mécanisme inter-processus, sans demande d'élévation.
+  const verb = process.env.PM_NO_UAC === '1' ? '' : '-Verb RunAs'
+  return runPowerShell(
+    // -ErrorAction Stop : sans lui, un refus de la demande UAC n'arrive pas jusqu'au catch.
+    `try { $p = Start-Process -FilePath ${psQuote(process.execPath)} -ArgumentList ${argList} ${verb} -Wait -PassThru -ErrorAction Stop; Write-Output ("EXIT:" + $p.ExitCode) } catch { Write-Output ("DENIED:" + $_.Exception.Message) }`,
+    timeoutMs,
+    signal
+  )
+}
+
+/**
  * Exécute un script PowerShell avec les droits administrateur (une demande UAC), et renvoie ce qu'il a écrit (null si
- * l'autorisation est refusée). Le script est écrit dans `jobsDir` ; le PowerShell élevé reçoit seulement un court
- * lanceur qui vérifie son empreinte SHA-256 avant de l'exécuter : un fichier modifié entre-temps est refusé.
+ * l'autorisation est refusée). Le script est écrit dans `jobsDir` et exécuté par l'application relancée en administrateur
+ * (elle lance PowerShell comme {@link runPowerShell}), qui vérifie son empreinte SHA-256 : un fichier modifié entre-temps
+ * est refusé. Pas de PowerShell administrateur lancé directement avec le script en ligne de commande : les antivirus y
+ * voient le comportement d'un logiciel malveillant.
  */
 export async function runPowerShellElevated(script: string, jobsDir: string, timeoutMs = 30 * 60 * 1000): Promise<string | null> {
   await fs.mkdir(jobsDir, { recursive: true })
   const id = `ps-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   const scriptFile = path.join(jobsDir, `${id}.ps1`)
-  const outFile = path.join(jobsDir, `${id}.out.txt`)
-  const body = Buffer.from(`$ErrorActionPreference = 'SilentlyContinue'\n${script}`, 'utf8')
+  const outFile = `${scriptFile}.out.txt`
+  const body = Buffer.from(script, 'utf8')
   await fs.writeFile(scriptFile, body)
   const sha = createHash('sha256').update(body).digest('hex')
-  const boot = [
-    `$bytes = [IO.File]::ReadAllBytes(${psQuote(scriptFile)})`,
-    `$sha = -join ([Security.Cryptography.SHA256]::Create().ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') })`,
-    `if ($sha -ne '${sha}') { exit 3 }`,
-    `$out = & ([ScriptBlock]::Create([Text.Encoding]::UTF8.GetString($bytes))) | Out-String`,
-    `[IO.File]::WriteAllText(${psQuote(outFile)}, $out, (New-Object Text.UTF8Encoding $false))`
-  ].join('\n')
-  const encoded = Buffer.from(boot, 'utf16le').toString('base64')
-  // PM_NO_UAC=1 (tests uniquement) : même mécanisme, sans demande d'élévation.
-  const verb = process.env.PM_NO_UAC === '1' ? '' : '-Verb RunAs'
   try {
-    const out = await runPowerShell(
-      `try { $p = Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand','${encoded}' ${verb} -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop; Write-Output ("EXIT:" + $p.ExitCode) } catch { Write-Output ("DENIED:" + $_.Exception.Message) }`,
-      timeoutMs
-    )
+    const out = await launchSelfElevated([`${SCRIPT_FLAG}${scriptFile}`, `${HASH_FLAG}${sha}`], timeoutMs)
     if (/DENIED:/.test(out)) return null
     if (/EXIT:3\b/.test(out)) throw new Error(t('executor.errors.planTampered'))
     try {
@@ -153,6 +150,24 @@ export async function runPowerShellElevated(script: string, jobsDir: string, tim
   } finally {
     await fs.rm(scriptFile, { force: true }).catch(() => undefined)
     await fs.rm(outFile, { force: true }).catch(() => undefined)
+  }
+}
+
+/** Point d'entrée du processus élevé lancé par {@link runPowerShellElevated}. Retourne le code de sortie. */
+export async function runElevatedScript(argv: string[]): Promise<number> {
+  const scriptArg = argv.find((a) => a.startsWith(SCRIPT_FLAG))
+  const hashArg = argv.find((a) => a.startsWith(HASH_FLAG))
+  if (!scriptArg || !hashArg) return 2
+  const scriptFile = scriptArg.slice(SCRIPT_FLAG.length).replace(/^"|"$/g, '')
+  const expected = hashArg.slice(HASH_FLAG.length).replace(/^"|"$/g, '')
+  try {
+    const body = await fs.readFile(scriptFile)
+    if (createHash('sha256').update(body).digest('hex') !== expected) return 3
+    const out = await runPowerShell(body.toString('utf8'), 30 * 60 * 1000)
+    await fs.writeFile(`${scriptFile}.out.txt`, out, 'utf8')
+    return 0
+  } catch {
+    return 4
   }
 }
 

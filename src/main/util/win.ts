@@ -2,17 +2,26 @@ import { execFile, spawn } from 'node:child_process'
 import path from 'node:path'
 import { t } from 'i18next'
 
+/**
+ * Lit le script sur l'entrée standard (en UTF-8, pour les chemins accentués) et l'exécute. Le script ne passe pas par la
+ * ligne de commande : « -EncodedCommand » et « -ExecutionPolicy Bypass » sont ce que les antivirus surveillent chez les
+ * logiciels malveillants. La stratégie d'exécution ne concerne que les fichiers .ps1 : un script lu ainsi n'y est pas soumis.
+ */
+const STDIN_BOOT = "& ([ScriptBlock]::Create((New-Object IO.StreamReader([Console]::OpenStandardInput(), (New-Object Text.UTF8Encoding $false))).ReadToEnd()))"
+
 /** Exécute un script PowerShell (sortie forcée en UTF-8 pour les chemins accentués). */
 export function runPowerShell(script: string, timeoutMs = 20_000, signal?: AbortSignal): Promise<string> {
   const full = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n$ErrorActionPreference = 'SilentlyContinue'\n${script}`
-  const encoded = Buffer.from(full, 'utf16le').toString('base64')
   return new Promise((resolve, reject) => {
-    execFile(
+    const child = execFile(
       'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
+      ['-NoProfile', '-NonInteractive', '-Command', STDIN_BOOT],
       { windowsHide: true, timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8', signal },
       (err, stdout) => (err && !stdout ? reject(err) : resolve(stdout))
     )
+    // Processus déjà arrêté (délai, annulation) : l'erreur d'écriture est rapportée par execFile.
+    child.stdin?.on('error', () => undefined)
+    child.stdin?.end(full, 'utf8')
   })
 }
 

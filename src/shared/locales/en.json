@@ -72,7 +72,7 @@
     },
     "linked": {
       "choosePassword": "Choose a password",
-      "discordHelp": "Link your Discord account to sign in with it.",
+      "discordHelp": "Link your Discord account to sign in with it, get the Client role on the server if you have bought something, and 2 extra entries in giveaways.",
       "link": "Link my Discord account",
       "linked": "Discord account linked.",
       "title": "Linked accounts",

@@ -26,7 +26,7 @@ import { MenuHost } from './components/Menu'
 import { PageBoundary } from './components/PageBoundary'
 import { AuroraSky } from './components/AuroraSky'
 import { NightScene } from './components/NightScene'
-import icon from './assets/icon.png'
+import icon from './assets/icon.svg'
 
 /** instances : page des instances FiveM, ouverte depuis les réglages. */
 type Page = 'library' | 'market' | 'builder' | 'graphics' | 'optimizations' | 'cleanup' | 'discord' | 'account' | 'settings' | 'instances'

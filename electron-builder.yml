@@ -27,7 +27,9 @@ win:
       arch: [x64]
     - target: portable
       arch: [x64]
-  icon: resources/icon.png
+  # Icône de l'exécutable et de l'installateur : l'ICO contient chaque taille dessinée nettement (16 à 256 px), que
+  # Windows choisit selon l'affichage. resources/icon.png (512 px) sert à la fenêtre et à la zone de notification.
+  icon: resources/icon.ico
   requestedExecutionLevel: asInvoker
 nsis:
   oneClick: false

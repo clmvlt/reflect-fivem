@@ -1899,11 +1899,14 @@ async function saveCover(src: string, packDir: string): Promise<string | null> {
   return name
 }
 
+/** Accent de Windows, bleu du logo de Reflect FiveM s'il est illisible (le même que dans styles.css). */
+const BRAND_ACCENT = '#2670f0'
+
 function accentColor(): string {
   try {
     const c = systemPreferences.getAccentColor()
-    return /^[0-9a-f]{6}/i.test(c) ? `#${c.slice(0, 6)}` : '#0067c0'
+    return /^[0-9a-f]{6}/i.test(c) ? `#${c.slice(0, 6)}` : BRAND_ACCENT
   } catch {
-    return '#0067c0'
+    return BRAND_ACCENT
   }
 }

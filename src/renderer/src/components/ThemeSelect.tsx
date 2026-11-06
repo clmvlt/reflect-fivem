@@ -62,7 +62,7 @@ function Preview({ theme }: { theme: Theme }) {
   const c = theme.colors
   const surface = c.surface ?? (dark ? '#111111' : '#ffffff')
   const text = c.text ?? (dark ? '#ffffff' : '#1b1b1b')
-  const accent = c.accent ?? 'var(--system-accent, #7c40fd)'
+  const accent = c.accent ?? 'var(--system-accent, #2670f0)'
   const border = c.border ?? (dark ? 'rgba(255, 255, 255, 0.12)' : '#e5e5e5')
   return (
     <span className="theme-mini" data-theme={theme.id} style={{ backgroundColor: themeBackground(theme) }}>

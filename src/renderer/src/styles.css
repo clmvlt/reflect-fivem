@@ -1,10 +1,11 @@
-/* Apparence de lanceur sobre, dans l'esprit de Windows 11 : police système, aucun effet décoratif, et pour accent le
-   violet du logo de Reflect FiveM. */
+/* Apparence de lanceur sobre, dans l'esprit de Windows 11 : police système, aucun effet décoratif, et pour accent
+   celui de Windows ou le bleu du logo de Reflect FiveM. */
 
 :root {
   color-scheme: light;
-  /* Accent de Windows (posé par l'interface), violet du logo à défaut ; un thème peut avoir le sien. */
-  --accent: var(--system-accent, #7c40fd);
+  /* Accent de Windows (posé par l'interface), bleu du logo à défaut (#2E7CFF un peu plus profond, pour un texte blanc
+     lisible) ; un thème peut avoir le sien. */
+  --accent: var(--system-accent, #2670f0);
   --bg: #f3f3f3;
   --layer: #f9f9f9;
   --surface: #ffffff;

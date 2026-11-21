@@ -399,9 +399,6 @@ export class Marketplace {
     if (query.tag) params.set('tag', query.tag)
     if (query.author) params.set('author', query.author)
     if (kind === 'mod' && query.category) params.set('category', query.category)
-    // « Compatibles avec mon PC » seulement : sinon, rien de la machine ne part vers l'API.
-    if (Number.isInteger(query.vram) && query.vram! > 0) params.set('vram', String(query.vram))
-    if (Number.isInteger(query.gpuClass) && query.gpuClass! >= 0) params.set('gpuClass', String(query.gpuClass))
     if (this.staff()) params.set('drafts', 'true')
     const [page, index] = await Promise.all([this.get<RemotePage>(`${catalogPath(kind)}?${params}`), this.localIndex(kind)])
     for (const r of page.items) this.catalog.set(r.id, r)

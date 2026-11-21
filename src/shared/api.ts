@@ -451,12 +451,6 @@ export interface MarketQuery {
   /** recommended (défaut de l'API) : les mieux notés, avec un bonus aux packs récents. */
   sort?: MarketSort
   page?: number
-  /**
-   * « Compatibles avec mon PC » : packs dont les besoins minimaux en 1080p tiennent dans cette mémoire vidéo (Mo) et
-   * cette classe de carte (0 à 5), plus ceux pas encore analysés. Envoyés seulement quand l'utilisateur le demande.
-   */
-  vram?: number
-  gpuClass?: number
 }
 
 export type MarketSort = 'recommended' | 'rating' | 'recent' | 'popular' | 'name'

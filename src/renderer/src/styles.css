@@ -3295,13 +3295,6 @@ button.discord-brand:disabled {
   margin: 6px 0 0;
   padding-left: 18px;
 }
-.switch.compat-switch {
-  width: auto;
-  flex: none;
-}
-.hidden-note {
-  margin: -8px 0 12px;
-}
 
 /* ------------------------------------------------------------ États vides */
 

@@ -10,8 +10,8 @@ import { Avatar, EmptyState } from './common'
 import { DownloadInline, useDownload } from './Downloads'
 import { isRated, PackReviews, RatingLine, useRatings } from './Reviews'
 import { categoryLabel, localMod, ModMarketAction, useModCategories } from './Mods'
-import { PerfBadge, PerfDetails, PerfFacts, usePerfConfirm, usePerformance, type PerfContext } from './Performance'
-import { estimate, type PackPerformance } from '@shared/performance'
+import { PerfBadge, PerfDetails, PerfFacts, usePerfConfirm } from './Performance'
+import type { PackPerformance } from '@shared/performance'
 import { installChoice } from '@shared/billing'
 import { ItemBadge, useItemAccess, usePaidAction } from './Purchase'
 
@@ -108,44 +108,6 @@ function AuthorStrip({ authors, author, catalog, onAuthor }: { authors: AuthorSu
   )
 }
 
-const COMPATIBLE_KEY = 'market.compatible'
-
-/** « Compatibles avec mon PC » : choix gardé d'un lancement à l'autre (sur ce poste seulement). */
-function useCompatibleFilter(): [boolean, (on: boolean) => void] {
-  const [on, setOn] = useState(() => {
-    try {
-      return localStorage.getItem(COMPATIBLE_KEY) === '1'
-    } catch {
-      return false
-    }
-  })
-  const set = useCallback((next: boolean) => {
-    setOn(next)
-    try {
-      localStorage.setItem(COMPATIBLE_KEY, next ? '1' : '0')
-    } catch {
-      /* stockage indisponible : choix gardé jusqu'à la fermeture */
-    }
-  }, [])
-  return [on, set]
-}
-
-/**
- * Filtre « Compatibles avec mon PC » : l'API garde les packs dont les besoins minimaux en 1080p tiennent sur la machine
- * (mémoire vidéo et classe de la carte, envoyées seulement dans ce cas), puis ceux qui restent trop lourds à la
- * résolution de l'utilisateur sont masqués ici. Null si la machine n'est pas connue.
- */
-function compatibleQuery(ctx: PerfContext | null): { vram?: number; gpuClass?: number; keep: (item: MarketPack) => boolean } | null {
-  if (!ctx) return null
-  const m = ctx.machine
-  if (m.gpuClass === null && m.vramMb === null) return null
-  return {
-    vram: m.vramMb ?? undefined,
-    gpuClass: m.gpuClass ?? undefined,
-    keep: (item) => estimate(ctx.profile.model, m, item.performance).verdict !== 'too-heavy'
-  }
-}
-
 /** Recherche lancée 300 ms après la dernière frappe. */
 function useSearch(current: string | undefined, apply: (q: string) => void): [string, (q: string) => void] {
   const [search, setSearch] = useState(current ?? '')
@@ -202,15 +164,7 @@ function MarketList({
   const [categories, setCategories] = useState<MarketCategory[]>([])
   const [authors, setAuthors] = useState<AuthorSummary[]>([])
   const [featured, setFeatured] = useState<MarketPack[]>([])
-  const perf = usePerformance()
-  const [compatible, setCompatible] = useCompatibleFilter()
-  const compat = compatibleQuery(perf)
-  const filter = compatible && compat ? compat : null
-  const { page, error, loading, reload } = useMarketPage({
-    ...query,
-    author: author ?? undefined,
-    ...(filter ? { vram: filter.vram, gpuClass: filter.gpuClass } : {})
-  })
+  const { page, error, loading, reload } = useMarketPage({ ...query, author: author ?? undefined })
   const [search, setSearch] = useSearch(
     query.q,
     useCallback((q: string) => setQuery((old) => ({ ...old, q, page: 0 })), [])
@@ -234,10 +188,9 @@ function MarketList({
     onAuthor(slug)
   }
   const searched = !!(query.q || query.category)
-  const filtered = searched || !!filter
-  // Du moment : sur la liste complète ou celle d'un auteur, hors recherche ; avec « Compatibles avec mon PC », seulement ceux
-  // qui passent. Retirés de la liste complète en dessous, mais gardés dans celle d'un auteur pour qu'elle montre tous ses packs.
-  const shownFeatured = searched ? [] : filter ? featured.filter(filter.keep) : featured
+  // Du moment : sur la liste complète ou celle d'un auteur, hors recherche. Retirés de la liste complète en dessous, mais
+  // gardés dans celle d'un auteur pour qu'elle montre tous ses packs.
+  const shownFeatured = searched ? [] : featured
   const showFeatured = shownFeatured.length > 0
 
   return (
@@ -253,19 +206,6 @@ function MarketList({
           <option value="popular">{t('marketplace.sort.popular')}</option>
           <option value="name">{t('marketplace.sort.name')}</option>
         </select>
-        <label className="switch compat-switch" title={compat ? t('marketplace.compatible.help') : t('marketplace.compatible.undetected')}>
-          <input
-            type="checkbox"
-            checked={!!filter}
-            disabled={!compat}
-            onChange={(e) => {
-              setCompatible(e.target.checked)
-              setQuery((old) => ({ ...old, page: 0 }))
-            }}
-          />
-          <span className="switch-track" />
-          <span className="switch-text">{t('marketplace.compatible.label')}</span>
-        </label>
       </header>
       {showFeatured && <FeaturedBanner items={shownFeatured} library={overview.library} onOpen={onOpen} onOpenLocal={onOpenLocal} />}
       <AuthorStrip authors={authors} author={author} catalog={catalog} onAuthor={chooseAuthor} />
@@ -309,12 +249,9 @@ function MarketList({
         reload={reload}
         current={query.page ?? 0}
         onPage={(p) => setQuery({ ...query, page: p })}
-        keep={filter?.keep}
         skip={showFeatured && !author ? shownFeatured.map((f) => f.id) : undefined}
         empty={
-          filter && !searched
-            ? t(mods ? 'marketplace.empty.compatibleMod' : 'marketplace.empty.compatiblePack')
-            : filtered
+          searched
             ? t(mods ? 'marketplace.empty.noMatchMod' : 'marketplace.empty.noMatchPack')
             : author
               ? t(mods ? 'marketplace.empty.byAuthorMod' : 'marketplace.empty.byAuthorPack')
@@ -336,7 +273,6 @@ function PackGrid({
   current,
   onPage,
   empty,
-  keep,
   skip,
   onOpen,
   onOpenLocal
@@ -348,8 +284,6 @@ function PackGrid({
   current: number
   onPage: (page: number) => void
   empty: string
-  /** Filtre local (« Compatibles avec mon PC ») : les autres éléments de la page sont masqués. */
-  keep?: (item: MarketPack) => boolean
   /** Déjà affichés au-dessus (vitrine du moment) : retirés de la grille. */
   skip?: string[]
 }) {
@@ -366,21 +300,12 @@ function PackGrid({
       </div>
     )
   if (!page) return loading ? <p className="muted loading">{t('common.loading')}</p> : null
-  const rest = skip ? page.items.filter((item) => !skip.includes(item.id)) : page.items
-  const items = keep ? rest.filter(keep) : rest
-  const hidden = rest.length - items.length
-  const hiddenNote = hidden > 0 && <p className="hint hidden-note">{t('marketplace.hidden', { count: hidden, n: num(hidden) })}</p>
+  const items = skip ? page.items.filter((item) => !skip.includes(item.id)) : page.items
   // Tous déjà dans la vitrine : rien de plus à montrer.
-  if (items.length === 0 && !hidden && rest.length < page.items.length && page.totalPages <= 1) return null
-  if (items.length === 0 && page.totalPages <= 1)
-    return (
-      <EmptyState icon="search" title={empty} compact>
-        {hiddenNote}
-      </EmptyState>
-    )
+  if (items.length === 0 && items.length < page.items.length && page.totalPages <= 1) return null
+  if (items.length === 0 && page.totalPages <= 1) return <EmptyState icon="search" title={empty} compact />
   return (
     <>
-      {hiddenNote}
       <div className="grid">
         {items.map((item) => (
           <MarketCard key={item.id} item={item} library={overview.library} onOpen={onOpen} onOpenLocal={onOpenLocal} />

@@ -254,19 +254,6 @@ describe('poids sur les performances', () => {
     expect('performance' in toMarketPack(remote(), undefined)).toBe(false)
   })
 
-  it('« Compatibles avec mon PC » : mémoire vidéo et classe envoyées seulement sur demande', async () => {
-    fetchMock.mockImplementation(async () => json(200, { items: [], page: 0, size: 24, total: 0, totalPages: 0 }))
-    const market = new Marketplace('https://api.test/api', 'cache', () => library)
-    await market.list({})
-    await market.list({ vram: 8192, gpuClass: 3 })
-    await market.list({ kind: 'mod', vram: 4096 })
-    const params = fetchMock.mock.calls.map((c) => new URL(c[0]).searchParams)
-    expect([params[0].get('vram'), params[0].get('gpuClass')]).toEqual([null, null])
-    expect([params[1].get('vram'), params[1].get('gpuClass')]).toEqual(['8192', '3'])
-    expect(new URL(fetchMock.mock.calls[2][0]).pathname).toBe('/api/mods')
-    expect([params[2].get('vram'), params[2].get('gpuClass')]).toEqual(['4096', null])
-  })
-
   it('analyse détaillée ; null avec une API qui ne la fournit pas', async () => {
     const id = 'aa665074-b72c-498a-b3b5-f90f78957a65'
     const market = new Marketplace('https://api.test/api', 'cache', () => library)

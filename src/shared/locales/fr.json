@@ -1513,11 +1513,6 @@
     "back": "‹ Retour",
     "backToList": "‹ Marketplace",
     "by": "par <author></author>",
-    "compatible": {
-      "help": "Seulement ce qui devrait tourner sur votre PC, à votre résolution (estimation). Pour ce filtre, la mémoire vidéo et la classe de votre carte graphique sont envoyées à la Marketplace.",
-      "label": "Compatibles avec mon PC",
-      "undetected": "Votre carte graphique n’a pas pu être détectée : indiquez-la dans Graphismes › Ma configuration."
-    },
     "detail": {
       "category": "Catégorie",
       "description": "Description",
@@ -1538,8 +1533,6 @@
     "empty": {
       "byAuthorMod": "Aucun mod publié par cet auteur.",
       "byAuthorPack": "Aucun pack publié par cet auteur.",
-      "compatibleMod": "Aucun mod compatible avec votre PC pour le moment.",
-      "compatiblePack": "Aucun pack compatible avec votre PC pour le moment.",
       "noMatchMod": "Aucun mod ne correspond à cette recherche.",
       "noMatchPack": "Aucun pack ne correspond à cette recherche.",
       "noneMod": "Aucun mod publié pour le moment.",
@@ -1557,8 +1550,6 @@
       "packs_one": "Pack du moment",
       "packs_other": "Packs du moment"
     },
-    "hidden_one": "1 autre est masqué sur cette page : trop lourd pour votre PC à votre résolution.",
-    "hidden_other": "{{n}} autres sont masqués sur cette page : trop lourds pour votre PC à votre résolution.",
     "mods_one": "{{n}} mod",
     "mods_other": "{{n}} mods",
     "packs_one": "{{n}} pack",

@@ -9,8 +9,6 @@ import { useStore } from '../store'
 import { bytes, num, q } from '../lib/format'
 import { DownloadInline, useDownload } from './Downloads'
 import { Cover, EmptyState, Progress } from './common'
-import { usePerfConfirm } from './Performance'
-import type { PackPerformance } from '@shared/performance'
 import { confirmDialog } from './Confirm'
 import { popupMenu } from './Menu'
 import { ItemBadge, usePaidAction } from './Purchase'
@@ -346,14 +344,13 @@ export function ModMarketAction({
   wide = false,
   access
 }: {
-  item: { id: string; sha256: string; name: string; price: number | null; cover?: MarketImage | null; performance?: PackPerformance | null }
+  item: { id: string; sha256: string; name: string; price: number | null; cover?: MarketImage | null }
   wide?: boolean
   access?: ItemAccess | null
 }) {
   const { t } = useTranslation()
   const { overview, task, run } = useStore()
   const actions = useModActions()
-  const confirmHeavy = usePerfConfirm()
   const local = overview ? localMod(item.id, overview.mods) : null
   const update = !!local && !!item.sha256 && local.marketplace!.sha256 !== item.sha256
   const paid = usePaidAction({ ...item, kind: 'mod' }, { access, update })
@@ -361,17 +358,13 @@ export function ModMarketAction({
   const enabled = !!local && !!modState(local.id, overview.state.mods)?.enabled
   const cls = (primary: boolean): string => [primary && 'primary', wide && 'wide'].filter(Boolean).join(' ')
   const install = (): void => void run(() => window.api.marketInstall(item.id, 'mod'))
-  // Premier téléchargement d'un mod trop lourd pour la machine : confirmation (qui n'empêche pas de l'installer).
-  const installNew = async (): Promise<void> => {
-    if (await confirmHeavy({ ...item, kind: 'mod' }, t('modsView.installAnyway'))) install()
-  }
 
   if (!local)
     return (
       <>
         <div className="spacer" />
         {/* Carte : le prix seul (le texte complet ne tient pas), en entier sur la fiche. */}
-        <button className={cls(true)} onClick={paid ? paid.run : () => void installNew()} title={paid && !wide ? paid.label : undefined}>
+        <button className={cls(true)} onClick={paid ? paid.run : install} title={paid && !wide ? paid.label : undefined}>
           {paid ? (wide ? paid.label : paid.price) : t('modsView.install')}
         </button>
       </>

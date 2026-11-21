@@ -1,9 +1,9 @@
-// Poids des packs et des mods sur les performances, comparé à la machine de l'utilisateur.
+// Poids des packs et des mods sur les performances, et machine de l'utilisateur.
 //
 // L'API estime le poids de chaque pack à partir de ses fichiers (`performance` dans les fiches, détail à
-// GET /{packs|mods}/{id}/performance) et sert le modèle de comparaison (GET /app/performance) : classes de cartes
-// graphiques, résolutions, seuils. La comparaison se fait ici, sur le poste : la configuration de la machine n'est
-// jamais envoyée à l'API. Une copie du modèle est embarquée pour le mode hors ligne.
+// GET /{packs|mods}/{id}/performance) et sert le modèle (GET /app/performance) : classes de cartes graphiques,
+// résolutions. Les coûts sont ramenés à la machine ici, sur le poste : sa configuration n'est jamais envoyée à l'API.
+// Une copie du modèle est embarquée pour le mode hors ligne.
 // Fonctions pures, partagées entre le processus principal et l'interface.
 
 import { t } from 'i18next'
@@ -373,105 +373,11 @@ export function machineOf(profile: MachineProfile): Machine {
 }
 
 // ---------------------------------------------------------------------------
-// Comparaison d'un pack à la machine
-
-/**
- * smooth : fluide (60 images par seconde et mémoire recommandée) ; playable : jouable (40 images par seconde et mémoire
- * minimale) ; too-heavy : trop lourd ; not-analyzed : pack pas encore analysé ; unknown : machine inconnue (ni la carte
- * ni sa mémoire n'ont pu être lues).
- */
-export type PerfVerdict = 'smooth' | 'playable' | 'too-heavy' | 'not-analyzed' | 'unknown'
-
-/** Libellés des verdicts, dans la langue courante (lus au moment de les afficher). */
-export const VERDICT_LABEL: Record<PerfVerdict, string> = {
-  get smooth() {
-    return t('performance.verdict.smooth')
-  },
-  get playable() {
-    return t('performance.verdict.playable')
-  },
-  get 'too-heavy'() {
-    return t('performance.verdict.tooHeavy')
-  },
-  get 'not-analyzed'() {
-    return t('performance.verdict.notAnalyzed')
-  },
-  get unknown() {
-    return t('performance.verdict.unknown')
-  }
-}
-
-export interface PerfEstimate {
-  verdict: PerfVerdict
-  /** Temps d'une image estimé (null : carte non reconnue, ou pack non analysé). */
-  frameMs: number | null
-  /** Mémoire vidéo nécessaire à la résolution de l'utilisateur. */
-  vram: { min: number; recommended: number } | null
-  /** Seule la mémoire vidéo a été comparée : la carte n'est pas reconnue. */
-  gpuUnknown: boolean
-  /** Seul le temps d'une image a été comparé : la mémoire vidéo n'a pas pu être lue. */
-  vramUnknown: boolean
-}
-
-/** Temps d'une image = (baseFrameMs + effectsMs × effectsScale + worldMs) / speed de la classe. */
-export function frameMsOf(model: PerformanceModel, gpuClass: number, resolution: PerfResolution, effectsMs: number, worldMs: number): number | null {
-  const speed = model.gpuClasses.find((c) => c.level === gpuClass)?.speed
-  if (!speed) return null
-  return (resolution.baseFrameMs + effectsMs * resolution.effectsScale + worldMs) / speed
-}
-
-export function estimate(model: PerformanceModel, machine: Machine, perf: PackPerformance | null | undefined): PerfEstimate {
-  const none: PerfEstimate = {
-    verdict: 'not-analyzed',
-    frameMs: null,
-    vram: null,
-    gpuUnknown: false,
-    vramUnknown: false
-  }
-  if (!perf) return none
-  const extra = machine.resolution.extraVramMb
-  const vram = {
-    min: perf.minVramMb + extra,
-    recommended: perf.recommendedVramMb + extra
-  }
-  const frameMs = machine.gpuClass === null ? null : frameMsOf(model, machine.gpuClass, machine.resolution, perf.effectsMs, perf.worldMs)
-  const gpuUnknown = frameMs === null
-  const vramUnknown = machine.vramMb === null
-  if (gpuUnknown && vramUnknown) return { ...none, verdict: 'unknown', vram, gpuUnknown, vramUnknown }
-  // Ce qu'on ne connaît pas de la machine n'est pas compté contre le pack.
-  const fast = (limit: number): boolean => frameMs === null || frameMs <= limit
-  const enough = (needed: number): boolean => machine.vramMb === null || machine.vramMb >= needed
-  const verdict: PerfVerdict =
-    fast(model.targetFrameMs) && enough(vram.recommended) ? 'smooth' : fast(model.minFrameMs) && enough(vram.min) ? 'playable' : 'too-heavy'
-  return { verdict, frameMs, vram, gpuUnknown, vramUnknown }
-}
+// Coûts ramenés à la machine
 
 /** Libellé d'un niveau (« Moyen ») d'après le modèle. */
 export function tierLabel(model: PerformanceModel, tier: PerfTier): string {
   return model.tiers.find((t) => t.key === tier)?.label ?? EMBEDDED_PERFORMANCE_MODEL.tiers.find((t) => t.key === tier)!.label
-}
-
-/**
- * Pack avec des éléments en plus (dossiers optionnels activés) ou un autre preset ReShade : coûts additionnés, mémoire
- * vidéo du pack ajoutée aux besoins. `effectsDelta` peut être négatif (preset plus léger que celui compté par l'API).
- */
-export function adjustPerformance(perf: PackPerformance, extras: { effectsMs?: number; worldMs?: number; vramMb?: number }[]): PackPerformance {
-  let { effectsMs, worldMs, vramMb, minVramMb, recommendedVramMb } = perf
-  for (const e of extras) {
-    effectsMs += e.effectsMs ?? 0
-    worldMs += e.worldMs ?? 0
-    vramMb += e.vramMb ?? 0
-    minVramMb += e.vramMb ?? 0
-    recommendedVramMb += e.vramMb ?? 0
-  }
-  return {
-    ...perf,
-    effectsMs: Math.max(0, effectsMs),
-    worldMs: Math.max(0, worldMs),
-    vramMb,
-    minVramMb,
-    recommendedVramMb
-  }
 }
 
 /**
@@ -625,26 +531,6 @@ export function presetFor(report: PerformanceReport, rel: string | null | undefi
 export function optionFor(report: PerformanceReport, source: string): { path: string; summary: PackPerformance } | null {
   const o = report.options.find((x) => x.summary && samePackPath(x.path, source))
   return o ? { path: o.path, summary: o.summary! } : null
-}
-
-/**
- * Poids du pack tel qu'il sera installé : avec le preset ReShade choisi (à la place de celui compté par l'analyse) et
- * les dossiers optionnels activés (`components` : sources des composants installés). Null sans analyse.
- */
-export function installedPerformance(report: PerformanceReport, choice: { preset: string | null | undefined; components: string[] }): PackPerformance | null {
-  if (!report.summary) return null
-  const extras: { effectsMs?: number; worldMs?: number; vramMb?: number }[] = []
-  const counted = report.effects?.reshade?.preset ? report.effects.reshade.presets.find((p) => p.path === report.effects!.reshade!.preset) : null
-  const chosen = presetFor(report, choice.preset)
-  if (counted && chosen && chosen.path !== counted.path) extras.push({ effectsMs: chosen.costMs - counted.costMs })
-  const seen = new Set<string>()
-  for (const source of choice.components) {
-    const o = optionFor(report, source)
-    if (!o || seen.has(o.path)) continue
-    seen.add(o.path)
-    extras.push(o.summary)
-  }
-  return extras.length ? adjustPerformance(report.summary, extras) : report.summary
 }
 
 /**

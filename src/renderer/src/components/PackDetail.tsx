@@ -11,9 +11,9 @@ import { DownloadInline, useDownload } from './Downloads'
 import { Gallery } from './Gallery'
 import { useInstallTarget } from './InstallTarget'
 import { Markdown } from './Markdown'
-import { msText, optionCostText, PerfFacts, usePerfConfirm, usePerformance, usePerformanceDetail } from './Performance'
+import { msText, optionCostText, usePerformance, usePerformanceDetail } from './Performance'
 import { PackReviews, RateNudge, RatingLine, useRatings } from './Reviews'
-import { costOnMachine, installedPerformance, optionFor, presetFor } from '@shared/performance'
+import { costOnMachine, optionFor, presetFor } from '@shared/performance'
 
 /** Destinations proposées (évaluées à l'affichage : libellé « Ne pas installer » traduit). */
 const destinations = (): { key: string; label: string; dest: Destination | null }[] => [
@@ -52,7 +52,6 @@ export function PackDetail({
   const { t, i18n } = useTranslation()
   const { overview, account, task, run, changeGame } = useStore()
   const perfCtx = usePerformance()
-  const confirmHeavy = usePerfConfirm()
   const [renaming, setRenaming] = useState(false)
   const marketId = pack.marketplace?.id
   const marketKind = pack.marketplace?.kind ?? 'pack'
@@ -105,7 +104,7 @@ export function PackDetail({
   const { choose, picker } = useInstallTarget()
   const perfDetail = usePerformanceDetail(pack.marketplace && pack.marketplace.kind !== 'mod' ? pack.marketplace.id : null, 'pack')
   // Fiche montrée d'un coup quand sa fiche en ligne, son analyse (et la machine), et les notes du compte sont lues (ou
-  // après REVEAL_WAIT_MS) : la note, le verdict et l'invitation à noter n'apparaissent pas après coup en décalant la page.
+  // après REVEAL_WAIT_MS) : la note, les coûts des options et l'invitation à noter n'apparaissent pas après coup en décalant la page.
   const [shown, setShown] = useState(false)
   useEffect(() => {
     const timer = setTimeout(() => setShown(true), REVEAL_WAIT_MS)
@@ -128,13 +127,6 @@ export function PackDetail({
   // Mise à jour arrêtée par une maintenance : reprise toute seule à la fin.
   const paused = !!market && overview.pausedDownloads.some((d) => d.id === market.id)
   const report = perfDetail?.report ?? null
-  // undefined : rien à montrer (pas de fiche, API plus ancienne, analyse en cours de chargement) ; null : pas analysé.
-  const installedPerf =
-    perfDetail === undefined || perfDetail === null
-      ? undefined
-      : report
-        ? installedPerformance(report, { preset: pack.reshadePreset, components: installable.map((c) => c.source) })
-        : null
   /** Coût d'un preset ReShade sur la machine (null s'il n'est pas dans l'analyse). */
   const presetCost = (rel: string): string => {
     const preset = report && perfCtx ? presetFor(report, rel) : null
@@ -146,7 +138,6 @@ export function PackDetail({
   const install = async (always = false): Promise<void> => {
     const target = await choose(pack, always)
     if (target === null) return
-    if (!(await confirmHeavy({ name: pack.name, kind: 'pack', performance: installedPerf }, t('packDetail.installAnyway')))) return
     await changeGame(() => window.api.applyPack(pack.id, target))
   }
 
@@ -299,7 +290,6 @@ export function PackDetail({
                 </dd>
               </>
             )}
-            <PerfFacts perf={installedPerf} />
           </dl>
 
           {gone && <p className="hint">{t('packDetail.gone')}</p>}

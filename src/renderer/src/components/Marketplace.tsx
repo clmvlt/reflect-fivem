@@ -10,8 +10,6 @@ import { Avatar, EmptyState } from './common'
 import { DownloadInline, useDownload } from './Downloads'
 import { isRated, PackReviews, RatingLine, useRatings } from './Reviews'
 import { categoryLabel, localMod, ModMarketAction, useModCategories } from './Mods'
-import { PerfBadge, PerfDetails, PerfFacts, usePerfConfirm } from './Performance'
-import type { PackPerformance } from '@shared/performance'
 import { installChoice } from '@shared/billing'
 import { ItemBadge, useItemAccess, usePaidAction } from './Purchase'
 
@@ -493,7 +491,6 @@ function MarketCard({
         </div>
         <div className="meta meta-row">
           <RatingLine pack={item} />
-          <PerfBadge perf={item.performance} />
         </div>
         <div className="card-foot" onClick={(e) => e.stopPropagation()}>
           {dl ? (
@@ -526,7 +523,7 @@ function MarketAction({
   wide = false,
   access
 }: {
-  item: { id: string; sha256: string; kind: MarketKind; name: string; price: number | null; cover?: MarketImage | null; performance?: PackPerformance | null }
+  item: { id: string; sha256: string; kind: MarketKind; name: string; price: number | null; cover?: MarketImage | null }
   library: PackManifest[]
   onOpenLocal: (id: string) => void
   wide?: boolean
@@ -534,13 +531,10 @@ function MarketAction({
 }) {
   const { run } = useStore()
   const { t } = useTranslation()
-  const confirmHeavy = usePerfConfirm()
   const { local, update } = localState(item, library)
   const paid = usePaidAction(item, { access, update })
   if (item.kind === 'mod') return <ModMarketAction item={item} wide={wide} access={access} />
   const install = async (): Promise<void> => {
-    // Nouvelle version d'un pack déjà choisi : pas de nouvelle confirmation.
-    if (!update && !(await confirmHeavy(item, t('marketplace.action.downloadAnyway')))) return
     await run(() => window.api.marketInstall(item.id))
   }
   if (local && !update)
@@ -711,9 +705,7 @@ function MarketDetail({ id, catalog, back, onOpen, onOpenLocal, onSignIn }: Nav 
                 <dd>{pack.tags.join(', ')}</dd>
               </>
             )}
-            <PerfFacts perf={pack.performance} />
           </dl>
-          <PerfDetails id={pack.id} kind={pack.kind} perf={pack.performance} />
           {/* Le site n'a pas encore de page pour les mods. */}
           {!mod && (
             <div className="side-links">

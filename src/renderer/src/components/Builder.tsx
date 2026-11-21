@@ -28,7 +28,6 @@ import type {
 } from '@shared/types'
 import { canUseBuilder } from '@shared/api'
 import { deleteNote, needsPack, saleActive } from '@shared/billing'
-import { estimate, VERDICT_LABEL, type PackPerformance } from '@shared/performance'
 import {
   ambianceChoice,
   cleanTools,
@@ -53,7 +52,6 @@ import { confirmDialog } from './Confirm'
 import { DownloadInline, useDownload } from './Downloads'
 import { useInstallTarget } from './InstallTarget'
 import { popupMenu } from './Menu'
-import { memText, usePerfConfirm, usePerformance, verdictReasons } from './Performance'
 import { activate, blockedText, Check, ComponentModal, ComponentTile } from './BuilderParts'
 import { AmbianceSection, toolName, toolSummary } from './BuilderAmbiance'
 import { OfferPanel, PlanBadge, PlanBanner, useBilling, withPurchase, type PurchaseNeed } from './BuilderBilling'
@@ -592,7 +590,6 @@ function Wizard({
 }) {
   const { t } = useTranslation()
   const { run, setMessage } = useStore()
-  const confirmHeavy = usePerfConfirm()
   const index = useMemo(() => cardIndex(catalog), [catalog])
   const [draft, setDraft] = useState(start.draft)
   const [saved, setSaved] = useState(start.saved)
@@ -752,7 +749,6 @@ function Wizard({
   }
   const install = async (): Promise<void> => {
     const data = input()
-    if (!(await confirmHeavy({ name: data.name, kind: 'pack', performance: preview.data?.estimate.performance }, t('builder.summary.installAnyway')))) return
     setBusy(true)
     const id = await run(() => withSale(() => window.api.builderInstall(draft.id, data)))
     setBusy(false)
@@ -1003,34 +999,6 @@ function CategoryPage({
 // ---------------------------------------------------------------------------
 // Récapitulatif (panneau permanent et dernière étape)
 
-/** Estimation sur ce PC : verdict, mémoire vidéo et raisons (comparaison faite ici, la machine n'est pas envoyée). */
-function PcEstimate({ perf }: { perf: PackPerformance | null }) {
-  const { t } = useTranslation()
-  const ctx = usePerformance()
-  if (!perf) return <p className="muted small">{t('builder.recap.notEstimated')}</p>
-  if (!ctx) return null
-  const est = estimate(ctx.profile.model, ctx.machine, perf)
-  const vram = ctx.machine.vramMb
-  return (
-    <div className="builder-pc">
-      <div className="builder-pc-head">
-        <span>{t('builder.recap.onThisPc')}</span>
-        <span className={`perf-tag v-${est.verdict}`}>{VERDICT_LABEL[est.verdict]}</span>
-      </div>
-      {est.vram && (
-        <p>
-          {vram !== null
-            ? t('performance.details.vramWithCard', { min: memText(est.vram.min), card: memText(vram) })
-            : t('performance.details.vram', { min: memText(est.vram.min) })}
-        </p>
-      )}
-      {verdictReasons(ctx, est).map((r, i) => (
-        <p key={i}>{r}</p>
-      ))}
-    </div>
-  )
-}
-
 /**
  * Problèmes (sans les conflits, voir shownProblems), les erreurs d'abord, chacun avec de quoi le régler : activer
  * l'outil ou la base qui manque (QuantV demande ReShade, un preset demande QuantV), choisir un autre style, revenir au
@@ -1158,7 +1126,6 @@ function RecapPanel({
             <dt>{t('builder.recap.size')}</dt>
             <dd>{p ? bytes(p.estimate.size) : '-'}</dd>
           </dl>
-          {p && <PcEstimate perf={p.estimate.performance} />}
           {preview.error && <p className="warn-text small">{preview.error}</p>}
           {p && <Problems problems={p.problems} catalog={catalog} tools={draft.tools} onEnable={onEnable} onOpenTool={onOpenTool} />}
         </>
@@ -1321,7 +1288,6 @@ function Summary({
               <dd>{num(p.estimate.fileCount)}</dd>
             </dl>
           )}
-          {p && <PcEstimate perf={p.estimate.performance} />}
         </>
       )}
 
@@ -1341,23 +1307,21 @@ function Summary({
       </div>
       {errors.length > 0 && !dl && <p className="hint">{t('builder.summary.fixErrors')}</p>}
       {!local && !dl && <p className="hint">{t('builder.summary.installHint')}</p>}
-      {local && <LocalPack pack={local} update={update && !dl} performance={p?.estimate.performance ?? null} onOpenLocal={onOpenLocal} />}
+      {local && <LocalPack pack={local} update={update && !dl} onOpenLocal={onOpenLocal} />}
     </section>
   )
 }
 
 /** Pack construit à partir de la création : l'ouvrir dans la bibliothèque, ou l'installer dans le jeu. */
-function LocalPack({ pack, update, performance, onOpenLocal }: { pack: PackManifest; update: boolean; performance: PackPerformance | null; onOpenLocal: (packId: string) => void }) {
+function LocalPack({ pack, update, onOpenLocal }: { pack: PackManifest; update: boolean; onOpenLocal: (packId: string) => void }) {
   const { t } = useTranslation()
   const { overview, task, changeGame } = useStore()
   const { choose, picker } = useInstallTarget()
-  const confirmHeavy = usePerfConfirm()
   const active = overview?.state.active?.packId === pack.id
   const pending = overview?.game.pending?.packId === pack.id
   const installInGame = async (): Promise<void> => {
     const target = await choose(pack)
     if (target === null) return
-    if (!(await confirmHeavy({ name: pack.name, kind: 'pack', performance }, t('packDetail.installAnyway')))) return
     await changeGame(() => window.api.applyPack(pack.id, target))
   }
   return (

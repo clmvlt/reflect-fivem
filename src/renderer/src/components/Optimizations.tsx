@@ -14,13 +14,10 @@ import {
   type OptimizationsResult,
   type OptimizationState
 } from '@shared/optimizations'
-import { estimate, installedPerformance } from '@shared/performance'
 import { useStore } from '../store'
-import { q } from '../lib/format'
 import { confirmDialog } from './Confirm'
-import { usePerformance, usePerformanceDetail } from './Performance'
 
-export function Optimizations({ onOpenPage }: { onOpenPage: (page: 'market') => void }) {
+export function Optimizations() {
   const { t, i18n } = useTranslation()
   const { overview, run, setMessage } = useStore()
   const [state, setState] = useState<OptimizationsOverview | null | undefined>(undefined)
@@ -164,7 +161,6 @@ export function Optimizations({ onOpenPage }: { onOpenPage: (page: 'market') => 
         </div>
         <p className="hint opt-checks-intro">{t('optimizations.checks.intro')}</p>
         <ul className="list">
-          <PackCheck onBrowse={() => onOpenPage('market')} />
           {state.checks.map((c) => (
             <CheckRow key={c.id} check={c} />
           ))}
@@ -257,61 +253,6 @@ function CheckRow({ check }: { check: CheckState }) {
         <div className="actions">
           {check.copy && <button onClick={() => void run(() => copy(check.copy!))}>{t(copied ? 'optimizations.checks.copied' : 'optimizations.checks.copy')}</button>}
           {check.link && <button onClick={() => void run(() => window.api.optimizationsOpen(check.link!))}>{t(`optimizations.checks.links.${check.link}`)}</button>}
-        </div>
-      )}
-    </li>
-  )
-}
-
-/**
- * Pack graphique installé, comparé à la machine : ReShade et ENB sont ce qui coûte le plus. Poids connu pour les packs
- * de la Marketplace (analyse de l'API), avec le preset et les éléments choisis.
- */
-function PackCheck({ onBrowse }: { onBrowse: () => void }) {
-  const { t } = useTranslation()
-  const { overview, task, changeGame } = useStore()
-  const ctx = usePerformance()
-  const active = overview?.state.active ?? null
-  const pack = active ? overview?.library.find((p) => p.id === active.packId) : undefined
-  const marketId = pack?.marketplace && pack.marketplace.kind !== 'mod' ? pack.marketplace.id : null
-  const detail = usePerformanceDetail(marketId, 'pack')
-  if (!overview) return null
-
-  const name = q(pack?.name ?? active?.packName ?? '')
-  let level: CheckState['level'] = 'ok'
-  let text = t('optimizations.checks.pack.none')
-  if (active) {
-    const perf =
-      pack && detail?.report ? installedPerformance(detail.report, { preset: pack.reshadePreset, components: pack.components.filter((c) => c.enabled && c.destination).map((c) => c.source) }) : null
-    const verdict = perf && ctx ? estimate(ctx.profile.model, ctx.machine, perf).verdict : null
-    if (verdict === 'too-heavy') {
-      level = 'warn'
-      text = t('optimizations.checks.pack.heavy', { pack: name })
-    } else if (verdict === 'playable') {
-      level = 'info'
-      text = t('optimizations.checks.pack.playable', { pack: name })
-    } else if (verdict === 'smooth') text = t('optimizations.checks.pack.smooth', { pack: name })
-    else {
-      level = 'info'
-      text = t('optimizations.checks.pack.unknown', { pack: name })
-    }
-  }
-
-  return (
-    <li className="row top opt-row">
-      <div className="row-main">
-        <div className="opt-head">
-          <span className="name">{t('optimizations.checks.pack.title')}</span>
-          <span className={`opt-level l-${level}`}>{t(`optimizations.checks.level.${level}`)}</span>
-        </div>
-        <div className="meta meta-wrap">{text}</div>
-      </div>
-      {active && level !== 'ok' && (
-        <div className="actions">
-          <button onClick={onBrowse}>{t('optimizations.checks.pack.browse')}</button>
-          <button onClick={() => void changeGame(() => window.api.removeActive())} disabled={!!task}>
-            {t('optimizations.checks.pack.remove')}
-          </button>
         </div>
       )}
     </li>

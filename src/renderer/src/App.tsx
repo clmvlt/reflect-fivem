@@ -344,7 +344,7 @@ export function App() {
             )}
             {page === 'builder' && <Builder key={builderRequest?.at ?? 'page'} request={builderRequest} onOpenLocal={openLocal} onSignIn={signIn} />}
             {page === 'graphics' && <Graphics />}
-            {page === 'optimizations' && <Optimizations onOpenPage={go} />}
+            {page === 'optimizations' && <Optimizations />}
             {page === 'cleanup' && <Cleanup />}
             {page === 'discord' && <DiscordView />}
             {page === 'account' && <AccountView onOpenAuthor={openAuthor} backTo={signInFrom === 'builder' ? 'builder' : 'pack'} onBack={

@@ -412,8 +412,6 @@
       "other": "Other",
       "size": "Download size",
       "files": "Files",
-      "notEstimated": "Performance weight not estimated yet.",
-      "onThisPc": "On this PC",
       "basic": "Basic: the original game"
     },
     "problems": {
@@ -485,7 +483,6 @@
       "noProblem": "No problem: everything will be installed.",
       "install": "Install",
       "upToDate": "Pack up to date",
-      "installAnyway": "Install anyway",
       "fixErrors": "Fix the blocking issues to be able to install.",
       "installHint": "Install saves your creation, downloads its files and adds it to your library.",
       "ambiance": "Ambiance",
@@ -1032,7 +1029,7 @@
       "title": "Graphics card",
       "unrecognized": "not recognized: choose its class"
     },
-    "hint": "Used to estimate whether a pack will run well on your PC. This information stays on your PC: only the Marketplace’s “Compatible with my PC” filter sends the video memory and card class, when you turn it on.",
+    "hint": "Used by the optimizations and to show what a pack’s options cost on your PC. This information stays on your PC.",
     "manual": "set manually",
     "ram": "System memory",
     "redetect": "Detect again",
@@ -1486,7 +1483,6 @@
   "marketplace": {
     "action": {
       "download": "Download",
-      "downloadAnyway": "Download anyway",
       "inLibrary": "In library",
       "newVersion": "New version",
       "update": "Update"
@@ -1612,7 +1608,6 @@
     "gone": "Removed from the Marketplace",
     "import": "Import a mod…",
     "install": "Install",
-    "installAnyway": "Install anyway",
     "menu": {
       "hideFiles": "Hide files",
       "market": "View page",
@@ -1806,16 +1801,6 @@
         "warn": "To fix",
         "info": "Tip"
       },
-      "pack": {
-        "title": "Installed graphics pack",
-        "none": "No pack installed: the game is as light as it gets.",
-        "smooth": "{{pack}} runs well on this PC.",
-        "playable": "{{pack}} is playable on this PC, but a lighter pack will give more frames per second.",
-        "heavy": "{{pack}} is too heavy for this PC: it costs more frames per second than anything else. Choose a lighter pack, or remove it.",
-        "unknown": "{{pack}}: performance cost unknown. ReShade and ENB cost the most frames per second.",
-        "remove": "Remove the pack",
-        "browse": "Browse packs"
-      },
       "power-source": {
         "title": "Laptop power",
         "battery": "The laptop is on battery: Windows throttles the processor and graphics card. Plug it in to play.",
@@ -1918,7 +1903,6 @@
     "gone": "This pack is no longer available on the Marketplace. Your copy remains usable.",
     "install": "Install",
     "installOther": "Install in another instance…",
-    "installAnyway": "Install anyway",
     "installed": "Installed",
     "marketPage": "View on the Marketplace",
     "media": {
@@ -1939,22 +1923,6 @@
     "userConfigs_other": "{{n}} settings changed in game, reinstalled with the pack."
   },
   "performance": {
-    "confirm": {
-      "message": "{{reasons}}\n\nThis is an estimate: you can install it anyway and lower your graphics settings.",
-      "title": "{{name}} may be too heavy for your PC"
-    },
-    "details": {
-      "sourceMod": "Estimated from the mod’s files.",
-      "sourceModPartial": "Estimated from the mod’s files, some of them encrypted.",
-      "sourcePack": "Estimated from the pack’s files.",
-      "sourcePackPartial": "Estimated from the pack’s files, some of them encrypted.",
-      "summary": "Estimate details",
-      "vram": "Video memory: {{min}} minimum.",
-      "vramWithCard": "Video memory: {{min}} minimum, your card has {{card}}."
-    },
-    "facts": {
-      "onYourPc": "On your PC"
-    },
     "gpuClass": {
       "level0": {
         "examples": "Intel UHD / Iris Xe, Radeon Vega 3 to 11",
@@ -1980,34 +1948,14 @@
     "option": {
       "negligible": "negligible cost"
     },
-    "reasons": {
-      "gpuShort": "Your graphics card may not keep up at {{resolution}}.",
-      "gpuTight": "Your graphics card is a bit tight at {{resolution}}: lowering a few settings may help.",
-      "gpuUnknown": "Graphics card not recognized: only video memory is compared.",
-      "notAnalyzed": "Not analyzed yet.",
-      "unknown": "Your graphics card couldn’t be detected: set it in Graphics › My setup.",
-      "vramShort": "Not enough video memory: {{needed}} required, your card has {{card}}.",
-      "vramTight": "Video memory is tight: {{needed}} recommended, your card has {{card}}.",
-      "vramUnknown": "Video memory unknown: only the card’s power is compared."
-    },
     "tier": {
       "extreme": "Very heavy",
       "heavy": "Heavy",
       "light": "Light",
       "medium": "Medium"
     },
-    "title": {
-      "tier": "Weight: {{tier}}"
-    },
     "units": {
       "ms": "{{value}} ms"
-    },
-    "verdict": {
-      "notAnalyzed": "Not analyzed",
-      "playable": "Playable",
-      "smooth": "Smooth",
-      "tooHeavy": "Too heavy",
-      "unknown": "PC not recognized"
     }
   },
   "progress": {

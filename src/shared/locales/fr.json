@@ -412,8 +412,6 @@
       "other": "Autres",
       "size": "Taille à télécharger",
       "files": "Fichiers",
-      "notEstimated": "Poids sur les performances pas encore estimé.",
-      "onThisPc": "Sur ce PC",
       "basic": "Basique : le jeu d’origine"
     },
     "problems": {
@@ -485,7 +483,6 @@
       "noProblem": "Aucun problème : tout s’installera.",
       "install": "Installer",
       "upToDate": "Pack à jour",
-      "installAnyway": "Installer quand même",
       "fixErrors": "Corrige les points bloquants pour pouvoir installer.",
       "installHint": "Installer enregistre ta création, télécharge ses fichiers et l’ajoute à ta bibliothèque.",
       "ambiance": "Ambiance",
@@ -1032,7 +1029,7 @@
       "title": "Carte graphique",
       "unrecognized": "non reconnue : choisissez sa classe"
     },
-    "hint": "Sert à estimer si un pack tournera bien sur votre PC. Ces informations restent sur votre PC : seul le filtre « Compatibles avec mon PC » de la Marketplace envoie la mémoire vidéo et la classe de la carte, quand vous l’activez.",
+    "hint": "Sert aux optimisations et au coût des options d’un pack sur votre PC. Ces informations restent sur votre PC.",
     "manual": "corrigée à la main",
     "ram": "Mémoire vive",
     "redetect": "Détecter à nouveau",
@@ -1486,7 +1483,6 @@
   "marketplace": {
     "action": {
       "download": "Télécharger",
-      "downloadAnyway": "Télécharger quand même",
       "inLibrary": "Dans la bibliothèque",
       "newVersion": "Nouvelle version",
       "update": "Mettre à jour"
@@ -1612,7 +1608,6 @@
     "gone": "Retiré de la Marketplace",
     "import": "Importer un mod…",
     "install": "Installer",
-    "installAnyway": "Installer quand même",
     "menu": {
       "hideFiles": "Masquer les fichiers",
       "market": "Voir la fiche",
@@ -1806,16 +1801,6 @@
         "warn": "À corriger",
         "info": "Conseil"
       },
-      "pack": {
-        "title": "Pack graphique installé",
-        "none": "Aucun pack installé : le jeu est le plus léger possible.",
-        "smooth": "{{pack}} tourne bien sur ce PC.",
-        "playable": "{{pack}} est jouable sur ce PC, mais un pack plus léger donnera plus d’images par seconde.",
-        "heavy": "{{pack}} est trop lourd pour ce PC : c’est ce qui coûte le plus d’images par seconde. Choisissez un pack plus léger, ou retirez-le.",
-        "unknown": "{{pack}} : poids sur les performances inconnu. ReShade et ENB sont ce qui coûte le plus d’images par seconde.",
-        "remove": "Retirer le pack",
-        "browse": "Voir les packs"
-      },
       "power-source": {
         "title": "Alimentation du portable",
         "battery": "Le portable est sur batterie : Windows bride le processeur et la carte graphique. Branchez-le pour jouer.",
@@ -1918,7 +1903,6 @@
     "gone": "Ce pack n’est plus proposé sur la Marketplace. Votre copie reste utilisable.",
     "install": "Installer",
     "installOther": "Installer dans une autre instance…",
-    "installAnyway": "Installer quand même",
     "installed": "Installé",
     "marketPage": "Voir sur la Marketplace",
     "media": {
@@ -1939,22 +1923,6 @@
     "userConfigs_other": "{{n}} réglages modifiés en jeu, réinstallés avec le pack."
   },
   "performance": {
-    "confirm": {
-      "message": "{{reasons}}\n\nC’est une estimation : vous pouvez l’installer quand même et baisser vos réglages graphiques.",
-      "title": "{{name}} risque d’être trop lourd pour votre PC"
-    },
-    "details": {
-      "sourceMod": "Estimation à partir des fichiers du mod.",
-      "sourceModPartial": "Estimation à partir des fichiers du mod, en partie chiffrés.",
-      "sourcePack": "Estimation à partir des fichiers du pack.",
-      "sourcePackPartial": "Estimation à partir des fichiers du pack, en partie chiffrés.",
-      "summary": "Détail de l’estimation",
-      "vram": "Mémoire vidéo : {{min}} au minimum.",
-      "vramWithCard": "Mémoire vidéo : {{min}} au minimum, votre carte en a {{card}}."
-    },
-    "facts": {
-      "onYourPc": "Sur votre PC"
-    },
     "gpuClass": {
       "level0": {
         "examples": "Intel UHD / Iris Xe, Radeon Vega 3 à 11",
@@ -1980,34 +1948,14 @@
     "option": {
       "negligible": "coût négligeable"
     },
-    "reasons": {
-      "gpuShort": "Votre carte graphique risque de ne pas suivre en {{resolution}}.",
-      "gpuTight": "Votre carte graphique est un peu juste en {{resolution}} : baisser quelques réglages peut aider.",
-      "gpuUnknown": "Carte graphique non reconnue : seule la mémoire vidéo est comparée.",
-      "notAnalyzed": "Pas encore analysé.",
-      "unknown": "Votre carte graphique n’a pas pu être détectée : indiquez-la dans Graphismes › Ma configuration.",
-      "vramShort": "Mémoire vidéo insuffisante : {{needed}} nécessaires, votre carte en a {{card}}.",
-      "vramTight": "Mémoire vidéo juste : {{needed}} recommandés, votre carte en a {{card}}.",
-      "vramUnknown": "Mémoire vidéo inconnue : seule la puissance de la carte est comparée."
-    },
     "tier": {
       "extreme": "Très lourd",
       "heavy": "Lourd",
       "light": "Léger",
       "medium": "Moyen"
     },
-    "title": {
-      "tier": "Poids : {{tier}}"
-    },
     "units": {
       "ms": "{{value}} ms"
-    },
-    "verdict": {
-      "notAnalyzed": "Non analysé",
-      "playable": "Jouable",
-      "smooth": "Fluide",
-      "tooHeavy": "Trop lourd",
-      "unknown": "PC non reconnu"
     }
   },
   "progress": {

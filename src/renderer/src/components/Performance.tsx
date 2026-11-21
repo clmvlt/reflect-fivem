@@ -1,16 +1,13 @@
-// Poids des packs et des mods sur les performances, comparé à la machine de l'utilisateur : badges des cartes, verdict
-// et détail des fiches, confirmation avant d'installer un pack trop lourd, et panneau « Ma configuration ».
-// La comparaison se fait ici (shared/performance.ts) : la configuration de la machine n'est pas envoyée à l'API.
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
+// Machine de l'utilisateur (panneau « Ma configuration ») et coûts des options d'un pack ramenés à cette machine.
+// Le calcul se fait ici (shared/performance.ts) : la configuration de la machine n'est pas envoyée à l'API.
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import i18next, { t } from 'i18next'
 import { useTranslation } from 'react-i18next'
-import type { HardwareOverride, Machine, MachineProfile, PackPerformance, PerfEstimate, PerformanceDetail } from '@shared/performance'
-import { costOnMachine, estimate, machineOf, tierLabel, VERDICT_LABEL } from '@shared/performance'
+import type { HardwareOverride, Machine, MachineProfile, PackPerformance, PerformanceDetail } from '@shared/performance'
+import { costOnMachine, machineOf } from '@shared/performance'
 import type { MarketKind } from '@shared/types'
 import { cleanError } from '../store'
-import { q } from '../lib/format'
 import { formatNumber } from '@shared/intl'
-import { confirmDialog } from './Confirm'
 
 // ---------------------------------------------------------------------------
 // Machine et modèle, lus une fois puis partagés par toute l'interface
@@ -87,96 +84,8 @@ function resolutionText(m: Machine): string {
   return m.width && m.height ? `${m.width} × ${m.height}` : m.resolution.key
 }
 
-/** Pourquoi ce verdict, en une ou deux phrases. */
-export function verdictReasons(ctx: PerfContext, est: PerfEstimate): string[] {
-  const { model } = ctx.profile
-  const m = ctx.machine
-  const out: string[] = []
-  if (est.verdict === 'not-analyzed') return [t('performance.reasons.notAnalyzed')]
-  if (est.verdict === 'unknown') return [t('performance.reasons.unknown')]
-  const vramShort = est.vram && m.vramMb !== null && m.vramMb < (est.verdict === 'too-heavy' ? est.vram.min : est.vram.recommended)
-  // Seuils du modèle (minFrameMs, targetFrameMs) : on dit si la carte suit, sans chiffrer les images par seconde.
-  if (est.frameMs !== null) {
-    const resolution = resolutionText(m)
-    if (est.frameMs > model.minFrameMs) out.push(t('performance.reasons.gpuShort', { resolution }))
-    else if (est.frameMs > model.targetFrameMs) out.push(t('performance.reasons.gpuTight', { resolution }))
-  }
-  if (vramShort && est.vram)
-    out.push(
-      est.verdict === 'too-heavy'
-        ? t('performance.reasons.vramShort', { needed: memText(est.vram.min), card: memText(m.vramMb!) })
-        : t('performance.reasons.vramTight', { needed: memText(est.vram.recommended), card: memText(m.vramMb!) })
-    )
-  if (est.gpuUnknown) out.push(t('performance.reasons.gpuUnknown'))
-  if (est.vramUnknown) out.push(t('performance.reasons.vramUnknown'))
-  return out
-}
-
 // ---------------------------------------------------------------------------
-// Badges et verdict
-
-/** Infobulle d'un verdict : poids du pack, raisons. */
-function verdictTitle(ctx: PerfContext, perf: PackPerformance, est: PerfEstimate): string {
-  return [t('performance.title.tier', { tier: tierLabel(ctx.profile.model, perf.tier) }), ...verdictReasons(ctx, est)].join('\n')
-}
-
-/**
- * Verdict pour la machine, discret (point de couleur et un mot), sur les cartes de la Marketplace ; le détail est dans
- * l'infobulle. Rien pour un pack pas encore analysé, une machine inconnue ou une API sans ce champ.
- */
-export function PerfBadge({ perf }: { perf: PackPerformance | null | undefined }) {
-  useTranslation()
-  const ctx = usePerformance()
-  if (!perf || !ctx) return null
-  const est = estimate(ctx.profile.model, ctx.machine, perf)
-  if (est.verdict === 'unknown' || est.verdict === 'not-analyzed') return null
-  return (
-    <span className={`perf-tag v-${est.verdict}`} title={verdictTitle(ctx, perf, est)}>
-      {VERDICT_LABEL[est.verdict]}
-    </span>
-  )
-}
-
-/**
- * Confirmation avant d'installer un pack (ou un mod) trop lourd pour la machine. Ne bloque jamais : l'utilisateur peut
- * continuer. Renvoie true s'il faut installer.
- */
-export function usePerfConfirm(): (item: { name: string; kind: MarketKind; performance?: PackPerformance | null }, okLabel: string) => Promise<boolean> {
-  const ctx = usePerformance()
-  return useCallback(
-    async (item, okLabel) => {
-      if (!ctx || !item.performance) return true
-      const est = estimate(ctx.profile.model, ctx.machine, item.performance)
-      if (est.verdict !== 'too-heavy') return true
-      return confirmDialog(
-        t('performance.confirm.title', { name: q(item.name) }),
-        t('performance.confirm.message', { reasons: verdictReasons(ctx, est).join(' ') }),
-        okLabel
-      )
-    },
-    [ctx]
-  )
-}
-
-/** « Sur votre PC : Fluide », une ligne de la liste des caractéristiques d'une fiche. */
-export function PerfFacts({ perf }: { perf: PackPerformance | null | undefined }) {
-  const { t } = useTranslation()
-  const ctx = usePerformance()
-  if (!perf || !ctx) return null
-  const est = estimate(ctx.profile.model, ctx.machine, perf)
-  if (est.verdict === 'unknown') return null
-  return (
-    <>
-      <dt>{t('performance.facts.onYourPc')}</dt>
-      <dd title={verdictTitle(ctx, perf, est)}>
-        <span className={`perf-tag v-${est.verdict}`}>{VERDICT_LABEL[est.verdict]}</span>
-      </dd>
-    </>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Détail d'une fiche de la Marketplace
+// Analyse d'un pack de la Marketplace
 
 /** Analyses déjà lues, par fiche et par langue : une fiche rouverte affiche la sienne tout de suite (puis la relit). */
 const detailCache = new Map<string, PerformanceDetail | null>()
@@ -203,53 +112,6 @@ export function usePerformanceDetail(id: string | null | undefined, kind: Market
   }, [id, kind, key])
   if (!id) return null
   return detail?.id === id ? detail.value : detailCache.get(key)
-}
-
-/**
- * « Pourquoi ? » sous le verdict d'une fiche de la Marketplace, replié par défaut : raisons, mémoire vidéo comparée à
- * celle de la carte, et les points principaux de l'analyse.
- */
-export function PerfDetails({ id, kind, perf }: { id: string; kind: MarketKind; perf: PackPerformance | null | undefined }) {
-  const { t } = useTranslation()
-  const ctx = usePerformance()
-  const detail = usePerformanceDetail(perf ? id : null, kind)
-  if (!perf || !ctx) return null
-  const est = estimate(ctx.profile.model, ctx.machine, perf)
-  if (est.verdict === 'unknown') return null
-  const reasons = verdictReasons(ctx, est)
-  const highlights = (detail?.report?.highlights ?? []).slice(0, 3)
-  const vram = ctx.machine.vramMb
-  return (
-    <details className="perf-more">
-      <summary>{t('performance.details.summary')}</summary>
-      {reasons.map((r, i) => (
-        <p key={i}>{r}</p>
-      ))}
-      {est.vram && (
-        <p>
-          {vram !== null
-            ? t('performance.details.vramWithCard', { min: memText(est.vram.min), card: memText(vram) })
-            : t('performance.details.vram', { min: memText(est.vram.min) })}
-        </p>
-      )}
-      {highlights.length > 0 && (
-        <ul>
-          {highlights.map((h, i) => (
-            <li key={i}>{h.text}</li>
-          ))}
-        </ul>
-      )}
-      <p className="muted">
-        {kind === 'mod'
-          ? perf.estimated
-            ? t('performance.details.sourceModPartial')
-            : t('performance.details.sourceMod')
-          : perf.estimated
-            ? t('performance.details.sourcePackPartial')
-            : t('performance.details.sourcePack')}
-      </p>
-    </details>
-  )
 }
 
 /** Surcoût d'une option : temps par image sur la machine, et mémoire vidéo. */

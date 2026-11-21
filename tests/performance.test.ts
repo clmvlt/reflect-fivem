@@ -1,17 +1,16 @@
-// Poids des packs comparé à la machine : classe de la carte graphique, résolution, temps d'une image, verdict, lecture
-// des réponses de l'API, preset et options choisis dans la bibliothèque.
+// Poids des packs et machine : classe de la carte graphique, résolution, coûts ramenés à la machine, lecture des
+// réponses de l'API, preset et options de l'analyse retrouvés dans la bibliothèque.
 import { describe, expect, it } from 'vitest'
 import {
-  adjustPerformance,
+  costOnMachine,
   EMBEDDED_PERFORMANCE_MODEL as MODEL,
-  estimate,
-  frameMsOf,
   gpuClassOf,
-  installedPerformance,
   machineOf,
+  optionFor,
   parsePackPerformance,
   parsePerformanceDetail,
   parsePerformanceModel,
+  presetFor,
   resolutionOf,
   samePackPath,
   type HardwareInfo,
@@ -93,70 +92,10 @@ describe('résolution', () => {
   })
 })
 
-describe('comparaison d’un pack à la machine', () => {
-  it('temps d’une image = (base + effets × échelle + distance) / vitesse', () => {
-    const r1440 = MODEL.resolutions[1]
-    expect(frameMsOf(MODEL, 3, MODEL.resolutions[0], 2, 1)).toBeCloseTo(12)
-    expect(frameMsOf(MODEL, 4, r1440, 2, 1)).toBeCloseTo((12.5 + 2 * 1.78 + 1) / 1.6)
-    expect(frameMsOf(MODEL, 9, r1440, 2, 1)).toBeNull()
-  })
-
-  it('fluide : 60 images par seconde et mémoire recommandée', () => {
-    const e = estimate(MODEL, machine('NVIDIA GeForce RTX 3080', 10240), perf())
-    expect(e.verdict).toBe('smooth')
-    expect(e.frameMs).toBeCloseTo(12 / 2.6)
-    expect(e.vram).toEqual({ min: 3584, recommended: 5120 })
-  })
-
-  it('jouable : entre 40 et 60 images par seconde', () => {
-    // Classe 2 en 1080p : (9 + 2 + 1) / 0.7 ≈ 17,1 ms.
-    expect(estimate(MODEL, machine('NVIDIA GeForce GTX 1060 6GB', 6144), perf()).verdict).toBe('playable')
-  })
-
-  it('jouable : assez de mémoire pour le minimum, pas pour le recommandé', () => {
-    expect(estimate(MODEL, machine('NVIDIA GeForce RTX 3080', 4096), perf()).verdict).toBe('playable')
-  })
-
-  it('trop lourd : trop lent, ou pas assez de mémoire vidéo', () => {
-    expect(estimate(MODEL, machine('NVIDIA GeForce GTX 1050 Ti', 4096), perf()).verdict).toBe('too-heavy')
-    expect(estimate(MODEL, machine('NVIDIA GeForce RTX 3080', 3072), perf()).verdict).toBe('too-heavy')
-  })
-
-  it('la résolution ajoute du temps et de la mémoire', () => {
-    const p = perf({ effectsMs: 4 })
-    expect(estimate(MODEL, machine('NVIDIA GeForce RTX 3060', 12288), p).verdict).toBe('smooth')
-    const e = estimate(MODEL, machine('NVIDIA GeForce RTX 3060', 12288, 3840, 2160), p)
-    // 2160p : (22 + 4 × 4 + 1) / 1,6 ≈ 24,4 ms ; mémoire + 1,5 Go.
-    expect(e.verdict).toBe('playable')
-    expect(e.vram).toEqual({ min: 3584 + 1536, recommended: 5120 + 1536 })
-  })
-
-  it('pack pas encore analysé', () => {
-    expect(estimate(MODEL, machine('NVIDIA GeForce RTX 3080', 10240), null).verdict).toBe('not-analyzed')
-    expect(estimate(MODEL, machine('NVIDIA GeForce RTX 3080', 10240), undefined).verdict).toBe('not-analyzed')
-  })
-
-  it('carte non reconnue : seule la mémoire vidéo est comparée, et c’est signalé', () => {
-    const ok = estimate(MODEL, machine('Matrox G200eW', 8192), perf())
-    expect(ok).toMatchObject({ verdict: 'smooth', gpuUnknown: true, frameMs: null })
-    expect(estimate(MODEL, machine('Matrox G200eW', 4096), perf()).verdict).toBe('playable')
-    expect(estimate(MODEL, machine('Matrox G200eW', 2048), perf()).verdict).toBe('too-heavy')
-  })
-
-  it('mémoire vidéo inconnue : seul le temps d’une image est comparé', () => {
-    expect(estimate(MODEL, machine('NVIDIA GeForce RTX 3080', null), perf())).toMatchObject({ verdict: 'smooth', vramUnknown: true })
-  })
-
-  it('machine inconnue : pas de verdict', () => {
-    expect(estimate(MODEL, machine(null, null), perf()).verdict).toBe('unknown')
-  })
-})
-
 describe('machine', () => {
   it('classe et mémoire corrigées à la main', () => {
     const m = machine('Matrox G200eW', null, 1920, 1080, { gpuClass: 3, vramMb: 6144 })
     expect(m).toMatchObject({ gpuClass: 3, gpuClassSource: 'manual', vramMb: 6144, vramSource: 'manual' })
-    expect(estimate(MODEL, m, perf()).verdict).toBe('smooth')
   })
 
   it('correction invalide : valeur détectée', () => {
@@ -166,6 +105,12 @@ describe('machine', () => {
 
   it('carte de portable signalée', () => {
     expect(machine('NVIDIA GeForce RTX 4060 Laptop GPU', 8192)).toMatchObject({ gpuClass: 3, mobile: true })
+  })
+
+  it('coût ramené à la résolution et à la carte ; carte non reconnue : carte de référence', () => {
+    expect(costOnMachine(MODEL, machine('NVIDIA GeForce RTX 3060', 12288), 2, 1)).toBeCloseTo(3 / 1.6)
+    expect(costOnMachine(MODEL, machine('NVIDIA GeForce RTX 3060', 12288, 2560, 1440), 2)).toBeCloseTo((2 * 1.78) / 1.6)
+    expect(costOnMachine(MODEL, machine('Matrox G200eW', 4096), 2)).toBeCloseTo(2)
   })
 })
 
@@ -210,7 +155,7 @@ describe('réponses de l’API', () => {
   })
 })
 
-describe('pack tel qu’il sera installé', () => {
+describe('analyse et bibliothèque', () => {
   const report: PerformanceReport = {
     summary: perf({ effectsMs: 3 }),
     textures: null,
@@ -229,28 +174,11 @@ describe('pack tel qu’il sera installé', () => {
     options: [{ path: 'Pack v2/Optional/Arbres denses', summary: perf({ effectsMs: 0, worldMs: 1.5, vramMb: 400 }), highlights: [] }]
   }
 
-  it('preset et options par défaut : le résumé de l’analyse', () => {
-    expect(installedPerformance(report, { preset: null, components: ['mods'] })).toEqual(report.summary)
-    expect(installedPerformance(report, { preset: 'reshade-presets/Ultra.ini', components: [] })).toEqual(report.summary)
-  })
-
-  it('autre preset : son coût à la place de celui compté', () => {
-    expect(installedPerformance(report, { preset: 'reshade-presets/Lite.ini', components: [] })?.effectsMs).toBeCloseTo(0.5)
-  })
-
-  it('option activée : son coût et sa mémoire vidéo en plus', () => {
-    const p = installedPerformance(report, { preset: null, components: ['Optional/Arbres denses', 'mods'] })!
-    expect(p.worldMs).toBeCloseTo(2.5)
-    expect(p.minVramMb).toBe(3584 + 400)
-    expect(p.recommendedVramMb).toBe(5120 + 400)
-  })
-
-  it('sans analyse : null', () => {
-    expect(installedPerformance({ ...report, summary: null }, { preset: null, components: [] })).toBeNull()
-  })
-
-  it('les coûts ne deviennent jamais négatifs', () => {
-    expect(adjustPerformance(perf({ effectsMs: 1 }), [{ effectsMs: -3 }]).effectsMs).toBe(0)
+  it('preset et dossier optionnel retrouvés par leur chemin dans le pack', () => {
+    expect(presetFor(report, 'reshade-presets/Lite.ini')?.costMs).toBe(0.5)
+    expect(presetFor(report, null)).toBeNull()
+    expect(optionFor(report, 'Optional/Arbres denses')?.summary.worldMs).toBe(1.5)
+    expect(optionFor(report, 'mods')).toBeNull()
   })
 
   it('chemins de l’archive et de la bibliothèque', () => {
